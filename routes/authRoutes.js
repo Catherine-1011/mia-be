@@ -5,7 +5,7 @@ const {
   forgotPassword, resetPassword, verifyLoginOTP, samlCallback,
   createTicket, exchangeTicket
 } = require("../controllers/auth");
-
+// auth
 async function authRoutes(fastify, options) {
   fastify.post("/signup", register);
   fastify.post("/verify-otp", verifyOTP);

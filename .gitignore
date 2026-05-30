@@ -1,3 +1,8 @@
 node_modules/
 .env
 serviceAccountKey.json
+
+# Migration artifacts (local only)
+url-mapping.json
+migration-progress.json
+_check_schema.js

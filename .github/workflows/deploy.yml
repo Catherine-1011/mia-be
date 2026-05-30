@@ -1,0 +1,39 @@
+name: Deploy to DigitalOcean Droplet
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Droplet via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          port: ${{ secrets.DROPLET_PORT }}
+          script: |
+            cd /var/www/mia-be
+
+            echo "--- Pulling latest code ---"
+            git pull origin main
+
+            echo "--- Installing dependencies ---"
+            npm install --omit=dev
+
+            echo "--- Running Prisma migrations ---"
+            npx prisma migrate deploy
+
+            echo "--- Restarting app with PM2 ---"
+            pm2 reload mia-be --update-env || pm2 start server.js --name mia-be
+
+            echo "--- Deploy complete ---"
+            pm2 status

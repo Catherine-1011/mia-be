@@ -68,6 +68,7 @@ const ALLOWED_ORIGINS = [
   'http://localhost:3001',               // Local dev — dashboard
   'http://localhost:3002',
   'https://usa.authpoint.watchguard.com',
+  'http://134.199.161.119:3001',
                  // Local dev — extra port
 ];
 

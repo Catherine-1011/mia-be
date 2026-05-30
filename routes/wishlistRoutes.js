@@ -34,3 +34,4 @@ async function wishlistRoutes(fastify, options) {
 }
 // fix
 module.exports = wishlistRoutes;
+// add

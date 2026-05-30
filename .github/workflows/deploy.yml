@@ -21,7 +21,7 @@ jobs:
           key: ${{ secrets.DROPLET_SSH_KEY }}
           port: ${{ secrets.DROPLET_PORT }}
           script: |
-            cd /var/www/mia-be
+            cd /root/mia-be
 
             echo "--- Pulling latest code ---"
             git pull origin main

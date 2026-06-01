@@ -306,8 +306,8 @@ const ALLOWED_ORIGINS = [
   'http://localhost:3001',               // Local dev — dashboard
   'http://localhost:3002',
   'https://usa.authpoint.watchguard.com',
-  'http://madeinarnhemland.com.au',
-  'http://dashboard.madeinarnhemland.com.au'
+  'https://madeinarnhemland.com.au',
+  'https://dashboard.madeinarnhemland.com.au'
               
 ];
 

@@ -1,4 +1,4 @@
-﻿const sgMail = require('@sendgrid/mail');
+const sgMail = require('@sendgrid/mail');
 const nodemailer = require('nodemailer');
 
 /**
@@ -19,7 +19,7 @@ const duoCircleTransporter = nodemailer.createTransport({
   host: process.env.DUO_CIRCLE_HOST || 'outbound.mailhop.org',
   port: parseInt(process.env.DUO_CIRCLE_PORT) === 587 ? 2525 : (process.env.DUO_CIRCLE_PORT || 2525), // Forcibly circumvent port 587 blocks to prevent hanging
   secure: false, // true for 465, false for other ports
-  connectionTimeout: 20000, // 20-second timeout — Render.com SMTP connections can be slow
+  connectionTimeout: 20000, // 20-second timeout � Render.com SMTP connections can be slow
   greetingTimeout: 20000,
   socketTimeout: 20000,
   auth: {
@@ -31,7 +31,7 @@ const duoCircleTransporter = nodemailer.createTransport({
   maxMessages: 100,
 });
 
-// Separate transporter for bulk/campaign sends — longer timeouts so a slow
+// Separate transporter for bulk/campaign sends � longer timeouts so a slow
 // SMTP handshake doesn't kill individual newsletter emails.
 const duoCircleCampaignTransporter = nodemailer.createTransport({
   host: process.env.DUO_CIRCLE_HOST || 'outbound.mailhop.org',
@@ -45,13 +45,13 @@ const duoCircleCampaignTransporter = nodemailer.createTransport({
     pass: process.env.DUO_CIRCLE_PASS,
   },
   pool: true,
-  maxConnections: 2,  // conservative — 1 connection at a time for bulk
+  maxConnections: 2,  // conservative � 1 connection at a time for bulk
   maxMessages: 500,
 });
 
 if (process.env.DUO_CIRCLE_USER && process.env.DUO_CIRCLE_PASS) {
   duoCircleConfigured = true;
-  console.log("🟢 Duo Circle email service initialized");
+  console.log("?? Duo Circle email service initialized");
 }
 
 // Initialize SendGrid
@@ -60,11 +60,11 @@ let emailConfigured = false;
 if (process.env.SENDGRID_API_KEY) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
   emailConfigured = true;
-  console.log("🟢 SendGrid email service initialized");
+  console.log("?? SendGrid email service initialized");
   console.log("SendGrid senderEmail:", process.env.SENDER_EMAIL);
   console.log("SendGrid API Key present:", !!process.env.SENDGRID_API_KEY);
 } else {
-  console.log("🟡 SendGrid API key not configured. Emails will be logged to console.");
+  console.log("?? SendGrid API key not configured. Emails will be logged to console.");
 }
 
 const isDevelopmentMode = (!emailConfigured && !duoCircleConfigured);
@@ -92,15 +92,15 @@ const sendWithFallback = async (msg, context = 'Email', extraInfo = {}) => {
       
       try {
         await duoCircleTransporter.sendMail(mailOptions);
-        console.log(`✅ [Duo Circle] ${context} sent successfully to:`, msg.to);
+        console.log(`? [Duo Circle] ${context} sent successfully to:`, msg.to);
         return { success: true };
       } catch (duoErr) {
-        console.error(`❌ [Duo Circle] ${context} failed:`, duoErr.message);
+        console.error(`? [Duo Circle] ${context} failed:`, duoErr.message);
         // Fall through to SendGrid if available
         if (emailConfigured) {
-          console.log(`⚠️ Falling back to SendGrid for ${context}...`);
+          console.log(`?? Falling back to SendGrid for ${context}...`);
           await sgMail.send(msg);
-          console.log(`✅ [SendGrid fallback] ${context} sent successfully to:`, msg.to);
+          console.log(`? [SendGrid fallback] ${context} sent successfully to:`, msg.to);
           return { success: true };
         }
         throw duoErr;
@@ -110,7 +110,7 @@ const sendWithFallback = async (msg, context = 'Email', extraInfo = {}) => {
     // Otherwise use SendGrid if configured
     if (emailConfigured) {
       await sgMail.send(msg);
-      console.log(`✅ [SendGrid] ${context} sent successfully to:`, msg.to);
+      console.log(`? [SendGrid] ${context} sent successfully to:`, msg.to);
       return { success: true };
     }
 
@@ -399,7 +399,7 @@ const buildMsg = (msg) => {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&nbsp;/g, ' ')
-    .replace(/�/g, '\u2014')
+    .replace(/?/g, '\u2014')
     .replace(/&#\d+;/g, '')
     .replace(/&[a-z]+;/gi, '')
     .replace(/[ \t]{2,}/g, ' ')
@@ -462,10 +462,10 @@ sgMail.send = async (rawMsg, ...args) => {
       await duoCircleTransporter.sendMail(mailOptions);
       return [{ statusCode: 202, body: '' }]; // Mock SendGrid success response format
     } catch (err) {
-      console.error('❌ Duo Circle sending error (via sgMail interceptor):', err.message);
+      console.error('? Duo Circle sending error (via sgMail interceptor):', err.message);
       // Fall back to SendGrid rather than silently dropping the email
       if (emailConfigured) {
-        console.log('⚠️ Falling back to SendGrid for email delivery...');
+        console.log('?? Falling back to SendGrid for email delivery...');
         return _sgMailSend(msg, ...args);
       }
       throw err;
@@ -719,8 +719,8 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
   const targetOrderId = (orderDetails.isSellerCopy && orderDetails.subOrderId) ? orderDetails.subOrderId : orderDetails.displayId;
 
   // Build guest-aware tracking URL
-  const baseUrl = process.env.FRONTEND_URL || 'https://apla-fe.vercel.app';
-  const dashboardUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
+  const baseUrl = process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au';
+  const dashboardUrl = process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au';
   const backendBaseUrl = process.env.BACKEND_URL || process.env.API_URL || 'https://alpa-be.onrender.com';
   
   // Track goes to frontend. For sellers/admins, we just link to dashboard
@@ -883,7 +883,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
           <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">? Your order is being processed by our seller</p>
           <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">? You'll receive a shipping confirmation when dispatched</p>
           <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">? Track your order anytime from your account</p>
-          <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">? If you have any issues with the orders, please <a href="https://apla-fe.vercel.app/contact-us" style="color:#C4603A;text-decoration:underline;">contact</a> us</p>
+          <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">? If you have any issues with the orders, please <a href="https://madeinarnhemland.com.au/contact-us" style="color:#C4603A;text-decoration:underline;">contact</a> us</p>
         </div>
       </td>
     </tr>
@@ -981,7 +981,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
       break;
     case "delivered":
       statusMessage = "Your order has been delivered!";
-      statusColor = "#C4963A";      // warm amber/cream-gold � replaces green
+      statusColor = "#C4963A";      // warm amber/cream-gold ? replaces green
       break;
     case "cancelled":
       statusMessage = "Your order has been cancelled. If you paid online, a refund will be processed within 3-5 business days.";
@@ -1027,8 +1027,8 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
   ].filter(Boolean).join(', ');
 
   // Build guest-aware tracking URL
-  const baseUrl = process.env.FRONTEND_URL || 'https://apla-fe.vercel.app';
-  const dashboardUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
+  const baseUrl = process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au';
+  const dashboardUrl = process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au';
   const backendBaseUrl = process.env.BACKEND_URL || process.env.API_URL || 'https://alpa-be.onrender.com';
   const trackingUrl = orderDetails.isGuest
     ? `${baseUrl}/guest/track-order?orderId=${orderDetails.displayId}&email=${encodeURIComponent(email)}`
@@ -1184,7 +1184,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                     </tr>${orderDetails.isGuest ? `
                     <tr>
                       <td style="text-align:center;padding-top:4px;" colspan="2">
-                        <a href="https://apla-fe.vercel.app/guest/refund" style="display:inline-block;background-color:#ffffff;color:#7D2E1E;padding:11px 24px;text-decoration:none;border-radius:8px;font-size:13px;font-weight:600;border:2px solid #C4603A;">Issue with your order? Request a refund</a>
+                        <a href="https://madeinarnhemland.com.au/guest/refund" style="display:inline-block;background-color:#ffffff;color:#7D2E1E;padding:11px 24px;text-decoration:none;border-radius:8px;font-size:13px;font-weight:600;border:2px solid #C4603A;">Issue with your order? Request a refund</a>
                       </td>
                     </tr>` : ''}</table>
                   ` : `
@@ -1325,14 +1325,14 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
                   </table>
                 </td>
               </tr>` : ''}
-              <!-- Action Required �-->
+              <!-- Action Required ?-->
               <tr>
                 <td style="padding:0 40px 20px;">
                   <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
                     <p style="margin:0 0 8px;color:#5A1E12;font-weight:700;font-size:14px;">Checklist</p>
                     <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Log into your seller dashboard</p>
                     <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Confirm the order and verify stock</p>
-                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Pack and ship within 2�3 business days</p>
+                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Pack and ship within 2?3 business days</p>
                     <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Add tracking information once dispatched</p>
                   </div>
                 </td>
@@ -1342,10 +1342,10 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
                 <td style="padding:0 40px 36px;text-align:center;">
                   <table width="100%" cellpadding="0" cellspacing="0"><tr>
                     <td style="padding-right:8px;text-align:right;">
-                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">View in Dashboard</a>
+                      <a href="${process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">View in Dashboard</a>
                     </td>
                     <td style="padding-left:8px;text-align:left;">
-                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Download Invoice</a>
+                      <a href="${process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Download Invoice</a>
                     </td>
                   </tr></table>
                 </td>
@@ -1424,14 +1424,14 @@ const sendContactFormEmail = async (email, name, subject, message) => {
 
                   <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
                     <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">? Response Time</p>
-                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Our support team typically responds within 24�48 business hours. You'll receive a reply at this email address.</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Our support team typically responds within 24?48 business hours. You'll receive a reply at this email address.</p>
                   </div>
                 </td>
               </tr>
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land � Customer Support</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Customer Support</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated confirmation &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -1542,14 +1542,14 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
 
                     <!-- CTA -->
                     <div style="text-align:center;">
-                      <a href="${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app/'}/sellerdashboard/orders" style="display:inline-block;background-color:${urgencyColor};color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Take Action Now</a>
+                      <a href="${process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au/'}/sellerdashboard/orders" style="display:inline-block;background-color:${urgencyColor};color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Take Action Now</a>
                     </div>
                   </td>
                 </tr>
                 <!-- Footer -->
                 <tr>
                   <td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
-                    <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land � Automated SLA Monitor</p>
+                    <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Automated SLA Monitor</p>
                     <p style="margin:0;color:#8B5C54;font-size:11px;">Please do not reply to this email. &copy; 2026 Made in Arnhem Land.</p>
                   </td>
                 </tr>
@@ -1737,7 +1737,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
                   <!-- Review time note -->
                   <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
                     <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">Review Timeline</p>
-                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Applications are typically reviewed within <strong>2�3 business days</strong>. If you have any questions in the meantime, please contact our support team.</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Applications are typically reviewed within <strong>2?3 business days</strong>. If you have any questions in the meantime, please contact our support team.</p>
                   </div>
                 </td>
               </tr>
@@ -1796,14 +1796,14 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;"> Account Created!</h1>
-                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your seller account is ready � let's get started</p>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your seller account is ready ? let's get started</p>
                 </td>
               </tr>
               <!-- Body -->
               <tr>
                 <td style="padding:36px 40px 28px;">
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${name}</strong>,</p>
-                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Welcome to Made in Arnhem Land! Your email has been verified and your seller account has been successfully created. Please keep your application number safe � you'll need it when contacting our support team.</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Welcome to Made in Arnhem Land! Your email has been verified and your seller account has been successfully created. Please keep your application number safe ? you'll need it when contacting our support team.</p>
 
                   <!-- Application Number Box -->
                   <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;text-align:center;">
@@ -1846,7 +1846,7 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
               <!-- CTA -->
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
-                  <a href="${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/onboarding" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Continue Your Application</a>
+                  <a href="${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/seller/onboarding" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Continue Your Application</a>
                 </td>
               </tr>
               <!-- Footer -->
@@ -1960,7 +1960,7 @@ const sendSellerApprovedEmail = async (email, name) => {
               <!-- CTA -->
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
-                  <a href="${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/dashboard" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Go to Seller Dashboard</a>
+                  <a href="${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/seller/dashboard" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Go to Seller Dashboard</a>
                 </td>
               </tr>
               <!-- Footer -->
@@ -2028,7 +2028,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Stock Alert</h1>
-                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action Required �for one of your products</p>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action Required ?for one of your products</p>
                 </td>
               </tr>
               <!-- Alert banner -->
@@ -2096,13 +2096,13 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
               <!-- CTA -->
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
-                  <a href="${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/products" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Update Stock Now</a>
+                  <a href="${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/seller/products" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Update Stock Now</a>
                 </td>
               </tr>
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land � Supporting Aboriginal Artists   </p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -2135,7 +2135,7 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
     return { success: true };
   }
 
-  const dashboardUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/admindashboard/products/${productId || ''}`;
+  const dashboardUrl = `${process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au'}/admindashboard/products/${productId || ''}`;
 
   const msg = {
     to: adminEmail,
@@ -2204,7 +2204,7 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land � Supporting Aboriginal Artists   </p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -2237,7 +2237,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
     return { success: true };
   }
 
-  const productUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/sellerdashboard/products`;
+  const productUrl = `${process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au'}/sellerdashboard/products`;
 
   const msg = {
     to: sellerEmail,
@@ -2316,7 +2316,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land � Supporting Aboriginal Artists   </p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -2350,7 +2350,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
     return { success: true };
   }
 
-  const dashboardUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/products`;
+  const dashboardUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/seller/products`;
 
   const msg = {
     to: sellerEmail,
@@ -2436,7 +2436,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land � Supporting Aboriginal Artists   </p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -2469,7 +2469,7 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
     return { success: true };
   }
 
-  const dashboardUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/sellerdashboard/products`;
+  const dashboardUrl = `${process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au'}/sellerdashboard/products`;
 
   const msg = {
     to: sellerEmail,
@@ -2522,13 +2522,13 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
                     <a href="${dashboardUrl}" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;box-shadow:0 4px 15px rgba(90,30,18,0.3);">Go to Dashboard</a>
                   </p>
 
-                  <p style="color:#777;font-size:13px;line-height:1.6;margin:28px 0 0;text-align:center;">� Thank you for being part of the Made in Arnhem Land community! �</p>
+                  <p style="color:#777;font-size:13px;line-height:1.6;margin:28px 0 0;text-align:center;">? Thank you for being part of the Made in Arnhem Land community! ?</p>
                 </td>
               </tr>
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land � Supporting Aboriginal Artists</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Supporting Aboriginal Artists</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -2561,7 +2561,7 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
     return { success: true };
   }
 
-  const dashboardUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/sellerdashboard`;
+  const dashboardUrl = `${process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au'}/sellerdashboard`;
 
   const msg = {
     to: sellerEmail,
@@ -2619,7 +2619,7 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land � Supporting Aboriginal Artists</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Supporting Aboriginal Artists</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -2652,7 +2652,7 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
     return { success: true };
   }
 
-  const adminDashboardUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/admindashboard/categories`;
+  const adminDashboardUrl = `${process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au'}/admindashboard/categories`;
 
   const msg = {
     to: adminEmail,
@@ -2706,7 +2706,7 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel � Administrative Notifications</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel ? Administrative Notifications</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -2740,7 +2740,7 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
     return { success: true };
   }
 
-  const adminDashboardUrl = `${process.env.ADMIN_DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/admindashboard/sellers`;
+  const adminDashboardUrl = `${process.env.ADMIN_DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au'}/admindashboard/sellers`;
 
   const msg = {
     to: adminEmail,
@@ -2795,7 +2795,7 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel � Administrative Notifications</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel ? Administrative Notifications</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -2948,10 +2948,10 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
                 <td style="padding:0 40px 36px;text-align:center;">
                   <table width="100%" cellpadding="0" cellspacing="0"><tr>
                     <td style="padding-right:8px;text-align:right;">
-                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;"> View in Admin Panel</a>
+                      <a href="${process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;"> View in Admin Panel</a>
                     </td>
                     <td style="padding-left:8px;text-align:left;">
-                      <a href="${process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Download Invoice</a>
+                      <a href="${process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Download Invoice</a>
                     </td>
                   </tr></table>
                 </td>
@@ -2959,7 +2959,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land � Admin Notification</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Admin Notification</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -3005,12 +3005,12 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
   const st = (orderDetails.status || '').toLowerCase();
   const statusColor = statusColors[st] || '#C4603A';
   const statusLabel = statusLabels[st] || (orderDetails.status || '').toUpperCase();
-  const baseUrl = process.env.FRONTEND_URL || 'https://apla-fe.vercel.app';
+  const baseUrl = process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au';
 
   const msg = {
     to: email,
     from: { name: senderName, email: senderEmail },
-    subject: `Order Status Updated: #${orderDetails.displayId || ''} � Made in Arnhem Land`,
+    subject: `Order Status Updated: #${orderDetails.displayId || ''} ? Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -3093,12 +3093,12 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
   const st = (orderDetails.status || '').toLowerCase();
   const statusColor = statusColors[st] || '#C4603A';
   const updatedBy = orderDetails.updatedBy || 'Seller';
-  const baseUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
+  const baseUrl = process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au';
 
   const msg = {
     to: adminEmail,
     from: { name: senderName, email: senderEmail },
-    subject: `Order Status Updated by ${updatedBy}: #${orderDetails.displayId || ''} � Made in Arnhem Land`,
+    subject: `Order Status Updated by ${updatedBy}: #${orderDetails.displayId || ''} ? Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -3175,7 +3175,7 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
     return { success: true };
   }
 
-  const productUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/sellerdashboard/products`;
+  const productUrl = `${process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au'}/sellerdashboard/products`;
 
   const msg = {
     to: sellerEmail,
@@ -3228,7 +3228,7 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land � Supporting Aboriginal Artists   </p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -3263,7 +3263,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
     return { success: true };
   }
 
-  const productUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/sellerdashboard/products`;
+  const productUrl = `${process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au'}/sellerdashboard/products`;
 
   const msg = {
     to: sellerEmail,
@@ -3288,7 +3288,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
               <!-- Deactivated banner -->
               <tr>
                 <td style="background-color:#B71C1C;padding:14px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">� Product Deactivated � No Longer Visible to Buyers</p>
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">? Product Deactivated ? No Longer Visible to Buyers</p>
                 </td>
               </tr>
               <!-- Body -->
@@ -3323,7 +3323,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land � Supporting Aboriginal Artists   </p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -3358,7 +3358,7 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
     return { success: true };
   }
 
-  const productUrl = `${process.env.ADMIN_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/admin/products/${productId}`;
+  const productUrl = `${process.env.ADMIN_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/admin/products/${productId}`;
 
   const msg = {
     to: adminEmail,
@@ -3428,7 +3428,7 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land � Admin Notifications   </p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Admin Notifications   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -3463,7 +3463,7 @@ const sendAdminProductSellerDeactivatedEmail = async (adminEmail, adminName, { p
     return { success: true };
   }
 
-  const adminDashboardUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/admindashboard/products`;
+  const adminDashboardUrl = `${process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au'}/admindashboard/products`;
 
   const msg = {
     to: adminEmail,
@@ -3550,7 +3550,7 @@ const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { produc
     return { success: true };
   }
 
-  const adminDashboardUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/admindashboard/products`;
+  const adminDashboardUrl = `${process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au'}/admindashboard/products`;
 
   const msg = {
     to: adminEmail,
@@ -3637,7 +3637,7 @@ const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { 
     return { success: true };
   }
 
-  const dashboardUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/sellerdashboard/products`;
+  const dashboardUrl = `${process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au'}/sellerdashboard/products`;
 
   const msg = {
     to: sellerEmail,
@@ -3719,7 +3719,7 @@ const sendSellerProductSubmitReviewConfirmEmail = async (sellerEmail, sellerName
     return { success: true };
   }
 
-  const dashboardUrl = `${process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/sellerdashboard/products`;
+  const dashboardUrl = `${process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au'}/sellerdashboard/products`;
   
   const msg = {
     to: sellerEmail,
@@ -3820,7 +3820,7 @@ const sendSuperAdminBankChangeRequestEmail = async (adminEmail, adminName, detai
     return { success: true };
   }
 
-  const adminDashboardUrl = `${process.env.ADMIN_DASHBOARD_URL || 'https://alpa-dashboard.vercel.app'}/admindashboard/bank-change-requests`;
+  const adminDashboardUrl = `${process.env.ADMIN_DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au'}/admindashboard/bank-change-requests`;
 
   const msg = {
     to: adminEmail,
@@ -3871,7 +3871,7 @@ const sendSuperAdminBankChangeRequestEmail = async (adminEmail, adminName, detai
               </tr>
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel � Administrative Notifications</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel ? Administrative Notifications</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -3907,7 +3907,7 @@ const sendSellerBankChangeApprovedEmail = async (sellerEmail, sellerName, detail
     return { success: true };
   }
 
-  const dashboardUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/settings/bank-details`;
+  const dashboardUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/seller/settings/bank-details`;
 
   const msg = {
     to: sellerEmail,
@@ -3955,7 +3955,7 @@ const sendSellerBankChangeApprovedEmail = async (sellerEmail, sellerName, detail
               </tr>
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land � Seller Notifications</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Seller Notifications</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -3992,7 +3992,7 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
     return { success: true };
   }
 
-  const dashboardUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://apla-fe.vercel.app'}/seller/settings/bank-details`;
+  const dashboardUrl = `${process.env.SELLER_DASHBOARD_URL || process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/seller/settings/bank-details`;
 
   const msg = {
     to: sellerEmail,
@@ -4015,7 +4015,7 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
               </tr>
               <tr>
                 <td style="background-color:#D32F2F;padding:14px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Change Request Rejected � Existing Details Unchanged</p>
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Change Request Rejected ? Existing Details Unchanged</p>
                 </td>
               </tr>
               <tr>
@@ -4038,7 +4038,7 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
               </tr>
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land � Seller Notifications</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Seller Notifications</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
@@ -4076,8 +4076,8 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
   const isFullRefund = refundDetails.requestType === 'REFUND';
   const requestLabel = isFullRefund ? 'Full Refund' : 'Partial Refund';
   const accentColor  = isFullRefund ? '#6B4C9A' : '#C4603A';
-  const baseUrl      = process.env.FRONTEND_URL || 'https://apla-fe.vercel.app';
-  const dashboardUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
+  const baseUrl      = process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au';
+  const dashboardUrl = process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au';
 
   const trackUrl = refundDetails.isGuest
     ? `${baseUrl}/guest/track-order?orderId=${refundDetails.displayId}&email=${encodeURIComponent(email)}`
@@ -4097,7 +4097,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
   const msg = {
     to: email,
     from: { name: senderName, email: senderEmail },
-    subject: `${requestLabel} Request Received � Order #${refundDetails.displayId} | Made in Arnhem Land`,
+    subject: `${requestLabel} Request Received ? Order #${refundDetails.displayId} | Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -4152,7 +4152,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
                       <table width="100%" cellpadding="0" cellspacing="0">
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Request ID</strong></td>
-                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${refundDetails.ticketId || '�'}</td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${refundDetails.ticketId || '?'}</td>
                         </tr>
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
@@ -4220,7 +4220,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
                     <table cellpadding="0" cellspacing="0" width="100%">
                       <tr>
                         <td style="padding:5px 0;color:#555;font-size:14px;line-height:1.6;">
-                          <span style="color:${accentColor};font-weight:700;">1.</span>&nbsp; Our team will review your request within <strong>1�3 business days</strong>.
+                          <span style="color:${accentColor};font-weight:700;">1.</span>&nbsp; Our team will review your request within <strong>1?3 business days</strong>.
                         </td>
                       </tr>
                       <tr>
@@ -4230,7 +4230,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
                       </tr>
                       <tr>
                         <td style="padding:5px 0;color:#555;font-size:14px;line-height:1.6;">
-                          <span style="color:${accentColor};font-weight:700;">3.</span>&nbsp; If approved, refunds are typically processed within <strong>3�5 business days</strong> to your original payment method.
+                          <span style="color:${accentColor};font-weight:700;">3.</span>&nbsp; If approved, refunds are typically processed within <strong>3?5 business days</strong> to your original payment method.
                         </td>
                       </tr>
                     </table>
@@ -4290,8 +4290,8 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails) =
   }
 
   const st = (refundDetails.status || '').toUpperCase();
-  const dashboardUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
-  const baseUrl      = process.env.FRONTEND_URL  || 'https://apla-fe.vercel.app';
+  const dashboardUrl = process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au';
+  const baseUrl      = process.env.FRONTEND_URL  || 'https://madeinarnhemland.com.au';
   const trackUrl     = refundDetails.isGuest
     ? `${baseUrl}/guest/track-order?orderId=${refundDetails.displayId}&email=${encodeURIComponent(email)}`
     : `${dashboardUrl}/customerdashboard/orders`;
@@ -4300,9 +4300,9 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails) =
     APPROVED: {
       icon: '?', color: '#2E7D32', label: 'Approved',
       headline: 'Your Refund Has Been Approved',
-      banner: 'Great news � your refund request has been reviewed and approved.',
+      banner: 'Great news ? your refund request has been reviewed and approved.',
       body: `We are pleased to let you know that your refund request for order <strong>#${refundDetails.displayId}</strong> has been <strong>approved</strong> by our team.<br><br>
-             Please allow <strong>5�6 business days</strong> for the refunded amount to reflect in your original payment method. Processing times may vary depending on your bank or payment provider.`,
+             Please allow <strong>5?6 business days</strong> for the refunded amount to reflect in your original payment method. Processing times may vary depending on your bank or payment provider.`,
       note: null
     },
     REJECTED: {
@@ -4318,7 +4318,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails) =
       headline: 'Refund Payment Completed',
       banner: 'Your refund has been processed and payment issued.',
       body: `Your refund for order <strong>#${refundDetails.displayId}</strong> has been <strong>fully processed</strong> and the payment has been issued.<br><br>
-             The refunded amount should appear in your account within <strong>1�3 business days</strong> depending on your bank. If you have not received it after 5 business days, please contact your bank or reach out to us.`,
+             The refunded amount should appear in your account within <strong>1?3 business days</strong> depending on your bank. If you have not received it after 5 business days, please contact your bank or reach out to us.`,
       note: null
     }
   }[st] || {
@@ -4344,7 +4344,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails) =
   const msg = {
     to: email,
     from: { name: senderName, email: senderEmail },
-    subject: `${config.icon} Refund ${config.label} � Order #${refundDetails.displayId} | Made in Arnhem Land`,
+    subject: `${config.icon} Refund ${config.label} ? Order #${refundDetails.displayId} | Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -4461,7 +4461,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails) =
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for shopping with Made in Arnhem Land.</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email � please do not reply. � 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email ? please do not reply. ? 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
 
@@ -4495,7 +4495,7 @@ const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => 
   }
 
   const st           = (refundDetails.status || '').toUpperCase();
-  const dashboardUrl = process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app';
+  const dashboardUrl = process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au';
 
   const config = {
     APPROVED: {
@@ -4541,7 +4541,7 @@ const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => 
   const msg = {
     to: email,
     from: { name: senderName, email: senderEmail },
-    subject: `${config.icon} Refund ${config.label} � Order #${refundDetails.displayId}${subjectItems} | Made in Arnhem Land`,
+    subject: `${config.icon} Refund ${config.label} ? Order #${refundDetails.displayId}${subjectItems} | Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -4646,7 +4646,7 @@ const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => 
 
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email � please do not reply. � 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email ? please do not reply. ? 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
 
@@ -4827,10 +4827,10 @@ const sendNewsletterCampaignEmail = async ({ toEmail, subject, content, bannerIm
         subject,
         html
       });
-      console.log(`✅ [SendGrid] Newsletter Campaign Email sent to: ${toEmail}`);
+      console.log(`? [SendGrid] Newsletter Campaign Email sent to: ${toEmail}`);
       return { success: true };
     } catch (error) {
-      console.error(`❌ [SendGrid] Newsletter Campaign Email failed for ${toEmail}:`, error.response?.body || error.message);
+      console.error(`? [SendGrid] Newsletter Campaign Email failed for ${toEmail}:`, error.response?.body || error.message);
       return { success: false, error: error.response?.body?.errors?.[0]?.message || error.message };
     }
   }
@@ -4844,10 +4844,10 @@ const sendNewsletterCampaignEmail = async ({ toEmail, subject, content, bannerIm
         subject,
         html
       });
-      console.log(`✅ [Duo Circle] Newsletter Campaign Email sent to: ${toEmail}`);
+      console.log(`? [Duo Circle] Newsletter Campaign Email sent to: ${toEmail}`);
       return { success: true };
     } catch (error) {
-      console.error(`❌ [Duo Circle] Newsletter Campaign Email failed for ${toEmail}:`, error.message);
+      console.error(`? [Duo Circle] Newsletter Campaign Email failed for ${toEmail}:`, error.message);
       return { success: false, error: error.message };
     }
   }

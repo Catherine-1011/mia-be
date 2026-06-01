@@ -19,7 +19,7 @@ const duoCircleTransporter = nodemailer.createTransport({
   host: process.env.DUO_CIRCLE_HOST || 'outbound.mailhop.org',
   port: parseInt(process.env.DUO_CIRCLE_PORT) === 587 ? 2525 : (process.env.DUO_CIRCLE_PORT || 2525), // Forcibly circumvent port 587 blocks to prevent hanging
   secure: false, // true for 465, false for other ports
-  connectionTimeout: 20000, // 20-second timeout — Render.com SMTP connections can be slow
+  connectionTimeout: 20000, // 20-second timeout ï¿½ Render.com SMTP connections can be slow
   greetingTimeout: 20000,
   socketTimeout: 20000,
   auth: {
@@ -31,7 +31,7 @@ const duoCircleTransporter = nodemailer.createTransport({
   maxMessages: 100,
 });
 
-// Separate transporter for bulk/campaign sends — longer timeouts so a slow
+// Separate transporter for bulk/campaign sends ï¿½ longer timeouts so a slow
 // SMTP handshake doesn't kill individual newsletter emails.
 const duoCircleCampaignTransporter = nodemailer.createTransport({
   host: process.env.DUO_CIRCLE_HOST || 'outbound.mailhop.org',
@@ -45,7 +45,7 @@ const duoCircleCampaignTransporter = nodemailer.createTransport({
     pass: process.env.DUO_CIRCLE_PASS,
   },
   pool: true,
-  maxConnections: 2,  // conservative — 1 connection at a time for bulk
+  maxConnections: 2,  // conservative ï¿½ 1 connection at a time for bulk
   maxMessages: 500,
 });
 
@@ -399,7 +399,7 @@ const buildMsg = (msg) => {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&nbsp;/g, ' ')
-    .replace(/?/g, '\u2014')
+    .replace(/&mdash;/g, '\u2014')
     .replace(/&#\d+;/g, '')
     .replace(/&[a-z]+;/gi, '')
     .replace(/[ \t]{2,}/g, ' ')

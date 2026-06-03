@@ -478,7 +478,6 @@ exports.stripeWebhook = async (request, reply) => {
       default:
         console.log(`Unhandled Stripe event: ${event.type}`);
     }
-    }
 
     return reply.status(200).send({ received: true });
   } catch (error) {

@@ -4892,6 +4892,38 @@ const sendNewsletterSubscriptionAlertEmail = async ({ subscribedEmail, subscribe
   return sendWithFallback(msg, 'Newsletter Admin Alert');
 };
 
+const sendDisputeAlertEmail = async ({ adminEmail, adminName, disputeId, amount, currency, reason, orderId, orderDisplayId, chargeId, customerEmail }) => {
+  console.log(`[sendDisputeAlertEmail] Dispute ${disputeId} — Order #${orderDisplayId || orderId}`);
+
+  const amountFormatted = amount ? `${currency?.toUpperCase() || 'AUD'} ${(amount / 100).toFixed(2)}` : 'Unknown';
+  const orderLink = orderDisplayId ? `#${orderDisplayId}` : (orderId || 'N/A');
+
+  const msg = {
+    to: adminEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `⚠️ Stripe Dispute Opened — Order ${orderLink}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #c0392b;">Stripe Dispute Opened</h2>
+        <p>Hi ${adminName || 'Admin'},</p>
+        <p>A Stripe chargeback/dispute has been opened that requires your attention.</p>
+        <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; width: 40%;">Order</td><td style="padding: 8px; border: 1px solid #ddd;">${orderLink}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Dispute ID</td><td style="padding: 8px; border: 1px solid #ddd;">${disputeId}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Charge ID</td><td style="padding: 8px; border: 1px solid #ddd;">${chargeId || 'N/A'}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Amount</td><td style="padding: 8px; border: 1px solid #ddd;">${amountFormatted}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Reason</td><td style="padding: 8px; border: 1px solid #ddd;">${reason || 'Not specified'}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Customer Email</td><td style="padding: 8px; border: 1px solid #ddd;">${customerEmail || 'N/A'}</td></tr>
+        </table>
+        <p>Please log in to the <a href="https://dashboard.stripe.com/disputes/${disputeId}">Stripe Dashboard</a> to respond to this dispute. You typically have 7 days to submit evidence.</p>
+        <p style="color: #888; font-size: 12px;">Made in Arnhem Land — Automated Dispute Alert</p>
+      </div>
+    `
+  };
+
+  return sendWithFallback(msg, 'Dispute Alert Email');
+};
+
 module.exports = { 
   generateOTP,
   sendOTPEmail, 
@@ -4931,7 +4963,8 @@ module.exports = {
   sendMonthlyGstReportEmail,
   sendFinanceOrderInvoiceEmail,
   sendNewsletterSubscriptionAlertEmail,
-  sendNewsletterCampaignEmail
+  sendNewsletterCampaignEmail,
+  sendDisputeAlertEmail
 };
 
 

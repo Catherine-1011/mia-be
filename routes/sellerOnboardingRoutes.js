@@ -77,6 +77,9 @@ async function sellerOnboardingRoutes(fastify, options) {
   // Check current Stripe Connect status (live-synced with Stripe)
   fastify.get("/stripe/status", { preHandler: authenticateSeller }, stripeConnectController.getConnectStatus);
 
+  // Get a one-time Stripe Express dashboard login link
+  fastify.get("/stripe/login-link", { preHandler: authenticateSeller }, stripeConnectController.getSellerLoginLink);
+
   // Submit Application for Review
   fastify.post("/submit-for-review", { preHandler: authenticateSeller }, sellerController.submitForReview);
 

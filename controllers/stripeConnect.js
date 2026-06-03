@@ -364,3 +364,52 @@ exports.createSellerTransfer = async (sellerUserId, amountAUD, description = "Se
 
   return transfer;
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /seller-onboarding/stripe/login-link
+// Returns a one-time Stripe Express dashboard login URL for the authenticated seller
+// ─────────────────────────────────────────────────────────────────────────────
+exports.getSellerLoginLink = async (request, reply) => {
+  try {
+    const userId = request.user?.userId || request.user?.id;
+    if (!userId) {
+      return reply.status(401).send({ success: false, message: 'Unauthorised' });
+    }
+
+    const seller = await prisma.seller.findUnique({
+      where: { userId },
+      select: { stripeAccountId: true, stripeOnboardingCompleted: true }
+    });
+
+    if (!seller?.stripeAccountId) {
+      return reply.status(400).send({
+        success: false,
+        message: 'No Stripe account linked. Please complete Stripe Connect onboarding first.'
+      });
+    }
+
+    if (!seller.stripeOnboardingCompleted) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Stripe onboarding is not yet complete. Please finish the onboarding process.'
+      });
+    }
+
+    const loginLink = await stripe.accounts.createLoginLink(seller.stripeAccountId);
+
+    return reply.send({
+      success: true,
+      url: loginLink.url,
+      message: 'Stripe dashboard login link generated. This link is valid for a few minutes.'
+    });
+  } catch (err) {
+    console.error('❌ getSellerLoginLink error:', err);
+
+    // Stripe returns an error if the account cannot log in (e.g. not an Express account)
+    if (err.type === 'StripeInvalidRequestError') {
+      return reply.status(400).send({ success: false, message: err.message });
+    }
+
+    return reply.status(500).send({ success: false, message: 'Failed to generate Stripe login link.' });
+  }
+};

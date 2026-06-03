@@ -21,6 +21,7 @@ async function generateDisplayId() {
 const {
   sendOrderConfirmationEmail,
   sendFinanceOrderInvoiceEmail,
+  sendDisputeAlertEmail,
 } = require("../utils/emailService");
 const {
   notifyAdminNewOrder,
@@ -369,11 +370,37 @@ exports.stripeWebhook = async (request, reply) => {
       }
       case "payment_intent.payment_failed": {
         const pi = event.data.object;
-        await prisma.order.updateMany({
+        const failReason = pi.last_payment_error?.message || 'Card declined';
+
+        // Find the order
+        const failedOrder = await prisma.order.findFirst({
           where: { stripePaymentIntentId: pi.id },
-          data: { paymentStatus: "FAILED" },
+          include: { items: true }
         });
-        console.log(`⚠️ Payment failed for PaymentIntent: ${pi.id}`);
+
+        if (failedOrder && failedOrder.status === 'PENDING') {
+          // Mark order as FAILED and payment as FAILED
+          await prisma.order.update({
+            where: { id: failedOrder.id },
+            data: { status: 'CANCELLED', paymentStatus: 'FAILED' }
+          });
+
+          // Restore stock for each item
+          for (const item of failedOrder.items) {
+            await prisma.product.update({
+              where: { id: item.productId },
+              data: { stock: { increment: item.quantity } }
+            });
+          }
+
+          console.log(`❌ Payment failed — Order #${failedOrder.displayId} cancelled, stock restored. Reason: ${failReason}`);
+        } else {
+          await prisma.order.updateMany({
+            where: { stripePaymentIntentId: pi.id },
+            data: { paymentStatus: 'FAILED' },
+          });
+          console.log(`⚠️ Payment failed for PaymentIntent: ${pi.id}. Reason: ${failReason}`);
+        }
         break;
       }
       case "charge.refunded": {
@@ -416,8 +443,41 @@ exports.stripeWebhook = async (request, reply) => {
         }
         break;
       }
+      case "charge.dispute.created": {
+        const dispute = event.data.object;
+        const chargeId = dispute.charge;
+        const disputedCharge = chargeId ? await stripe.charges.retrieve(chargeId) : null;
+        const piId = disputedCharge?.payment_intent || null;
+
+        // Look up the order
+        let disputedOrder = null;
+        if (piId) {
+          disputedOrder = await prisma.order.findFirst({
+            where: { stripePaymentIntentId: piId },
+            include: { user: { select: { email: true } } }
+          });
+        }
+
+        const adminEmail = process.env.FINANCE_EMAIL_RECEIVER || 'ritikkashyap013@gmail.com';
+        await sendDisputeAlertEmail({
+          adminEmail,
+          adminName: 'Admin',
+          disputeId: dispute.id,
+          amount: dispute.amount,
+          currency: dispute.currency,
+          reason: dispute.reason,
+          orderId: disputedOrder?.id || null,
+          orderDisplayId: disputedOrder?.displayId || null,
+          chargeId,
+          customerEmail: disputedCharge?.billing_details?.email || disputedOrder?.user?.email || null,
+        });
+
+        console.log(`🚨 Dispute created — ID: ${dispute.id}, Amount: ${dispute.amount}, Reason: ${dispute.reason}, Order: ${disputedOrder?.displayId || 'unknown'}`);
+        break;
+      }
       default:
         console.log(`Unhandled Stripe event: ${event.type}`);
+    }
     }
 
     return reply.status(200).send({ received: true });

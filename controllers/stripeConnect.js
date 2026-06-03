@@ -371,31 +371,34 @@ exports.createSellerTransfer = async (sellerUserId, amountAUD, description = "Se
 // ─────────────────────────────────────────────────────────────────────────────
 exports.getSellerLoginLink = async (request, reply) => {
   try {
-    const userId = request.user?.userId || request.user?.id;
-    if (!userId) {
-      return reply.status(401).send({ success: false, message: 'Unauthorised' });
-    }
+    const userId = request.user.userId;
 
-    const seller = await prisma.seller.findUnique({
-      where: { userId },
-      select: { stripeAccountId: true, stripeOnboardingCompleted: true }
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { sellerProfile: true },
     });
 
-    if (!seller?.stripeAccountId) {
+    if (!user || !user.sellerProfile) {
+      return reply.status(404).send({ success: false, message: 'Seller profile not found.' });
+    }
+
+    const profile = user.sellerProfile;
+
+    if (!profile.stripeAccountId) {
       return reply.status(400).send({
         success: false,
         message: 'No Stripe account linked. Please complete Stripe Connect onboarding first.'
       });
     }
 
-    if (!seller.stripeOnboardingCompleted) {
+    if (!profile.stripeOnboardingComplete) {
       return reply.status(400).send({
         success: false,
         message: 'Stripe onboarding is not yet complete. Please finish the onboarding process.'
       });
     }
 
-    const loginLink = await stripe.accounts.createLoginLink(seller.stripeAccountId);
+    const loginLink = await stripe.accounts.createLoginLink(profile.stripeAccountId);
 
     return reply.send({
       success: true,
@@ -405,7 +408,6 @@ exports.getSellerLoginLink = async (request, reply) => {
   } catch (err) {
     console.error('❌ getSellerLoginLink error:', err);
 
-    // Stripe returns an error if the account cannot log in (e.g. not an Express account)
     if (err.type === 'StripeInvalidRequestError') {
       return reply.status(400).send({ success: false, message: err.message });
     }

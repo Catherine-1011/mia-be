@@ -963,3 +963,11 @@ model NewsletterCampaign {
   updatedAt       DateTime       @updatedAt
   sentAt          DateTime?
 }
+
+model SiteSettings {
+  id                           String   @id @default("global")
+  internationalShippingEnabled Boolean  @default(true)
+  updatedAt                    DateTime @updatedAt
+
+  @@map("site_settings")
+}

@@ -5771,6 +5771,48 @@ exports.updateRefundRequestStatus = async (request, reply) => {
   }
 };
 
+// ── SITE SETTINGS ────────────────────────────────────────────────────────────
+
+// ADMIN - GET site settings
+exports.getSiteSettings = async (request, reply) => {
+  try {
+    let settings = await prisma.siteSettings.findUnique({ where: { id: 'global' } });
+    if (!settings) {
+      settings = await prisma.siteSettings.create({
+        data: { id: 'global', internationalShippingEnabled: true }
+      });
+    }
+    return reply.status(200).send({ success: true, data: settings });
+  } catch (error) {
+    console.error('getSiteSettings error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// ADMIN - Toggle international shipping on/off
+// PUT /api/admin/settings/international-shipping  body: { enabled: true|false }
+exports.toggleInternationalShipping = async (request, reply) => {
+  try {
+    const { enabled } = request.body || {};
+    if (typeof enabled !== 'boolean') {
+      return reply.status(400).send({ success: false, message: '`enabled` (boolean) is required' });
+    }
+    const settings = await prisma.siteSettings.upsert({
+      where: { id: 'global' },
+      update: { internationalShippingEnabled: enabled },
+      create: { id: 'global', internationalShippingEnabled: enabled }
+    });
+    return reply.status(200).send({
+      success: true,
+      message: `International shipping ${enabled ? 'enabled' : 'disabled'} successfully`,
+      data: settings
+    });
+  } catch (error) {
+    console.error('toggleInternationalShipping error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
 
 
 

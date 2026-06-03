@@ -349,6 +349,25 @@ const toggleShippingMethodStatus = async (request, reply) => {
   }
 };
 
+/**
+ * PUBLIC - Get global shipping settings (e.g. is international shipping enabled?)
+ * GET /api/shipping/settings
+ */
+const getShippingSettings = async (request, reply) => {
+  try {
+    const settings = await prisma.siteSettings.findUnique({ where: { id: 'global' } });
+    return reply.status(200).send({
+      success: true,
+      data: {
+        internationalShippingEnabled: settings?.internationalShippingEnabled ?? true
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching shipping settings:', error);
+    return reply.status(500).send({ success: false, message: 'Failed to fetch shipping settings' });
+  }
+};
+
 module.exports = {
   createShippingMethod,
   getActiveShippingMethods,
@@ -358,5 +377,6 @@ module.exports = {
   deleteShippingMethod,
   toggleShippingMethodStatus,
   getInternationalZones,
-  getInternationalRate
+  getInternationalRate,
+  getShippingSettings
 };

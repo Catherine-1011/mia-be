@@ -7,7 +7,8 @@ const {
   deleteShippingMethod,
   toggleShippingMethodStatus,
   getInternationalZones,
-  getInternationalRate
+  getInternationalRate,
+  getShippingSettings
 } = require('../controllers/shipping');
 const { isAdmin } = require('../middlewares/authMiddleware');
 
@@ -17,6 +18,9 @@ async function shippingRoutes(fastify, options) {
    */
   // GET /api/shipping/active - Get all active shipping methods (Australia: standard + express)
   fastify.get('/active', getActiveShippingMethods);
+
+  // GET /api/shipping/settings - Get global shipping settings (e.g. internationalShippingEnabled)
+  fastify.get('/settings', getShippingSettings);
 
   // GET /api/shipping/international/zones - Get all international zones + country lists
   fastify.get('/international/zones', getInternationalZones);

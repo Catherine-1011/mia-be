@@ -198,6 +198,12 @@ async function adminRoutes(fastify, options) {
   // GET /api/admin/seller-coupons — all seller coupons grouped by seller
   // Query: sellerId, isActive, couponType, recycleBin, search, page, limit
   fastify.get("/seller-coupons", { preHandler: adminAuth }, couponController.adminGetSellerCouponsBySeller);
+
+  // ---------------- SITE SETTINGS ----------------
+  // GET /api/admin/settings — get all site settings
+  fastify.get("/settings", { preHandler: adminAuth }, adminController.getSiteSettings);
+  // PUT /api/admin/settings/international-shipping — enable or disable international shipping
+  fastify.put("/settings/international-shipping", { preHandler: adminAuth }, adminController.toggleInternationalShipping);
 } 
 
 module.exports = adminRoutes;

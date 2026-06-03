@@ -386,6 +386,14 @@ exports.getMyCart = async (request, reply) => {
     let internationalShipping = null;
 
     if (internationalCountry && internationalCountry.trim().toLowerCase() !== 'australia') {
+      // Check if international shipping is enabled by admin
+      const siteSettings = await prisma.siteSettings.findUnique({ where: { id: 'global' } });
+      if (siteSettings && !siteSettings.internationalShippingEnabled) {
+        return reply.status(400).send({
+          success: false,
+          message: 'International shipping is currently unavailable. Only Australia shipping is available.'
+        });
+      }
       const intlZoneEntry = lookupZone(internationalCountry.trim());
       const intlCalc = await calculateCartTotals(cleanedCart, null, gstId, intlZoneEntry.cost);
       // Override shippingCost → totalShippingCost so the frontend's shipping display line
@@ -707,6 +715,14 @@ exports.calculateGuestCart = async (request, reply) => {
     let internationalShipping = null;
 
     if (internationalCountry && internationalCountry.trim().toLowerCase() !== 'australia') {
+      // Check if international shipping is enabled by admin
+      const siteSettings = await prisma.siteSettings.findUnique({ where: { id: 'global' } });
+      if (siteSettings && !siteSettings.internationalShippingEnabled) {
+        return reply.status(400).send({
+          success: false,
+          message: 'International shipping is currently unavailable. Only Australia shipping is available.'
+        });
+      }
       const intlZoneEntry = lookupZone(internationalCountry.trim());
       const intlCalc = await calculateCartTotals(cartItems, null, gstId, intlZoneEntry.cost);
       // Override shippingCost → totalShippingCost so the frontend's shipping display line

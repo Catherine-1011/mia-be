@@ -1707,6 +1707,9 @@ exports.getAllSellers = async (request, reply) => {
                sp."minimumProductsUploaded", sp."onboardingStep",
                sp."bankDetails", sp."kycSubmitted",
                sp."createdAt", sp."updatedAt",
+               sp."stripeAccountId", sp."stripeOnboardingComplete",
+               sp."stripeChargesEnabled", sp."stripePayoutsEnabled",
+               sp."stripeKycStatus", sp."stripeAbnProvided", sp."stripeBankConnected",
                u.email, u.name AS "contactPerson", u.phone,
                c.id AS "commission_id", c.title AS "commission_title",
                c.type::text AS "commission_type", c.value AS "commission_value",
@@ -1727,6 +1730,9 @@ exports.getAllSellers = async (request, reply) => {
                sp."minimumProductsUploaded", sp."onboardingStep",
                sp."bankDetails", sp."kycSubmitted",
                sp."createdAt", sp."updatedAt",
+               sp."stripeAccountId", sp."stripeOnboardingComplete",
+               sp."stripeChargesEnabled", sp."stripePayoutsEnabled",
+               sp."stripeKycStatus", sp."stripeAbnProvided", sp."stripeBankConnected",
                u.email, u.name AS "contactPerson", u.phone,
                c.id AS "commission_id", c.title AS "commission_title",
                c.type::text AS "commission_type", c.value AS "commission_value",
@@ -1759,6 +1765,15 @@ exports.getAllSellers = async (request, reply) => {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       bankDetails: row.bankDetails,
+      stripeConnect: row.stripeAccountId ? {
+        accountId: row.stripeAccountId,
+        onboardingComplete: row.stripeOnboardingComplete,
+        chargesEnabled: row.stripeChargesEnabled,
+        payoutsEnabled: row.stripePayoutsEnabled,
+        kycStatus: row.stripeKycStatus || (row.stripeChargesEnabled ? "verified" : row.stripeOnboardingComplete ? "pending" : "unverified"),
+        abnProvided: row.stripeAbnProvided,
+        bankConnected: row.stripeBankConnected,
+      } : null,
       commission: row.commission_id ? {
         id: row.commission_id,
         title: row.commission_title,
@@ -2677,6 +2692,90 @@ exports.retrySellerTransfers = async (request, reply) => {
   } catch (error) {
     console.error("retrySellerTransfers error:", error);
     return reply.status(500).send({ success: false, message: "Server error", detail: error.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BULK SYNC ALL SELLERS' STRIPE STATUS
+// POST /api/admin/sellers/stripe-sync-all
+// Iterates every seller that has a stripeAccountId and pulls the latest status
+// from Stripe. Returns a summary of how many were updated.
+// ─────────────────────────────────────────────────────────────────────────────
+exports.bulkSyncSellerStripeStatus = async (request, reply) => {
+  try {
+    const sellers = await prisma.sellerProfile.findMany({
+      where: { stripeAccountId: { not: null } },
+      select: {
+        userId: true,
+        stripeAccountId: true,
+        stripeChargesEnabled: true,
+        user: { select: { email: true, name: true } },
+      },
+    });
+
+    if (sellers.length === 0) {
+      return reply.status(200).send({ success: true, message: "No sellers with Stripe accounts found", synced: 0 });
+    }
+
+    const results = [];
+
+    for (const seller of sellers) {
+      try {
+        const account = await stripe.accounts.retrieve(seller.stripeAccountId);
+
+        let stripeKycStatus;
+        if (account.charges_enabled) {
+          stripeKycStatus = "verified";
+        } else if (account.details_submitted) {
+          stripeKycStatus = "pending";
+        } else {
+          stripeKycStatus = "unverified";
+        }
+
+        await prisma.sellerProfile.update({
+          where: { userId: seller.userId },
+          data: {
+            stripeOnboardingComplete: account.details_submitted,
+            stripeChargesEnabled: account.charges_enabled,
+            stripePayoutsEnabled: account.payouts_enabled,
+            stripeKycStatus,
+            stripeAbnProvided: account.company?.tax_id_provided || false,
+            stripeBankConnected: (account.external_accounts?.total_count || 0) > 0,
+          },
+        });
+
+        // Send approved email if charges_enabled just flipped for the first time
+        if (account.charges_enabled && !seller.stripeChargesEnabled) {
+          const email = seller.user?.email;
+          const name  = seller.user?.name || "Seller";
+          if (email) {
+            const { sendSellerStripeApprovedEmail } = require("../utils/emailService");
+            sendSellerStripeApprovedEmail(email, name).catch((e) =>
+              console.error("sendSellerStripeApprovedEmail error (bulk sync):", e.message)
+            );
+          }
+        }
+
+        results.push({ sellerId: seller.userId, stripeKycStatus, chargesEnabled: account.charges_enabled, status: "synced" });
+      } catch (err) {
+        console.error(`Stripe bulk sync error for seller ${seller.userId}:`, err.message);
+        results.push({ sellerId: seller.userId, status: "error", error: err.message });
+      }
+    }
+
+    const synced = results.filter(r => r.status === "synced").length;
+    const errors = results.filter(r => r.status === "error").length;
+
+    return reply.status(200).send({
+      success: true,
+      message: `Bulk sync complete — ${synced} synced, ${errors} errors`,
+      synced,
+      errors,
+      results,
+    });
+  } catch (error) {
+    console.error("bulkSyncSellerStripeStatus error:", error);
+    return reply.status(500).send({ success: false, message: "Bulk sync failed", detail: error.message });
   }
 };
 

@@ -10,6 +10,7 @@
 
 const Stripe = require("stripe");
 const prisma = require("../config/prisma");
+const { sendSellerStripeApprovedEmail, sendDisputeAlertEmail } = require("../utils/emailService");
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -285,6 +286,11 @@ exports.stripeConnectWebhook = async (request, reply) => {
   const sig = request.headers["stripe-signature"];
   const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
 
+  if (!webhookSecret) {
+    console.error("⚠️  STRIPE_CONNECT_WEBHOOK_SECRET is not set — rejecting webhook");
+    return reply.status(400).send({ error: "Webhook secret not configured" });
+  }
+
   let event;
   try {
     event = stripe.webhooks.constructEvent(request.rawBody, sig, webhookSecret);
@@ -293,11 +299,11 @@ exports.stripeConnectWebhook = async (request, reply) => {
     return reply.status(400).send({ error: `Webhook error: ${err.message}` });
   }
 
+  // ── account.updated ────────────────────────────────────────────────────────
   if (event.type === "account.updated") {
     const account = event.data.object;
 
     try {
-      // For Express accounts, charges_enabled is the real KYC indicator
       let stripeKycStatus;
       if (account.charges_enabled) {
         stripeKycStatus = "verified";
@@ -306,6 +312,13 @@ exports.stripeConnectWebhook = async (request, reply) => {
       } else {
         stripeKycStatus = "unverified";
       }
+
+      // Fetch existing record to detect the charges_enabled flip
+      const existing = await prisma.sellerProfile.findFirst({
+        where: { stripeAccountId: account.id },
+        select: { stripeChargesEnabled: true, user: { select: { email: true, name: true } } },
+        include: { user: { select: { email: true, name: true } } },
+      });
 
       await prisma.sellerProfile.updateMany({
         where: { stripeAccountId: account.id },
@@ -318,10 +331,111 @@ exports.stripeConnectWebhook = async (request, reply) => {
           stripeBankConnected: (account.external_accounts?.total_count || 0) > 0,
         },
       });
-      console.log(`Stripe Connect: synced account ${account.id} — KYC: ${stripeKycStatus}`);
+
+      console.log(`✅ Stripe Connect: synced account ${account.id} — KYC: ${stripeKycStatus}`);
+
+      // Fire the "you're approved" email the FIRST time charges_enabled flips to true
+      if (account.charges_enabled && existing && !existing.stripeChargesEnabled) {
+        const email = existing.user?.email;
+        const name  = existing.user?.name || "Seller";
+        if (email) {
+          sendSellerStripeApprovedEmail(email, name).catch((e) =>
+            console.error("sendSellerStripeApprovedEmail error:", e.message)
+          );
+          console.log(`📧 Stripe approved email queued for ${email}`);
+        }
+      }
     } catch (err) {
       console.error("Stripe Connect webhook DB update error:", err.message);
     }
+  }
+
+  // ── charge.dispute.created ─────────────────────────────────────────────────
+  // A customer filed a chargeback. Reverse the seller transfer immediately so
+  // the platform doesn't go negative, and alert the admin.
+  else if (event.type === "charge.dispute.created") {
+    const dispute = event.data.object;
+    const chargeId = dispute.charge;
+
+    try {
+      // Retrieve the charge to get the payment_intent
+      const charge = chargeId ? await stripe.charges.retrieve(chargeId) : null;
+      const piId    = charge?.payment_intent;
+
+      let disputedOrder = null;
+      if (piId) {
+        disputedOrder = await prisma.order.findFirst({
+          where: { stripePaymentIntentId: piId },
+          include: { user: { select: { email: true } } },
+        });
+      }
+
+      // Reverse any seller transfer tied to this order
+      if (disputedOrder) {
+        const commissionsToReverse = await prisma.$queryRaw`
+          SELECT id, stripe_transfer_id
+          FROM commission_earned
+          WHERE order_id              = ${disputedOrder.id}
+            AND stripe_transfer_id    IS NOT NULL
+            AND stripe_transfer_status = 'transferred'
+        `;
+
+        for (const rec of commissionsToReverse) {
+          try {
+            await stripe.transfers.createReversal(rec.stripe_transfer_id, {
+              metadata: { reason: "chargeback_dispute", orderId: disputedOrder.id, disputeId: dispute.id },
+            });
+            await prisma.$executeRaw`
+              UPDATE commission_earned
+              SET stripe_transfer_status = 'reversed',
+                  status                 = 'CANCELLED'::"CommissionStatus",
+                  updated_at             = NOW()
+              WHERE id = ${rec.id}
+            `;
+            console.log(`↩️  Transfer reversed (dispute) — commissionId: ${rec.id}, transferId: ${rec.stripe_transfer_id}`);
+          } catch (reverseErr) {
+            console.error(`❌ Transfer reversal failed for dispute (commissionId: ${rec.id}):`, reverseErr.message);
+          }
+        }
+      }
+
+      // Alert admin
+      const adminEmail = process.env.FINANCE_EMAIL_RECEIVER || process.env.ADMIN_EMAIL || 'admin@madeinarnhemland.com.au';
+      await sendDisputeAlertEmail({
+        adminEmail,
+        adminName: "Admin",
+        disputeId: dispute.id,
+        amount: dispute.amount,
+        currency: dispute.currency,
+        reason: dispute.reason,
+        orderId: disputedOrder?.id || null,
+        orderDisplayId: disputedOrder?.displayId || null,
+        chargeId,
+        customerEmail: charge?.billing_details?.email || disputedOrder?.user?.email || null,
+      });
+
+      console.log(`🚨 Connect dispute created — ID: ${dispute.id}, Amount: ${dispute.amount}, Reason: ${dispute.reason}, Order: ${disputedOrder?.displayId || "unknown"}`);
+    } catch (err) {
+      console.error("Stripe Connect dispute handler error:", err.message);
+    }
+  }
+
+  // ── charge.dispute.funds_withdrawn ─────────────────────────────────────────
+  // Stripe has withdrawn funds from the platform balance for the dispute.
+  else if (event.type === "charge.dispute.funds_withdrawn") {
+    const dispute = event.data.object;
+    console.log(`💸 Dispute funds withdrawn — ID: ${dispute.id}, Amount: ${dispute.amount}`);
+  }
+
+  // ── charge.dispute.closed ──────────────────────────────────────────────────
+  // Dispute resolved. If won, funds returned; if lost, record the outcome.
+  else if (event.type === "charge.dispute.closed") {
+    const dispute = event.data.object;
+    console.log(`🏁 Dispute closed — ID: ${dispute.id}, Status: ${dispute.status}, Outcome: ${dispute.reason}`);
+  }
+
+  else {
+    console.log(`Unhandled Stripe Connect event: ${event.type}`);
   }
 
   return reply.status(200).send({ received: true });

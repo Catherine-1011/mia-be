@@ -4916,6 +4916,159 @@ const sendNewsletterSubscriptionAlertEmail = async ({ subscribedEmail, subscribe
   return sendWithFallback(msg, 'Newsletter Admin Alert');
 };
 
+// ─── Seller: Stripe payout transfer sent notification ────────────────────────
+// Sent when a Stripe transfer is successfully created for the seller after
+// a customer order is paid.
+const sendSellerPayoutTransferEmail = async (sellerEmail, sellerName, { orderId, orderDisplayId, amount, currency = 'AUD' } = {}) => {
+  if (isDevelopmentMode) {
+    console.log('\n' + '='.repeat(50));
+    console.log('DEVELOPMENT MODE - Seller Payout Transfer');
+    console.log(`To: ${sellerEmail} | Order: ${orderDisplayId} | Amount: ${currency} ${amount}`);
+    console.log('='.repeat(50) + '\n');
+    return { success: true };
+  }
+
+  const dashboardUrl = process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au';
+  const amountFormatted = `${currency} ${parseFloat(amount).toFixed(2)}`;
+
+  const msg = {
+    to: sellerEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `💸 Payment Transferred — Order #${orderDisplayId}`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+      <body style="margin:0;padding:0;background-color:#F5EDE8;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr><td align="center" style="padding:30px 20px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
+              <!-- Header -->
+              <tr>
+                <td style="background-color:#5A1E12;padding:28px 40px;border-radius:12px 12px 0 0;text-align:center;">
+                  <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">Made in Arnhem Land</h1>
+                  <p style="margin:6px 0 0;color:#F0D0C8;font-size:14px;">Payout Transfer Notification</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="background-color:#ffffff;padding:36px 40px;">
+                  <p style="margin:0 0 16px;color:#3D1009;font-size:16px;font-weight:700;">Hi ${sellerName},</p>
+                  <p style="margin:0 0 20px;color:#555;font-size:15px;line-height:1.7;">A payment has been transferred to your Stripe account for a completed order.</p>
+
+                  <div style="background:#F0FAF0;border-left:4px solid #2E7D32;border-radius:0 8px 8px 0;padding:20px 24px;margin-bottom:28px;">
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="color:#555;font-size:14px;padding:6px 0;width:50%;">Order Reference</td>
+                        <td style="color:#3D1009;font-size:14px;font-weight:700;text-align:right;">#${orderDisplayId}</td>
+                      </tr>
+                      <tr>
+                        <td style="color:#555;font-size:14px;padding:6px 0;">Amount Transferred</td>
+                        <td style="color:#2E7D32;font-size:18px;font-weight:700;text-align:right;">${amountFormatted}</td>
+                      </tr>
+                    </table>
+                  </div>
+
+                  <p style="margin:0 0 20px;color:#555;font-size:13px;line-height:1.6;">The funds have been sent to your Stripe Express account. Depending on your payout schedule, they will arrive in your bank account accordingly. You can view full details in your Stripe dashboard.</p>
+
+                  <div style="text-align:center;margin-bottom:28px;">
+                    <a href="${dashboardUrl}/sellerdashboard/payouts" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View My Earnings</a>
+                  </div>
+
+                  <p style="margin:0;color:#888;font-size:13px;">Questions about your payout? Email <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;">sellers@madeinarnhemland.com.au</a></p>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;border-radius:0 0 12px 12px;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued Made in Arnhem Land seller!</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  return sendWithFallback(msg, 'Seller Payout Transfer Email');
+};
+
+// ─── Seller: Stripe onboarding complete / account fully approved ─────────────
+// Sent automatically when the connect webhook fires account.updated and
+// charges_enabled flips to true for the first time.
+const sendSellerStripeApprovedEmail = async (sellerEmail, sellerName) => {
+  if (isDevelopmentMode) {
+    console.log('\n' + '='.repeat(50));
+    console.log('DEVELOPMENT MODE - Seller Stripe Approved');
+    console.log(`To: ${sellerEmail} | Name: ${sellerName}`);
+    console.log('='.repeat(50) + '\n');
+    return { success: true };
+  }
+
+  const dashboardUrl = process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au';
+
+  const msg = {
+    to: sellerEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: '🎉 Your Stripe Account is Ready — You Can Now Receive Payments!',
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+      <body style="margin:0;padding:0;background-color:#F5EDE8;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr><td align="center" style="padding:30px 20px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
+              <!-- Header -->
+              <tr>
+                <td style="background-color:#5A1E12;padding:28px 40px;border-radius:12px 12px 0 0;text-align:center;">
+                  <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">Made in Arnhem Land</h1>
+                  <p style="margin:6px 0 0;color:#F0D0C8;font-size:14px;">Seller Payment Account Approved</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="background-color:#ffffff;padding:36px 40px;">
+                  <p style="margin:0 0 16px;color:#3D1009;font-size:16px;font-weight:700;">Hi ${sellerName},</p>
+                  <p style="margin:0 0 20px;color:#555;font-size:15px;line-height:1.7;">Great news! Your Stripe payment account has been fully verified and approved. You are now set up to receive payouts directly to your bank account when customers purchase your products.</p>
+
+                  <div style="background:#F9EDE9;border-left:4px solid #5A1E12;border-radius:0 8px 8px 0;padding:20px 24px;margin-bottom:28px;">
+                    <p style="margin:0 0 10px;color:#5A1E12;font-weight:700;font-size:14px;">✅ What this means for you</p>
+                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">• Payments from customers are automatically transferred to your Stripe account</p>
+                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">• You can view your earnings and transaction history in your Stripe Express dashboard</p>
+                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">• Payouts to your bank account are managed by the platform</p>
+                  </div>
+
+                  <div style="text-align:center;margin-bottom:28px;">
+                    <a href="${dashboardUrl}/sellerdashboard/payouts" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View My Earnings Dashboard</a>
+                  </div>
+
+                  <p style="margin:0;color:#888;font-size:13px;line-height:1.6;">If you have any questions about your payments, contact us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;">sellers@madeinarnhemland.com.au</a></p>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;border-radius:0 0 12px 12px;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Welcome to your new earnings journey! 🎨</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  return sendWithFallback(msg, 'Seller Stripe Approved Email');
+};
+
 const sendDisputeAlertEmail = async ({ adminEmail, adminName, disputeId, amount, currency, reason, orderId, orderDisplayId, chargeId, customerEmail }) => {
   console.log(`[sendDisputeAlertEmail] Dispute ${disputeId} — Order #${orderDisplayId || orderId}`);
 
@@ -4988,7 +5141,9 @@ module.exports = {
   sendFinanceOrderInvoiceEmail,
   sendNewsletterSubscriptionAlertEmail,
   sendNewsletterCampaignEmail,
-  sendDisputeAlertEmail
+  sendDisputeAlertEmail,
+  sendSellerStripeApprovedEmail,
+  sendSellerPayoutTransferEmail
 };
 
 

@@ -72,6 +72,9 @@ async function adminRoutes(fastify, options) {
   // Sync seller Stripe KYC status → auto-approves platform status if charges_enabled
   fastify.post("/sellers/stripe-sync/:id", { preHandler: adminAuth }, adminController.syncSellerStripeStatus);
 
+  // Bulk sync ALL sellers' Stripe status in one call
+  fastify.post("/sellers/stripe-sync-all", { preHandler: adminAuth }, adminController.bulkSyncSellerStripeStatus);
+
   // Retry pending Stripe transfers for a seller (for orders where transfer was skipped)
   fastify.post("/sellers/retry-transfers/:id", { preHandler: adminAuth }, adminController.retrySellerTransfers);
 

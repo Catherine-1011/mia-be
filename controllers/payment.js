@@ -22,6 +22,7 @@ const {
   sendOrderConfirmationEmail,
   sendFinanceOrderInvoiceEmail,
   sendDisputeAlertEmail,
+  sendSellerPayoutTransferEmail,
 } = require("../utils/emailService");
 const {
   notifyAdminNewOrder,
@@ -797,7 +798,7 @@ async function handlePaymentSucceeded(paymentIntentId) {
       try {
         const sellerProfile = await prisma.sellerProfile.findUnique({
           where:  { userId: sid },
-          select: { stripeAccountId: true, stripePayoutsEnabled: true },
+          select: { stripeAccountId: true, stripePayoutsEnabled: true, user: { select: { email: true, name: true } } },
         });
 
         if (!sellerProfile?.stripeAccountId || !sellerProfile?.stripePayoutsEnabled) {
@@ -836,6 +837,18 @@ async function handlePaymentSucceeded(paymentIntentId) {
         });
 
         console.log(`💸 Transfer created — seller: ${sid}, amount: $${payout.sellerTotalPayout}, transferId: ${transfer.id}`);
+
+        // Notify seller by email (non-blocking)
+        const sellerEmail = sellerProfile.user?.email;
+        const sellerName  = sellerProfile.user?.name || sellerDisplayNames[sellerIdSet.indexOf(sid)] || 'Seller';
+        if (sellerEmail) {
+          sendSellerPayoutTransferEmail(sellerEmail, sellerName, {
+            orderId:        order.id,
+            orderDisplayId: order.displayId || order.id,
+            amount:         payout.sellerTotalPayout,
+            currency:       'AUD',
+          }).catch((e) => console.error('sendSellerPayoutTransferEmail error:', e.message));
+        }
 
         // Persist transfer ID back to CommissionEarned
         if (commissionEarnedId) {

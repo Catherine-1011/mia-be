@@ -240,6 +240,17 @@ exports.createPaymentIntent = async (request, reply) => {
       });
     }
 
+    // Update PaymentIntent metadata with order ID so it's visible in Stripe Dashboard
+    await stripe.paymentIntents.update(paymentIntent.id, {
+      metadata: {
+        userId,
+        cartId:    cart.id,
+        orderId:   order.id,
+        displayId: order.displayId,
+      },
+      description: `Order ${order.displayId} — Made in Arnhem Land`,
+    });
+
     return reply.status(200).send({
       success: true,
       clientSecret: paymentIntent.client_secret,
@@ -1138,6 +1149,17 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     }
 
     console.log(`✅ Guest Stripe PaymentIntent created: ${paymentIntent.id}, order: ${order.id}`);
+
+    // Update PaymentIntent metadata with order ID so it's visible in Stripe Dashboard
+    await stripe.paymentIntents.update(paymentIntent.id, {
+      metadata: {
+        isGuest:      "true",
+        customerEmail,
+        orderId:      order.id,
+        displayId:    order.displayId,
+      },
+      description: `Order ${order.displayId} — Made in Arnhem Land (Guest)`,
+    });
 
     return reply.status(200).send({
       success: true,

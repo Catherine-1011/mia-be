@@ -766,7 +766,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
                 </tr>
                 <tr>
                   <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Order Date</strong></td>
-                  <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;" class="dark-text mobile-center">${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</td>
+                  <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;" class="dark-text mobile-center">${new Date().toLocaleDateString('en-AU', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Australia/Sydney' })}</td>
                 </tr>
                 <tr>
                   <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Payment Method</strong></td>
@@ -1118,7 +1118,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                       </tr>
                       <tr>
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Date</strong></td>
-                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.orderDate ? new Date(orderDetails.orderDate).toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'}) : new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</td>
+                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.orderDate ? new Date(orderDetails.orderDate).toLocaleDateString('en-AU',{year:'numeric',month:'long',day:'numeric',timeZone:'Australia/Sydney'}) : new Date().toLocaleDateString('en-AU',{year:'numeric',month:'long',day:'numeric',timeZone:'Australia/Sydney'})}</td>
                       </tr>
                       ${orderDetails.paymentMethod ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Payment Method</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.paymentMethod}</td></tr>` : ''}
                       <tr>
@@ -1307,7 +1307,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
                       </tr>
                       <tr>
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Date</strong></td>
-                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</td>
+                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date().toLocaleDateString('en-AU',{year:'numeric',month:'long',day:'numeric',timeZone:'Australia/Sydney'})}</td>
                       </tr>
                       <tr>
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Your Earnings</strong></td>
@@ -2895,7 +2895,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
                       </tr>
                       <tr>
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Date</strong></td>
-                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date().toLocaleDateString('en-AU', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date().toLocaleDateString('en-AU', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Australia/Sydney' })}</td>
                       </tr>
                       <tr>
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Payment</strong></td>
@@ -4192,7 +4192,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
                         </tr>
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Date Submitted</strong></td>
-                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})}</td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date().toLocaleDateString('en-AU',{year:'numeric',month:'long',day:'numeric',timeZone:'Australia/Sydney'})}</td>
                         </tr>
                         ${refundDetails.totalAmount ? `
                         <tr>

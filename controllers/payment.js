@@ -128,18 +128,8 @@ exports.createPaymentIntent = async (request, reply) => {
     // Stripe expects amount in smallest currency unit (cents for AUD)
     const amountInCents = Math.round(totalAmount * 100);
 
-    // Create Stripe PaymentIntent
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amountInCents,
-      currency: "aud",
-      metadata: {
-        userId,
-        cartId: cart.id,
-      },
-      automatic_payment_methods: { enabled: true },
-    });
-
-    // Build per-seller map to determine single vs multi-seller
+    // Build per-seller map BEFORE creating PaymentIntent so we can use
+    // Direct Charges (application_fee + transfer_data) for single-seller orders
     const sellerItemsMap = new Map();
     for (const item of cart.items) {
       const sid = item.product.sellerId;
@@ -147,6 +137,45 @@ exports.createPaymentIntent = async (request, reply) => {
       sellerItemsMap.get(sid).push(item);
     }
     const isMultiSeller = sellerItemsMap.size > 1;
+
+    // For single-seller: use Direct Charges — payment goes straight to seller's
+    // connected account, ALPA takes application_fee automatically.
+    // For multi-seller: fall back to Separate Charges + Transfers (Stripe limitation:
+    // a single PaymentIntent can only have one transfer_data destination).
+    let directChargeParams = {};
+    if (!isMultiSeller) {
+      const [singleSellerId] = sellerItemsMap.keys();
+      const sellerProfile = await prisma.sellerProfile.findUnique({
+        where:  { userId: singleSellerId },
+        select: { stripeAccountId: true, stripeChargesEnabled: true },
+      });
+      if (sellerProfile?.stripeAccountId && sellerProfile?.stripeChargesEnabled) {
+        // Calculate commission (application fee) for this seller
+        const sellerCommission   = await getCommissionForSeller(singleSellerId);
+        const resolvedCommission = sellerCommission || (await getDefaultCommission());
+        const commissionRatePct  = resolvedCommission ? parseFloat(resolvedCommission.value) : 10;
+        const itemTotal = cart.items.reduce((s, i) => s + Number(i.productVariant?.price ?? i.product.price) * i.quantity, 0);
+        const perSellerShipping  = parseFloat(cartCalculations.shippingCost);
+        const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
+        directChargeParams = {
+          application_fee_amount: payout.commissionAmountCents,
+          transfer_data: { destination: sellerProfile.stripeAccountId },
+        };
+      }
+    }
+
+    // Create Stripe PaymentIntent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amountInCents,
+      currency: "aud",
+      metadata: {
+        userId,
+        cartId: cart.id,
+        chargeType: Object.keys(directChargeParams).length ? 'direct' : 'platform',
+      },
+      automatic_payment_methods: { enabled: true },
+      ...directChargeParams,
+    });
 
     // Build shippingAddress JSON with order summary
     const shippingAddressData =
@@ -416,12 +445,29 @@ exports.stripeWebhook = async (request, reply) => {
         break;
       }
       case "charge.refunded": {
-        // When a charge is fully or partially refunded, reverse any Stripe transfers
-        // that were created for the order so sellers don't keep funds for cancelled orders.
+        // Direct Charge orders: Stripe automatically reverses the application fee — nothing to do.
+        // Platform (multi-seller) orders: reverse any manual transfers so sellers
+        // don't keep funds for refunded orders.
         const charge = event.data.object;
         const piId   = charge.payment_intent;
         if (!piId) break;
 
+        // chargeType is stored on the PaymentIntent metadata (not charge metadata)
+        let chargeType = 'platform';
+        try {
+          const pi = await stripe.paymentIntents.retrieve(piId);
+          chargeType = pi.metadata?.chargeType || 'platform';
+        } catch (e) {
+          console.warn(`⚠️  Could not retrieve PaymentIntent for chargeType check: ${e.message}`);
+        }
+
+        if (chargeType === 'direct') {
+          // Stripe automatically reversed the application fee — nothing to do
+          console.log(`↩️  Direct Charge refunded for PI ${piId} — Stripe handled application fee reversal automatically`);
+          break;
+        }
+
+        // Platform (multi-seller) charge — reverse manual transfers for each seller
         const refundedOrder = await prisma.order.findFirst({
           where: { stripePaymentIntentId: piId },
           select: { id: true },
@@ -431,8 +477,8 @@ exports.stripeWebhook = async (request, reply) => {
         const commissionsToReverse = await prisma.$queryRaw`
           SELECT id, stripe_transfer_id
           FROM commission_earned
-          WHERE order_id             = ${refundedOrder.id}
-            AND stripe_transfer_id   IS NOT NULL
+          WHERE order_id               = ${refundedOrder.id}
+            AND stripe_transfer_id     IS NOT NULL
             AND stripe_transfer_status = 'transferred'
         `;
 
@@ -800,82 +846,112 @@ async function handlePaymentSucceeded(paymentIntentId) {
       sellerName:     sellerDisplayNames[sellerIdSet.indexOf(sid)] || null,
     }).catch((e) => { console.error('Commission earned error (non-blocking):', e.message); return null; });
 
-    // ── Stripe Transfer (Separate Charges + Transfers) ─────────────────────
-    // Customer already paid platform the full amount. Now transfer the seller's
-    // net payout (product ex-GST minus commission + shipping) to their connected
-    // Stripe Express account. If they have no Stripe account yet, the
-    // CommissionEarned record stays PENDING for manual payout later.
-    (async () => {
-      try {
-        const sellerProfile = await prisma.sellerProfile.findUnique({
-          where:  { userId: sid },
-          select: { stripeAccountId: true, stripePayoutsEnabled: true, user: { select: { email: true, name: true } } },
-        });
+    // ── Stripe Payout ───────────────────────────────────────────────────────
+    // Direct Charge orders: Stripe already routed funds to the seller and
+    // collected ALPA's application fee automatically — no manual transfer needed.
+    // Platform (multi-seller) orders: create a manual transfer as before.
+    const isDirectCharge = order.stripePaymentIntentMetadata?.chargeType === 'direct'
+      || await (async () => {
+        try {
+          const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+          return pi.metadata?.chargeType === 'direct';
+        } catch { return false; }
+      })();
 
-        if (!sellerProfile?.stripeAccountId || !sellerProfile?.stripePayoutsEnabled) {
-          console.log(`⏳ Seller ${sid} has no active Stripe account — transfer skipped, manual payout required`);
-          return;
-        }
-
-        // Resolve commission rate (seller-specific first, then platform default, then 10%)
-        const sellerCommission  = await getCommissionForSeller(sid);
-        const resolvedCommission = sellerCommission || (await getDefaultCommission());
-        const commissionRatePct  = resolvedCommission ? parseFloat(resolvedCommission.value) : 10;
-
-        const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
-
-        if (payout.sellerTotalPayoutCents <= 0) {
-          console.warn(`⚠️  Seller ${sid} payout would be ≤ $0 — transfer skipped`);
-          return;
-        }
-
-        const transfer = await stripe.transfers.create({
-          amount:      payout.sellerTotalPayoutCents,
-          currency:    "aud",
-          destination: sellerProfile.stripeAccountId,
-          // source_transaction links this transfer to the specific charge so Stripe
-          // routes the funds correctly without requiring platform balance.
-          ...(latestChargeId && { source_transaction: latestChargeId }),
-          description: `Order ${order.displayId || order.id} — seller payout`,
-          metadata: {
-            orderId:            order.id,
-            sellerId:           sid,
-            commissionAmount:   payout.commissionAmount.toString(),
-            gstAmount:          payout.gstAmount.toString(),
-            shippingAmount:     payout.shippingAmount.toString(),
-            sellerTotalPayout:  payout.sellerTotalPayout.toString(),
-          },
-        });
-
-        console.log(`💸 Transfer created — seller: ${sid}, amount: $${payout.sellerTotalPayout}, transferId: ${transfer.id}`);
-
-        // Notify seller by email (non-blocking)
-        const sellerEmail = sellerProfile.user?.email;
-        const sellerName  = sellerProfile.user?.name || sellerDisplayNames[sellerIdSet.indexOf(sid)] || 'Seller';
-        if (sellerEmail) {
-          sendSellerPayoutTransferEmail(sellerEmail, sellerName, {
-            orderId:        order.id,
-            orderDisplayId: order.displayId || order.id,
-            amount:         payout.sellerTotalPayout,
-            currency:       'AUD',
-          }).catch((e) => console.error('sendSellerPayoutTransferEmail error:', e.message));
-        }
-
-        // Persist transfer ID back to CommissionEarned
-        if (commissionEarnedId) {
-          await prisma.$executeRaw`
-            UPDATE commission_earned
-            SET stripe_transfer_id     = ${transfer.id},
-                stripe_transfer_status = 'transferred',
-                updated_at             = NOW()
-            WHERE id = ${commissionEarnedId}
-          `;
-        }
-      } catch (transferErr) {
-        console.error(`❌ Stripe transfer failed for seller ${sid} (non-fatal):`, transferErr.message);
-        // CommissionEarned stays PENDING — admin can trigger manual payout
+    if (isDirectCharge) {
+      // Direct Charge — Stripe handled payout automatically.
+      // Record commission as 'transferred' so reporting is accurate.
+      if (commissionEarnedId) {
+        await prisma.$executeRaw`
+          UPDATE commission_earned
+          SET stripe_transfer_status = 'direct_charge',
+              updated_at             = NOW()
+          WHERE id = ${commissionEarnedId}
+        `;
       }
-    })();
+      console.log(`✅ Direct Charge — seller ${sid} payout handled by Stripe automatically`);
+
+      // Notify seller by email (non-blocking)
+      const sellerUser = await prisma.user.findUnique({
+        where: { id: sid },
+        select: { email: true, name: true },
+      });
+      if (sellerUser?.email) {
+        sendSellerPayoutTransferEmail(sellerUser.email, sellerUser.name || 'Seller', {
+          orderId:        order.id,
+          orderDisplayId: order.displayId || order.id,
+          amount:         itemTotal,
+          currency:       'AUD',
+        }).catch((e) => console.error('sendSellerPayoutTransferEmail error:', e.message));
+      }
+    } else {
+      // Platform charge (multi-seller) — manually transfer seller's net payout
+      (async () => {
+        try {
+          const sellerProfile = await prisma.sellerProfile.findUnique({
+            where:  { userId: sid },
+            select: { stripeAccountId: true, stripePayoutsEnabled: true, user: { select: { email: true, name: true } } },
+          });
+
+          if (!sellerProfile?.stripeAccountId || !sellerProfile?.stripePayoutsEnabled) {
+            console.log(`⏳ Seller ${sid} has no active Stripe account — transfer skipped, manual payout required`);
+            return;
+          }
+
+          const sellerCommission   = await getCommissionForSeller(sid);
+          const resolvedCommission = sellerCommission || (await getDefaultCommission());
+          const commissionRatePct  = resolvedCommission ? parseFloat(resolvedCommission.value) : 10;
+          const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
+
+          if (payout.sellerTotalPayoutCents <= 0) {
+            console.warn(`⚠️  Seller ${sid} payout would be ≤ $0 — transfer skipped`);
+            return;
+          }
+
+          const transfer = await stripe.transfers.create({
+            amount:      payout.sellerTotalPayoutCents,
+            currency:    "aud",
+            destination: sellerProfile.stripeAccountId,
+            ...(latestChargeId && { source_transaction: latestChargeId }),
+            description: `Order ${order.displayId || order.id} — seller payout`,
+            metadata: {
+              orderId:            order.id,
+              sellerId:           sid,
+              commissionAmount:   payout.commissionAmount.toString(),
+              gstAmount:          payout.gstAmount.toString(),
+              shippingAmount:     payout.shippingAmount.toString(),
+              sellerTotalPayout:  payout.sellerTotalPayout.toString(),
+            },
+          });
+
+          console.log(`💸 Transfer created — seller: ${sid}, amount: $${payout.sellerTotalPayout}, transferId: ${transfer.id}`);
+
+          // Notify seller by email (non-blocking)
+          const sellerEmail = sellerProfile.user?.email;
+          const sellerName  = sellerProfile.user?.name || sellerDisplayNames[sellerIdSet.indexOf(sid)] || 'Seller';
+          if (sellerEmail) {
+            sendSellerPayoutTransferEmail(sellerEmail, sellerName, {
+              orderId:        order.id,
+              orderDisplayId: order.displayId || order.id,
+              amount:         payout.sellerTotalPayout,
+              currency:       'AUD',
+            }).catch((e) => console.error('sendSellerPayoutTransferEmail error:', e.message));
+          }
+
+          if (commissionEarnedId) {
+            await prisma.$executeRaw`
+              UPDATE commission_earned
+              SET stripe_transfer_id     = ${transfer.id},
+                  stripe_transfer_status = 'transferred',
+                  updated_at             = NOW()
+              WHERE id = ${commissionEarnedId}
+            `;
+          }
+        } catch (transferErr) {
+          console.error(`❌ Stripe transfer failed for seller ${sid} (non-fatal):`, transferErr.message);
+        }
+      })();
+    }
     // ───────────────────────────────────────────────────────────────────────
   }
 
@@ -1038,12 +1114,48 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     const amountInCents = Math.round(totalAmount * 100);
     // ──────────────────────────────────────────────────────────────────────
 
+    // Build per-seller map BEFORE PaymentIntent so we can use Direct Charges
+    // for single-seller guest orders (same logic as logged-in flow)
+    const guestSellerMap = new Map();
+    for (const { product, productVariant, quantity } of cartItems) {
+      const sid = product.sellerId;
+      if (!guestSellerMap.has(sid)) guestSellerMap.set(sid, []);
+      guestSellerMap.get(sid).push({ product, productVariant, quantity });
+    }
+    const guestIsMultiSeller = guestSellerMap.size > 1;
+
+    let guestDirectChargeParams = {};
+    if (!guestIsMultiSeller) {
+      const [singleSellerId] = guestSellerMap.keys();
+      const sellerProfile = await prisma.sellerProfile.findUnique({
+        where:  { userId: singleSellerId },
+        select: { stripeAccountId: true, stripeChargesEnabled: true },
+      });
+      if (sellerProfile?.stripeAccountId && sellerProfile?.stripeChargesEnabled) {
+        const sellerCommission   = await getCommissionForSeller(singleSellerId);
+        const resolvedCommission = sellerCommission || (await getDefaultCommission());
+        const commissionRatePct  = resolvedCommission ? parseFloat(resolvedCommission.value) : 10;
+        const itemTotal = cartItems.reduce((s, i) => s + (i.productVariant ? Number(i.productVariant.price) : Number(i.product.price)) * i.quantity, 0);
+        const perSellerShipping  = parseFloat(cartCalculations.shippingCost);
+        const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
+        guestDirectChargeParams = {
+          application_fee_amount: payout.commissionAmountCents,
+          transfer_data: { destination: sellerProfile.stripeAccountId },
+        };
+      }
+    }
+
     // Create Stripe PaymentIntent
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
       currency: "aud",
-      metadata: { isGuest: "true", customerEmail },
+      metadata: {
+        isGuest: "true",
+        customerEmail,
+        chargeType: Object.keys(guestDirectChargeParams).length ? 'direct' : 'platform',
+      },
       automatic_payment_methods: { enabled: true },
+      ...guestDirectChargeParams,
     });
 
     // Build shippingAddress JSON with order summary
@@ -1076,15 +1188,6 @@ exports.createGuestPaymentIntent = async (request, reply) => {
           };
 
     // Create PENDING guest order (stock deducted on payment success via webhook / confirm)
-    // Build per-seller map — same logic as the logged-in flow
-    const guestSellerMap = new Map();
-    for (const { product, productVariant, quantity } of cartItems) {
-      const sid = product.sellerId;
-      if (!guestSellerMap.has(sid)) guestSellerMap.set(sid, []);
-      guestSellerMap.get(sid).push({ product, productVariant, quantity });
-    }
-    const guestIsMultiSeller = guestSellerMap.size > 1;
-
     const displayId = await generateDisplayId();
 
     const guestOrderBaseData = {

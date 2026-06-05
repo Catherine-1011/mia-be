@@ -860,15 +860,38 @@ async function handlePaymentSucceeded(paymentIntentId) {
 
     if (isDirectCharge) {
       // Direct Charge — Stripe handled payout automatically.
-      // Record commission as 'transferred' so reporting is accurate.
-      if (commissionEarnedId) {
-        await prisma.$executeRaw`
-          UPDATE commission_earned
-          SET stripe_transfer_status = 'direct_charge',
-              updated_at             = NOW()
-          WHERE id = ${commissionEarnedId}
-        `;
-      }
+      // Update the auto-generated transfer with order description + metadata
+      // so it appears correctly in the seller's Express dashboard.
+      (async () => {
+        try {
+          if (latestChargeId) {
+            const charge = await stripe.charges.retrieve(latestChargeId);
+            const autoTransferId = charge.transfer;
+            if (autoTransferId) {
+              await stripe.transfers.update(autoTransferId, {
+                description: `Order ${order.displayId || order.id} — seller payout`,
+                metadata: {
+                  orderId:   order.id,
+                  displayId: order.displayId || order.id,
+                  sellerId:  sid,
+                },
+              });
+              console.log(`📝 Transfer description updated — transferId: ${autoTransferId}, order: ${order.displayId}`);
+              if (commissionEarnedId) {
+                await prisma.$executeRaw`
+                  UPDATE commission_earned
+                  SET stripe_transfer_id     = ${autoTransferId},
+                      stripe_transfer_status = 'direct_charge',
+                      updated_at             = NOW()
+                  WHERE id = ${commissionEarnedId}
+                `;
+              }
+            }
+          }
+        } catch (e) {
+          console.error(`⚠️  Could not update auto-transfer description for seller ${sid}:`, e.message);
+        }
+      })();
       console.log(`✅ Direct Charge — seller ${sid} payout handled by Stripe automatically`);
 
       // Notify seller by email (non-blocking)

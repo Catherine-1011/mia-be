@@ -158,8 +158,9 @@ exports.createPaymentIntent = async (request, reply) => {
         const perSellerShipping  = parseFloat(cartCalculations.shippingCost);
         const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
         directChargeParams = {
+          on_behalf_of:           sellerProfile.stripeAccountId,
           application_fee_amount: payout.commissionAmountCents,
-          transfer_data: { destination: sellerProfile.stripeAccountId },
+          transfer_data:          { destination: sellerProfile.stripeAccountId },
         };
       }
     }
@@ -1139,8 +1140,9 @@ exports.createGuestPaymentIntent = async (request, reply) => {
         const perSellerShipping  = parseFloat(cartCalculations.shippingCost);
         const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
         guestDirectChargeParams = {
+          on_behalf_of:           sellerProfile.stripeAccountId,
           application_fee_amount: payout.commissionAmountCents,
-          transfer_data: { destination: sellerProfile.stripeAccountId },
+          transfer_data:          { destination: sellerProfile.stripeAccountId },
         };
       }
     }

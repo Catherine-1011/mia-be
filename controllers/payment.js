@@ -157,7 +157,17 @@ exports.createPaymentIntent = async (request, reply) => {
         const itemTotal = cart.items.reduce((s, i) => s + Number(i.productVariant?.price ?? i.product.price) * i.quantity, 0);
         const perSellerShipping  = parseFloat(cartCalculations.shippingCost);
         const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
+        // Check if seller has card_payments capability before using on_behalf_of
+        // (requires full KYC — falls back to destination charge if not yet enabled)
+        let cardPaymentsActive = false;
+        try {
+          const acct = await stripe.accounts.retrieve(sellerProfile.stripeAccountId);
+          cardPaymentsActive = acct.capabilities?.card_payments === 'active';
+        } catch (e) {
+          console.warn(`⚠️  Could not retrieve seller Stripe capabilities: ${e.message}`);
+        }
         directChargeParams = {
+          ...(cardPaymentsActive && { on_behalf_of: sellerProfile.stripeAccountId }),
           application_fee_amount: payout.commissionAmountCents,
           transfer_data:          { destination: sellerProfile.stripeAccountId },
         };
@@ -1161,7 +1171,16 @@ exports.createGuestPaymentIntent = async (request, reply) => {
         const itemTotal = cartItems.reduce((s, i) => s + (i.productVariant ? Number(i.productVariant.price) : Number(i.product.price)) * i.quantity, 0);
         const perSellerShipping  = parseFloat(cartCalculations.shippingCost);
         const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
+        // Check if seller has card_payments capability before using on_behalf_of
+        let guestCardPaymentsActive = false;
+        try {
+          const acct = await stripe.accounts.retrieve(sellerProfile.stripeAccountId);
+          guestCardPaymentsActive = acct.capabilities?.card_payments === 'active';
+        } catch (e) {
+          console.warn(`⚠️  Could not retrieve seller Stripe capabilities: ${e.message}`);
+        }
         guestDirectChargeParams = {
+          ...(guestCardPaymentsActive && { on_behalf_of: sellerProfile.stripeAccountId }),
           application_fee_amount: payout.commissionAmountCents,
           transfer_data:          { destination: sellerProfile.stripeAccountId },
         };

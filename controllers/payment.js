@@ -615,13 +615,16 @@ async function handlePaymentSucceeded(paymentIntentId) {
     return false;
   }
 
-  // Retrieve PaymentIntent from Stripe to get latest_charge (needed for transfers)
+  // Retrieve PaymentIntent from Stripe to get latest_charge + chargeType (needed for transfers).
+  // Captured once here so the per-seller loop never needs a redundant API call.
   let latestChargeId = null;
+  let piChargeType = 'platform'; // default — overridden below if PI is retrievable
   try {
     const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
     latestChargeId = pi.latest_charge || null;
+    piChargeType   = pi.metadata?.chargeType || 'platform';
   } catch (e) {
-    console.warn(`⚠️  Could not retrieve PaymentIntent for charge ID: ${e.message}`);
+    console.warn(`⚠️  Could not retrieve PaymentIntent for charge ID / chargeType: ${e.message}`);
   }
 
   // Fetch the now-PAID order for stock deduction, email, and notifications.
@@ -860,13 +863,9 @@ async function handlePaymentSucceeded(paymentIntentId) {
     // Direct Charge orders: Stripe already routed funds to the seller and
     // collected ALPA's application fee automatically — no manual transfer needed.
     // Platform (multi-seller) orders: create a manual transfer as before.
-    const isDirectCharge = order.stripePaymentIntentMetadata?.chargeType === 'direct'
-      || await (async () => {
-        try {
-          const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
-          return pi.metadata?.chargeType === 'direct';
-        } catch { return false; }
-      })();
+    // piChargeType is resolved once above (from the single PaymentIntent retrieval)
+    // so this never triggers a redundant Stripe API call inside the seller loop.
+    const isDirectCharge = piChargeType === 'direct';
 
     if (isDirectCharge) {
       // Direct Charge — Stripe handled payout automatically.

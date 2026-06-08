@@ -12,11 +12,9 @@ const prisma = new PrismaClient({
   }
 });
 
-// ── NeonDB cold-start retry middleware ───────────────────────────────────────
-// NeonDB serverless branches sleep after inactivity. The first query after
-// sleep hits a P1001 "Can't reach database server" error while the branch wakes.
-// This middleware transparently retries up to 5 times with exponential backoff
-// so callers never see the cold-start error.
+// ── DB connection retry middleware ───────────────────────────────────────────
+// Retries on P1001 "Can't reach database server" — covers transient network
+// blips on DigitalOcean Managed Postgres and any cold-start scenarios.
 prisma.$use(async (params, next) => {
   const MAX_RETRIES = 5;
   const BASE_DELAY_MS = 500; // 500ms, 1s, 2s, 4s, 8s
@@ -26,11 +24,11 @@ prisma.$use(async (params, next) => {
     try {
       return await next(params);
     } catch (err) {
-      const isColdStart = err?.code === 'P1001' || err?.message?.includes("Can't reach database server");
+      const isConnectionError = err?.code === 'P1001' || err?.message?.includes("Can't reach database server");
       attempt++;
-      if (isColdStart && attempt < MAX_RETRIES) {
+      if (isConnectionError && attempt < MAX_RETRIES) {
         const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
-        console.warn(`⏳ NeonDB cold-start — retrying in ${delay}ms (attempt ${attempt}/${MAX_RETRIES})...`);
+        console.warn(`⏳ DB connection failed — retrying in ${delay}ms (attempt ${attempt}/${MAX_RETRIES})...`);
         await new Promise(r => setTimeout(r, delay));
       } else {
         throw err;

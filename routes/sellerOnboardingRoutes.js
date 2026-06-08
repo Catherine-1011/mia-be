@@ -18,8 +18,12 @@ async function sellerOnboardingRoutes(fastify, options) {
   // Seller Login (with email + password)
   fastify.post("/login", sellerController.sellerLogin);
 
-  // Resume Onboarding - Check where user left off
+  // Resume Onboarding — Step 1: enter email → OTP sent if account exists
+  // Returns canResume: true/false
   fastify.post("/resume", sellerController.resumeOnboarding);
+
+  // Resume Onboarding — Step 2: verify OTP → returns JWT + nextStep.redirectTo
+  fastify.post("/resume-verify-otp", sellerController.resumeVerifyOtp);
 
   // Forgot Password
   fastify.post("/forgot-password", sellerController.forgotPassword);

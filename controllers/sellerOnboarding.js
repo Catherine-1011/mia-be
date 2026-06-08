@@ -1086,56 +1086,82 @@ exports.getOnboardingStatus = async (request, reply) => {
   }
 };
 
-// Resume Onboarding - Public endpoint to help users continue their onboarding
+// Step number → frontend path mapping used by resume endpoints
+const STEP_REDIRECT = {
+  3: { path: "/apply/business-details",  label: "Business Details"  },
+  4: { path: "/apply/cultural-info",     label: "Cultural Info"     },
+  5: { path: "/apply/store-profile",     label: "Store Profile"     },
+  6: { path: "/apply/kyc",               label: "KYC Documents"     },
+  7: { path: "/apply/bank-details",      label: "Bank Details"      },
+  8: { path: "/apply/submit",            label: "Submit for Review" },
+};
+
+// ─── POST /seller-onboarding/resume ──────────────────────────────────────────
+// Public. Step 1 of resume flow — takes { email }.
+//
+// Outcomes:
+//  A. No record at all OR pendingRegistration only (OTP never verified, no real
+//     account exists) → canResume: false — tell frontend to start a new application.
+//     No OTP is sent because there is nothing to resume and we don't want to
+//     confirm whether an email is in-progress to an attacker.
+//
+//  B. Seller account exists (OTP was verified at some point) → send a fresh OTP
+//     to that email so only the real owner can continue.
+//     Returns: { canResume: true, action: "verify_otp" }
+//
+// This prevents someone from entering another person's email and continuing
+// their Stripe onboarding or seeing their application data.
 exports.resumeOnboarding = async (request, reply) => {
   try {
     const { email } = request.body;
 
     if (!email) {
-      return reply.status(400).send({
-        success: false,
-        message: "Email is required"
-      });
+      return reply.status(400).send({ success: false, message: "Email is required" });
     }
 
     const normalizedEmail = email.toLowerCase();
 
-    // Check if user exists and is a seller
     const user = await prisma.user.findUnique({
       where: { email: normalizedEmail },
       include: { sellerProfile: true }
     });
 
-    // Check if user is in pending registration (hasn't completed step 2)
+    // ── No real account found ─────────────────────────────────────────────
     if (!user) {
+      // Check for a pendingRegistration (email entered but OTP never verified)
       const pendingReg = await prisma.pendingRegistration.findUnique({
         where: { email: normalizedEmail }
       });
 
       if (pendingReg) {
+        // No real account — the pendingRegistration is just a temp OTP row.
+        // Nothing has been saved so there is nothing to resume.
         return reply.status(200).send({
           success: true,
-          message: "Please complete email verification first",
-          step: 1,
-          action: "verify_otp",
-          description: "You need to verify your email and set a password to continue"
-        });
-      } else {
-        return reply.status(404).send({
-          success: false,
-          message: "No seller account found with this email. Please start the application process."
+          canResume: false,
+          message: "No data has been saved for this email yet. Please start a new application.",
+          action: "start_new",
+          startEndpoint: "/seller-onboarding/apply"
         });
       }
-    }
 
-    if (user.role !== 'SELLER' || !user.sellerProfile) {
-      return reply.status(400).send({
+      return reply.status(404).send({
         success: false,
-        message: "This email is not associated with a seller account"
+        canResume: false,
+        message: "No seller account found with this email. Please start a new application.",
+        action: "start_new",
+        startEndpoint: "/seller-onboarding/apply"
       });
     }
 
-    // Check if seller is rejected
+    // ── Account exists but not a seller ──────────────────────────────────
+    if (user.role !== 'SELLER' || !user.sellerProfile) {
+      return reply.status(400).send({
+        success: false,
+        message: "This email is not associated with a seller account."
+      });
+    }
+
     if (user.sellerProfile.status === 'REJECTED') {
       return reply.status(403).send({
         success: false,
@@ -1143,21 +1169,131 @@ exports.resumeOnboarding = async (request, reply) => {
       });
     }
 
-    const onboardingStatus = getCurrentStep(user.sellerProfile);
-    
-    reply.status(200).send({
+    if (user.sellerProfile.status === 'APPROVED') {
+      return reply.status(200).send({
+        success: true,
+        canResume: false,
+        message: "Your seller application is already approved. Please log in to your dashboard.",
+        action: "login",
+        loginEndpoint: "/seller-onboarding/login"
+      });
+    }
+
+    // ── Real seller account found — send OTP to verify ownership ─────────
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Reuse pendingRegistration to store the resume OTP.
+    // role='SELLER_RESUME' distinguishes it from a fresh registration OTP.
+    await prisma.pendingRegistration.upsert({
+      where: { email: normalizedEmail },
+      update: { otp, otpExpiry, updatedAt: new Date() },
+      create: {
+        email: normalizedEmail,
+        phone: user.phone || '',
+        name:  user.name  || '',
+        otp,
+        otpExpiry,
+        role: 'SELLER_RESUME'
+      }
+    });
+
+    await sendOTPEmail(normalizedEmail, otp, user.name || 'Seller');
+
+    return reply.status(200).send({
       success: true,
-      message: "Please log in with your email and password to continue your seller onboarding",
-      currentStep: onboardingStatus.currentStep,
-      stepName: onboardingStatus.currentStepInfo.name,
-      description: onboardingStatus.currentStepInfo.description,
-      completedSteps: onboardingStatus.completedSteps.length,
-      totalSteps: 8,
-      action: "login_required",
-      loginEndpoint: "/seller-onboarding/login"
+      canResume: true,
+      message: "A verification code has been sent to your email. Please enter it to continue your application.",
+      action: "verify_otp",
+      verifyEndpoint: "/seller-onboarding/resume-verify-otp",
     });
   } catch (error) {
     console.error("Resume onboarding error:", error);
+    reply.status(500).send({ success: false, message: "Server error" });
+  }
+};
+
+// ─── POST /seller-onboarding/resume-verify-otp ───────────────────────────────
+// Public. Step 2 of resume flow — takes { email, otp }.
+// Verifies the OTP sent by /resume, then returns a JWT + the exact step to
+// redirect to. One request gives the frontend everything it needs to continue.
+exports.resumeVerifyOtp = async (request, reply) => {
+  try {
+    const { email, otp } = request.body;
+
+    if (!email || !otp) {
+      return reply.status(400).send({
+        success: false,
+        message: "Email and OTP are required"
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    // Find the resume OTP record
+    const pending = await prisma.pendingRegistration.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (!pending) {
+      return reply.status(400).send({
+        success: false,
+        message: "No OTP found for this email. Please request a new one via /resume."
+      });
+    }
+
+    if (pending.otp !== otp) {
+      return reply.status(400).send({ success: false, message: "Invalid OTP." });
+    }
+
+    if (pending.otpExpiry < new Date()) {
+      await prisma.pendingRegistration.delete({ where: { id: pending.id } });
+      return reply.status(400).send({
+        success: false,
+        message: "OTP has expired. Please request a new one."
+      });
+    }
+
+    // OTP valid — clean up the temporary record
+    await prisma.pendingRegistration.delete({ where: { id: pending.id } });
+
+    // Fetch the seller account
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      include: { sellerProfile: true }
+    });
+
+    if (!user || user.role !== 'SELLER' || !user.sellerProfile) {
+      return reply.status(404).send({
+        success: false,
+        message: "Seller account not found. Please contact support."
+      });
+    }
+
+    // Issue JWT and resolve which step to redirect to
+    const token = generateSellerToken(user.id);
+    const onboardingStatus = getCurrentStep(user.sellerProfile);
+    const redirect = STEP_REDIRECT[onboardingStatus.currentStep] || STEP_REDIRECT[8];
+
+    const { password: _, ...userWithoutPassword } = user;
+
+    return reply.status(200).send({
+      success: true,
+      message: "Identity verified. Continuing your application.",
+      token,
+      user: userWithoutPassword,
+      nextStep: {
+        step:        onboardingStatus.currentStep,
+        name:        onboardingStatus.currentStepInfo?.name || redirect.label,
+        description: onboardingStatus.currentStepInfo?.description || "",
+        redirectTo:  redirect.path,
+      },
+      completedSteps: onboardingStatus.completedSteps.length,
+      totalSteps: 8,
+      onboardingStatus,
+    });
+  } catch (error) {
+    console.error("Resume verify OTP error:", error);
     reply.status(500).send({ success: false, message: "Server error" });
   }
 };

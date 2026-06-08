@@ -532,10 +532,10 @@ exports.submitBusinessDetails = async (request, reply) => {
       yearsInBusiness
     } = request.body;
 
-    if (!businessName || !abn || !businessAddress) {
+    if (!businessName || !businessAddress) {
       return reply.status(400).send({
         success: false,
-        message: "Business name, ABN, and address are required"
+        message: "Business name and address are required"
       });
     }
 
@@ -1369,21 +1369,12 @@ exports.submitSellerOnboarding = async (request, reply) => {
     // KYC documents are also NOT required here — Stripe handles identity verification.
     const missingFields = [];
     if (!businessName) missingFields.push("businessName");
-    if (!abn) missingFields.push("abn");
+    // ABN is optional — not all sellers have one
     if (!businessAddress) missingFields.push("businessAddress");
     if (!businessType) missingFields.push("businessType");
     if (!storeName) missingFields.push("storeName");
     if (!storeDescription) missingFields.push("storeDescription");
     if (!storeLogo && storeLogoParts.length === 0) missingFields.push("storeLogo");
-
-    // Reject placeholder ABN values
-    const abnPlaceholders = ["n/a", "na", "none", "nil", "-", "0"];
-    if (abn && abnPlaceholders.includes(abn.trim().toLowerCase())) {
-      return reply.status(400).send({
-        success: false,
-        message: "Please enter a valid ABN. If you don't have one yet, leave the field blank."
-      });
-    }
 
     if (missingFields.length > 0) {
       return reply.status(400).send({

@@ -1,11 +1,23 @@
 /**
- * Stripe Connect controller — Australian seller onboarding
+ * Stripe Connect controller — Australian seller onboarding (Standard accounts)
  *
  * Flow:
- *  1. POST /seller-onboarding/stripe/connect        → createConnectAccount
- *  2. POST /seller-onboarding/stripe/onboarding-link → getOnboardingLink
+ *  1. GET  /seller-onboarding/stripe/oauth-url      → getOAuthUrl
+ *       Seller is redirected to stripe.com to connect/create their own Stripe account.
+ *  2. GET  /seller-onboarding/stripe/oauth-callback → handleOAuthCallback  (public)
+ *       Stripe redirects back with ?code=xxx&state=userId → exchange for stripeAccountId.
  *  3. GET  /seller-onboarding/stripe/status         → getConnectStatus
  *  4. POST /webhooks/stripe-connect                 → stripeConnectWebhook  (public, no auth)
+ *
+ * Standard accounts log in at stripe.com directly — no login-link needed.
+ *
+ * ── Prerequisites ────────────────────────────────────────────────────────────
+ * 1. In Stripe Dashboard → Settings → Connect → OAuth settings:
+ *    - Enable OAuth for Standard accounts
+ *    - Set redirect URI to: <FRONTEND_URL>/seller/stripe/callback  (or your backend callback)
+ *    - Note your Client ID (looks like ca_xxxxxxxx) → set as STRIPE_CLIENT_ID in .env
+ * 2. Add to .env:
+ *    STRIPE_CLIENT_ID=ca_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
  */
 
 const Stripe = require("stripe");
@@ -15,186 +27,149 @@ const { sendSellerStripeApprovedEmail, sendDisputeAlertEmail } = require("../uti
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. Create Stripe Express account for seller
-//    Called once; idempotent — returns existing account if already created.
+// 1. Generate Stripe OAuth URL
+//    Seller is redirected to stripe.com to connect/create their Standard account.
+//    GET /seller-onboarding/stripe/oauth-url  (auth required)
 // ─────────────────────────────────────────────────────────────────────────────
-exports.createConnectAccount = async (request, reply) => {
+exports.getOAuthUrl = async (request, reply) => {
   try {
     const userId = request.user.userId;
 
+    const profile = await prisma.sellerProfile.findUnique({
+      where: { userId },
+      select: { stripeAccountId: true },
+    });
+
+    if (!profile) {
+      return reply.status(404).send({ success: false, message: 'Seller profile not found' });
+    }
+
+    // Already connected — skip OAuth, go straight to stripe.com
+    if (profile.stripeAccountId) {
+      return reply.status(200).send({
+        success: true,
+        alreadyConnected: true,
+        message: 'Stripe account already connected. Visit stripe.com to access your dashboard.',
+      });
+    }
+
+    const clientId = process.env.STRIPE_CLIENT_ID;
+    if (!clientId) {
+      return reply.status(500).send({
+        success: false,
+        message: 'STRIPE_CLIENT_ID is not configured on the server.',
+      });
+    }
+
+    const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const redirectUri  = `${frontendBase}/seller/stripe/callback`;
+
+    // Build the OAuth authorisation URL
+    // state = userId so the callback can look up the seller
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id:     clientId,
+      scope:         'read_write',
+      redirect_uri:  redirectUri,
+      state:         userId,
+      // Pre-fill the seller's email on the Stripe signup/login page
+      'stripe_user[email]': (await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true }
+      }))?.email || '',
+      'stripe_user[country]': 'AU',
+      'stripe_user[currency]': 'aud',
+    });
+
+    const oauthUrl = `https://connect.stripe.com/oauth/authorize?${params.toString()}`;
+
+    return reply.status(200).send({
+      success: true,
+      url: oauthUrl,
+      message: 'Redirect the seller to this URL to connect their Stripe account.',
+    });
+  } catch (error) {
+    console.error('getOAuthUrl error:', error);
+    return reply.status(500).send({ success: false, message: 'Failed to generate OAuth URL', detail: error.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. Handle Stripe OAuth Callback
+//    Stripe redirects back to FRONTEND_URL/seller/stripe/callback?code=xxx&state=userId
+//    The frontend calls this backend endpoint with those params.
+//    GET /seller-onboarding/stripe/oauth-callback  (PUBLIC — no auth, verified via state)
+// ─────────────────────────────────────────────────────────────────────────────
+exports.handleOAuthCallback = async (request, reply) => {
+  try {
+    const { code, state: userId, error: oauthError, error_description } = request.query;
+
+    // Stripe sends ?error=access_denied if seller cancels
+    if (oauthError) {
+      console.warn(`⚠️  Stripe OAuth denied by seller (userId: ${userId}): ${error_description}`);
+      return reply.status(400).send({
+        success: false,
+        message: error_description || 'Stripe connection was cancelled.',
+        error: oauthError,
+      });
+    }
+
+    if (!code || !userId) {
+      return reply.status(400).send({ success: false, message: 'Missing code or state parameter.' });
+    }
+
+    // Verify the seller exists
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: { sellerProfile: true },
     });
 
     if (!user || !user.sellerProfile) {
-      return reply.status(404).send({ success: false, message: "Seller profile not found" });
+      return reply.status(404).send({ success: false, message: 'Seller not found.' });
     }
 
-    const profile = user.sellerProfile;
+    // Exchange the authorisation code for the connected account ID
+    const response = await stripe.oauth.token({
+      grant_type: 'authorization_code',
+      code,
+    });
 
-    // Already connected — just return existing account ID
-    if (profile.stripeAccountId) {
-      return reply.status(200).send({
-        success: true,
-        message: "Stripe account already connected",
-        stripeAccountId: profile.stripeAccountId,
-        stripeOnboardingComplete: profile.stripeOnboardingComplete,
-        stripeChargesEnabled: profile.stripeChargesEnabled,
-        stripePayoutsEnabled: profile.stripePayoutsEnabled,
-      });
+    const stripeAccountId = response.stripe_user_id;
+
+    if (!stripeAccountId) {
+      return reply.status(500).send({ success: false, message: 'Stripe did not return an account ID.' });
     }
 
-    // Determine business type
-    // "sole_trader" and "individual" both map to Stripe's "individual"
-    const rawType = (profile.businessType || "").toLowerCase();
-    const businessType = ["company", "non_profit"].includes(rawType) ? "company" : "individual";
+    // Fetch live status from Stripe immediately
+    const account = await stripe.accounts.retrieve(stripeAccountId);
 
-    // Parse stored business address (stored as JSON string or plain string)
-    let addressObj = {};
-    if (profile.businessAddress) {
-      try {
-        addressObj = typeof profile.businessAddress === "string"
-          ? JSON.parse(profile.businessAddress)
-          : profile.businessAddress;
-      } catch {
-        // plain string address — can't pre-fill structured fields
-      }
-    }
-
-    // Build the Stripe account payload — pre-fill everything we already have
-    // so the seller ONLY needs to add bank account + upload ID on Stripe's page.
-    const accountPayload = {
-      type: "express",
-      country: "AU",
-      email: user.email,
-      business_type: businessType,
-      capabilities: {
-        transfers: { requested: true },
-      },
-      business_profile: {
-        name: profile.businessName || profile.storeName || user.name,
-        url: profile.website || undefined,
-      },
-      settings: {
-        payouts: {
-          schedule: { interval: "manual" }, // Platform controls payout timing
-        },
-      },
-      metadata: {
-        platformUserId: userId,
-        sellerProfileId: profile.id,
-        abn: profile.abn || "",
-      },
-    };
-
-    // Pre-fill individual details (name split, address) so Stripe's form is shorter
-    if (businessType === "individual") {
-      const nameParts = (profile.contactPerson || user.name || "").trim().split(/\s+/);
-      const firstName = nameParts[0] || "";
-      const lastName = nameParts.slice(1).join(" ") || "";
-
-      accountPayload.individual = {
-        ...(firstName && { first_name: firstName }),
-        ...(lastName && { last_name: lastName }),
-        email: user.email,
-        phone: user.phone || undefined,
-        // Pre-fill address if we have structured parts
-        ...(addressObj.city && {
-          address: {
-            line1: addressObj.line1 || addressObj.street || addressObj.address || undefined,
-            city: addressObj.city || undefined,
-            state: addressObj.state || undefined,
-            postal_code: addressObj.zipCode || addressObj.postalCode || undefined,
-            country: "AU",
-          },
-        }),
-      };
-    }
-
-    // Pre-fill company details
-    if (businessType === "company") {
-      accountPayload.company = {
-        name: profile.businessName || undefined,
-        phone: user.phone || undefined,
-        tax_id: profile.abn || undefined, // ABN maps to tax_id for AU companies
-        ...(addressObj.city && {
-          address: {
-            line1: addressObj.line1 || addressObj.street || addressObj.address || undefined,
-            city: addressObj.city || undefined,
-            state: addressObj.state || undefined,
-            postal_code: addressObj.zipCode || addressObj.postalCode || undefined,
-            country: "AU",
-          },
-        }),
-      };
-    }
-
-    const account = await stripe.accounts.create(accountPayload);
-
-    // Persist the account ID immediately
+    // Persist the connected account ID + initial status
     await prisma.sellerProfile.update({
       where: { userId },
-      data: { stripeAccountId: account.id },
+      data: {
+        stripeAccountId,
+        stripeOnboardingComplete: account.details_submitted,
+        stripeChargesEnabled:     account.charges_enabled,
+        stripePayoutsEnabled:     account.payouts_enabled,
+        stripeKycStatus:          account.charges_enabled ? 'verified' : account.details_submitted ? 'pending' : 'unverified',
+        stripeAbnProvided:        account.company?.tax_id_provided || false,
+        stripeBankConnected:      (account.external_accounts?.total_count || 0) > 0,
+      },
     });
 
-    return reply.status(201).send({
-      success: true,
-      message: "Stripe Connect account created",
-      stripeAccountId: account.id,
-    });
-  } catch (error) {
-    console.error("createConnectAccount error:", error);
-    return reply.status(500).send({ success: false, message: "Failed to create Stripe account", detail: error.message });
-  }
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 2. Generate a fresh Stripe Account Link (onboarding URL)
-//    AccountLinks expire after ~24 hours so always generate fresh.
-//    Requires stripeAccountId to already exist (call createConnectAccount first).
-// ─────────────────────────────────────────────────────────────────────────────
-exports.getOnboardingLink = async (request, reply) => {
-  try {
-    const userId = request.user.userId;
-
-    const profile = await prisma.sellerProfile.findUnique({
-      where: { userId },
-      select: { stripeAccountId: true, stripeOnboardingComplete: true },
-    });
-
-    if (!profile) {
-      return reply.status(404).send({ success: false, message: "Seller profile not found" });
-    }
-
-    if (!profile.stripeAccountId) {
-      return reply.status(400).send({
-        success: false,
-        message: "No Stripe account found. Call /stripe/connect first.",
-      });
-    }
-
-    const { returnUrl, refreshUrl } = request.body;
-
-    const frontendBase = process.env.FRONTEND_URL || "http://localhost:3000";
-    const defaultReturn = `${frontendBase}/seller/dashboard?stripe=success`;
-    const defaultRefresh = `${frontendBase}/seller/dashboard/payouts?stripe=refresh`;
-
-    const accountLink = await stripe.accountLinks.create({
-      account: profile.stripeAccountId,
-      refresh_url: refreshUrl || defaultRefresh,
-      return_url: returnUrl || defaultReturn,
-      type: "account_onboarding",
-    });
+    console.log(`✅ Stripe Standard account connected — seller: ${userId}, accountId: ${stripeAccountId}`);
 
     return reply.status(200).send({
       success: true,
-      url: accountLink.url,
-      expiresAt: accountLink.expires_at,
+      message: 'Stripe account connected successfully.',
+      stripeAccountId,
+      stripeChargesEnabled: account.charges_enabled,
+      stripePayoutsEnabled: account.payouts_enabled,
+      stripeOnboardingComplete: account.details_submitted,
     });
   } catch (error) {
-    console.error("getOnboardingLink error:", error);
-    return reply.status(500).send({ success: false, message: "Failed to generate onboarding link", detail: error.message });
+    console.error('handleOAuthCallback error:', error);
+    return reply.status(500).send({ success: false, message: 'Failed to complete Stripe connection.', detail: error.message });
   }
 };
 
@@ -232,8 +207,8 @@ exports.getConnectStatus = async (request, reply) => {
     // Live-check with Stripe to get latest status
     const account = await stripe.accounts.retrieve(profile.stripeAccountId);
 
-    // KYC verification status — for Express accounts, charges_enabled is the real indicator.
-    // individual.verification.status is often "unverified" on Express even when fully approved.
+    // KYC verification status — charges_enabled is the reliable readiness signal
+    // for whether this connected account can accept charges/transfers.
     let stripeKycStatus;
     if (account.charges_enabled) {
       stripeKycStatus = "verified";
@@ -316,8 +291,10 @@ exports.stripeConnectWebhook = async (request, reply) => {
       // Fetch existing record to detect the charges_enabled flip
       const existing = await prisma.sellerProfile.findFirst({
         where: { stripeAccountId: account.id },
-        select: { stripeChargesEnabled: true, user: { select: { email: true, name: true } } },
-        include: { user: { select: { email: true, name: true } } },
+        select: {
+          stripeChargesEnabled: true,
+          user: { select: { email: true, name: true } },
+        },
       });
 
       await prisma.sellerProfile.updateMany({
@@ -481,51 +458,36 @@ exports.createSellerTransfer = async (sellerUserId, amountAUD, description = "Se
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /seller-onboarding/stripe/login-link
-// Returns a one-time Stripe Express dashboard login URL for the authenticated seller
+// Standard accounts log in at stripe.com directly.
+// This endpoint just confirms the account is connected and returns the URL.
 // ─────────────────────────────────────────────────────────────────────────────
 exports.getSellerLoginLink = async (request, reply) => {
   try {
     const userId = request.user.userId;
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: { sellerProfile: true },
+    const profile = await prisma.sellerProfile.findUnique({
+      where: { userId },
+      select: { stripeAccountId: true, stripeOnboardingComplete: true },
     });
 
-    if (!user || !user.sellerProfile) {
-      return reply.status(404).send({ success: false, message: 'Seller profile not found.' });
-    }
-
-    const profile = user.sellerProfile;
-
-    if (!profile.stripeAccountId) {
+    if (!profile?.stripeAccountId) {
       return reply.status(400).send({
         success: false,
         message: 'No Stripe account linked. Please complete Stripe Connect onboarding first.'
       });
     }
 
-    if (!profile.stripeOnboardingComplete) {
-      return reply.status(400).send({
-        success: false,
-        message: 'Stripe onboarding is not yet complete. Please finish the onboarding process.'
-      });
-    }
-
-    const loginLink = await stripe.accounts.createLoginLink(profile.stripeAccountId);
-
+    // Standard accounts — seller logs in at stripe.com with their own credentials.
+    // No login-link API call needed.
     return reply.send({
       success: true,
-      url: loginLink.url,
-      message: 'Stripe dashboard login link generated. This link is valid for a few minutes.'
+      url: 'https://dashboard.stripe.com/login',
+      dashboardType: 'standard',
+      message: 'Log in at stripe.com with the email you used during Stripe Connect setup.',
+      stripeAccountId: profile.stripeAccountId,
     });
   } catch (err) {
     console.error('❌ getSellerLoginLink error:', err);
-
-    if (err.type === 'StripeInvalidRequestError') {
-      return reply.status(400).send({ success: false, message: err.message });
-    }
-
-    return reply.status(500).send({ success: false, message: 'Failed to generate Stripe login link.' });
+    return reply.status(500).send({ success: false, message: 'Failed to get Stripe login info.' });
   }
 };

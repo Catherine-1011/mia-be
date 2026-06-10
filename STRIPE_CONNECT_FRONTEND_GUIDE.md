@@ -1,6 +1,11 @@
 # Stripe Connect — Frontend Implementation Guide
 ## Australian Seller Onboarding
 
+> Current implementation note: this guide describes the old Stripe Express onboarding flow.
+> The backend now uses Stripe Standard OAuth. Use `STRIPE_STANDARD_FRONTEND_MIGRATION.md` for the active frontend contract:
+> `GET /api/seller-onboarding/stripe/oauth-url`, `GET /api/seller-onboarding/stripe/oauth-callback`,
+> `GET /api/seller-onboarding/stripe/status`, and `GET /api/seller-onboarding/stripe/login-link`.
+
 ---
 
 ## The Big Question: What Does Stripe Handle vs Your Platform?

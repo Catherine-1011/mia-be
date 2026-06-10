@@ -1510,7 +1510,7 @@ exports.submitSellerOnboarding = async (request, reply) => {
     if (!businessType) missingFields.push("businessType");
     if (!storeName) missingFields.push("storeName");
     if (!storeDescription) missingFields.push("storeDescription");
-    if (!storeLogo && storeLogoParts.length === 0) missingFields.push("storeLogo");
+    // storeLogo is optional — seller can add it later from their dashboard
 
     if (missingFields.length > 0) {
       return reply.status(400).send({

@@ -70,18 +70,18 @@ async function sellerOnboardingRoutes(fastify, options) {
   // Dashboard: full history of bank change requests for this seller
   fastify.get("/bank-change-requests", { preHandler: authenticateSeller }, sellerController.getBankChangeHistory);
 
-  // ==================== STRIPE CONNECT ROUTES (Auth Required) ====================
+  // ==================== STRIPE CONNECT ROUTES (Standard OAuth — Auth Required) ====================
 
-  // Step 7 (Stripe path): Create Stripe Express account for seller (AU)
-  fastify.post("/stripe/connect", { preHandler: authenticateSeller }, stripeConnectController.createConnectAccount);
+  // Step 1: Generate Stripe OAuth URL → redirect seller to stripe.com to connect their account
+  fastify.get("/stripe/oauth-url", { preHandler: authenticateSeller }, stripeConnectController.getOAuthUrl);
 
-  // Get fresh Stripe-hosted onboarding URL (AccountLink expires ~24h)
-  fastify.post("/stripe/onboarding-link", { preHandler: authenticateSeller }, stripeConnectController.getOnboardingLink);
+  // Step 2: Handle OAuth callback — exchange code for stripeAccountId (PUBLIC — no auth, verified via state)
+  fastify.get("/stripe/oauth-callback", stripeConnectController.handleOAuthCallback);
 
   // Check current Stripe Connect status (live-synced with Stripe)
   fastify.get("/stripe/status", { preHandler: authenticateSeller }, stripeConnectController.getConnectStatus);
 
-  // Get a one-time Stripe Express dashboard login link
+  // Get Stripe dashboard URL (Standard accounts log in at stripe.com directly)
   fastify.get("/stripe/login-link", { preHandler: authenticateSeller }, stripeConnectController.getSellerLoginLink);
 
   // Submit Application for Review

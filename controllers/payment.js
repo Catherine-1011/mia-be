@@ -34,6 +34,44 @@ const { calculateSellerPayout } = require("../utils/commissionCalculator");
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+const STRIPE_DESCRIPTION_MAX_LENGTH = 255;
+
+function truncateStripeDescription(value) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (text.length <= STRIPE_DESCRIPTION_MAX_LENGTH) return text;
+  return `${text.slice(0, STRIPE_DESCRIPTION_MAX_LENGTH - 3).trim()}...`;
+}
+
+function buildItemSummary(items = [], maxItems = 3) {
+  const summary = items
+    .map((item) => {
+      const title = item.product?.title || item.title || "Item";
+      const qty = item.quantity || 1;
+      return `${qty}x ${title}`;
+    })
+    .filter(Boolean);
+
+  if (summary.length <= maxItems) return summary.join(", ");
+  return `${summary.slice(0, maxItems).join(", ")} +${summary.length - maxItems} more`;
+}
+
+function buildSellerTransactionDescription({
+  order,
+  customerName,
+  customerEmail,
+  items = [],
+  amount,
+  label = "Seller payout",
+}) {
+  const displayId = order?.displayId || order?.id || "unknown";
+  const itemSummary = buildItemSummary(items);
+  const amountText = amount !== undefined && amount !== null ? ` | Amount A$${Number(amount).toFixed(2)}` : "";
+  const customerBits = [customerName, customerEmail].filter(Boolean).join(" / ");
+  return truncateStripeDescription(
+    `Order ${displayId} | ${label} | Customer: ${customerBits || "N/A"} | Items: ${itemSummary || "Order items"}${amountText}`
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // STEP 1 — Create Stripe PaymentIntent + Pending Order
 // POST /api/payments/create-intent
@@ -279,15 +317,32 @@ exports.createPaymentIntent = async (request, reply) => {
       });
     }
 
+    const stripeOrderDescription = buildSellerTransactionDescription({
+      order,
+      customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      items: cart.items,
+      amount: totalAmount,
+      label: "Made in Arnhem Land",
+    });
+
     // Update PaymentIntent metadata with order ID so it's visible in Stripe Dashboard
     await stripe.paymentIntents.update(paymentIntent.id, {
       metadata: {
         userId,
-        cartId:    cart.id,
-        orderId:   order.id,
-        displayId: order.displayId,
+        cartId:       cart.id,
+        orderId:      order.id,
+        displayId:    order.displayId,
+        customerName: order.customerName || "",
+        customerEmail: order.customerEmail || "",
+        itemSummary:  buildItemSummary(cart.items),
+        orderTotal:   totalAmount.toFixed(2),
       },
       description: `Order ${order.displayId} — Made in Arnhem Land`,
+    });
+
+    await stripe.paymentIntents.update(paymentIntent.id, {
+      description: stripeOrderDescription,
     });
 
     return reply.status(200).send({
@@ -809,6 +864,13 @@ async function handlePaymentSucceeded(paymentIntentId) {
     const itemCount = sellerItems.reduce((s, i) => s + i.quantity, 0);
     const itemTotal = sellerItems.reduce((s, i) => s + Number(i.price) * i.quantity, 0);
     const productNames = sellerItems.map(i => i.product?.title).filter(Boolean);
+    const sellerTransactionDescription = buildSellerTransactionDescription({
+      order,
+      customerName: toName,
+      customerEmail: order.customerEmail,
+      items: sellerItems,
+      label: "Seller payout",
+    });
     createOrderNotification(order.id, sid, 'ORDER_PROCESSING', 'HIGH', {
       message: `New order received from ${toName}`,
       notes: `${itemCount} item(s), Total: $${itemTotal.toFixed(2)}`
@@ -875,6 +937,17 @@ async function handlePaymentSucceeded(paymentIntentId) {
         try {
           if (latestChargeId) {
             const charge = await stripe.charges.retrieve(latestChargeId);
+            await stripe.charges.update(latestChargeId, {
+              description: sellerTransactionDescription,
+              metadata: {
+                orderId:       order.id,
+                displayId:     order.displayId || order.id,
+                sellerId:      sid,
+                customerName:  toName,
+                customerEmail: order.customerEmail || "",
+                itemSummary:   buildItemSummary(sellerItems),
+              },
+            });
             const autoTransferId = charge.transfer;
             if (autoTransferId) {
               await stripe.transfers.update(autoTransferId, {
@@ -886,6 +959,17 @@ async function handlePaymentSucceeded(paymentIntentId) {
                 },
               });
               console.log(`📝 Transfer description updated — transferId: ${autoTransferId}, order: ${order.displayId}`);
+              await stripe.transfers.update(autoTransferId, {
+                description: sellerTransactionDescription,
+                metadata: {
+                  orderId:       order.id,
+                  displayId:     order.displayId || order.id,
+                  sellerId:      sid,
+                  customerName:  toName,
+                  customerEmail: order.customerEmail || "",
+                  itemSummary:   buildItemSummary(sellerItems),
+                },
+              });
               if (commissionEarnedId) {
                 await prisma.$executeRaw`
                   UPDATE commission_earned
@@ -940,6 +1024,15 @@ async function handlePaymentSucceeded(paymentIntentId) {
             return;
           }
 
+          const payoutTransactionDescription = buildSellerTransactionDescription({
+            order,
+            customerName: toName,
+            customerEmail: order.customerEmail,
+            items: sellerItems,
+            amount: payout.sellerTotalPayout,
+            label: "Seller payout",
+          });
+
           const transfer = await stripe.transfers.create({
             amount:      payout.sellerTotalPayoutCents,
             currency:    "aud",
@@ -953,10 +1046,18 @@ async function handlePaymentSucceeded(paymentIntentId) {
               gstAmount:          payout.gstAmount.toString(),
               shippingAmount:     payout.shippingAmount.toString(),
               sellerTotalPayout:  payout.sellerTotalPayout.toString(),
+              displayId:          order.displayId || order.id,
+              customerName:       toName,
+              customerEmail:      order.customerEmail || "",
+              itemSummary:        buildItemSummary(sellerItems),
             },
           });
 
           console.log(`💸 Transfer created — seller: ${sid}, amount: $${payout.sellerTotalPayout}, transferId: ${transfer.id}`);
+
+          await stripe.transfers.update(transfer.id, {
+            description: payoutTransactionDescription,
+          });
 
           // Notify seller by email (non-blocking)
           const sellerEmail = sellerProfile.user?.email;
@@ -1295,14 +1396,30 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     console.log(`✅ Guest Stripe PaymentIntent created: ${paymentIntent.id}, order: ${order.id}`);
 
     // Update PaymentIntent metadata with order ID so it's visible in Stripe Dashboard
+    const guestStripeOrderDescription = buildSellerTransactionDescription({
+      order,
+      customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      items: cartItems,
+      amount: totalAmount,
+      label: "Made in Arnhem Land guest order",
+    });
+
     await stripe.paymentIntents.update(paymentIntent.id, {
       metadata: {
         isGuest:      "true",
         customerEmail,
         orderId:      order.id,
         displayId:    order.displayId,
+        customerName: order.customerName || "",
+        itemSummary:  buildItemSummary(cartItems),
+        orderTotal:   totalAmount.toFixed(2),
       },
       description: `Order ${order.displayId} — Made in Arnhem Land (Guest)`,
+    });
+
+    await stripe.paymentIntents.update(paymentIntent.id, {
+      description: guestStripeOrderDescription,
     });
 
     return reply.status(200).send({

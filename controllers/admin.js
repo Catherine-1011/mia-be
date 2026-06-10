@@ -8,6 +8,23 @@ const fs = require('fs');
 const path = require('path');
 const { pipeline } = require('stream/promises');
 
+const STRIPE_DESCRIPTION_MAX_LENGTH = 255;
+
+function truncateStripeDescription(value) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (text.length <= STRIPE_DESCRIPTION_MAX_LENGTH) return text;
+  return `${text.slice(0, STRIPE_DESCRIPTION_MAX_LENGTH - 3).trim()}...`;
+}
+
+function buildRetryTransferDescription({ order, customerName, customerEmail, itemSummary, amount }) {
+  const displayId = order?.displayId || order?.id || "unknown";
+  const amountText = amount !== undefined && amount !== null ? ` | Amount A$${Number(amount).toFixed(2)}` : "";
+  const customerBits = [customerName, customerEmail].filter(Boolean).join(" / ");
+  return truncateStripeDescription(
+    `Order ${displayId} | Retry seller payout | Customer: ${customerBits || "N/A"} | Items: ${itemSummary || "Order items"}${amountText}`
+  );
+}
+
 // ── Role helper ───────────────────────────────────────────────────────────────
 // SUPER_ADMIN has all the same operational rights as ADMIN.
 // Use this everywhere instead of hardcoding role === 'ADMIN'.
@@ -2640,20 +2657,51 @@ exports.retrySellerTransfers = async (request, reply) => {
 
         // Get the charge ID from the order's PaymentIntent (needed for source_transaction)
         let latestChargeId = null;
+        let orderForDescription = null;
+        let itemSummary = "";
         if (row.order_id) {
           try {
             const order = await prisma.order.findUnique({
               where: { id: row.order_id },
-              select: { stripePaymentIntentId: true },
+              select: {
+                id: true,
+                displayId: true,
+                stripePaymentIntentId: true,
+                customerName: true,
+                customerEmail: true,
+              },
             });
+            orderForDescription = order;
             if (order?.stripePaymentIntentId) {
               const pi = await stripe.paymentIntents.retrieve(order.stripePaymentIntentId);
               latestChargeId = pi.latest_charge || null;
             }
+            const orderItems = await prisma.orderItem.findMany({
+              where: {
+                OR: [
+                  { orderId: row.order_id },
+                  { subOrder: { is: { parentOrderId: row.order_id, sellerId } } },
+                ],
+              },
+              include: { product: { select: { title: true } } },
+              take: 4,
+            });
+            const itemParts = orderItems.map(item => `${item.quantity}x ${item.product?.title || "Item"}`);
+            itemSummary = itemParts.length > 3
+              ? `${itemParts.slice(0, 3).join(", ")} +${itemParts.length - 3} more`
+              : itemParts.join(", ");
           } catch (e) {
             console.warn(`Could not retrieve charge ID for order ${row.order_id}: ${e.message}`);
           }
         }
+
+        const retryDescription = buildRetryTransferDescription({
+          order: orderForDescription || { id: row.order_id },
+          customerName: orderForDescription?.customerName,
+          customerEmail: orderForDescription?.customerEmail,
+          itemSummary,
+          amount: payout.sellerTotalPayout,
+        });
 
         const transfer = await stripe.transfers.create({
           amount: payout.sellerTotalPayoutCents,
@@ -2663,11 +2711,19 @@ exports.retrySellerTransfers = async (request, reply) => {
           description: `Retry payout — order ${row.order_id}`,
           metadata: {
             orderId: row.order_id || "",
+            displayId: orderForDescription?.displayId || "",
             sellerId,
+            customerName: orderForDescription?.customerName || "",
+            customerEmail: orderForDescription?.customerEmail || "",
+            itemSummary,
             commissionAmount: payout.commissionAmount.toString(),
             sellerTotalPayout: payout.sellerTotalPayout.toString(),
             retried: "true",
           },
+        });
+
+        await stripe.transfers.update(transfer.id, {
+          description: retryDescription,
         });
 
         await prisma.$executeRaw`

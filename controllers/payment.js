@@ -77,6 +77,39 @@ function buildSellerTransactionDescription({
   );
 }
 
+function stripeMetadataValue(value) {
+  return String(value ?? "").slice(0, 500);
+}
+
+function buildSellerStripeOrderMetadata({ order, sellerId, customerName, customerEmail, items = [], amount }) {
+  const itemCount = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+  return {
+    orderId:       stripeMetadataValue(order?.id),
+    displayId:     stripeMetadataValue(order?.displayId || order?.id),
+    sellerId:      stripeMetadataValue(sellerId),
+    customerName:  stripeMetadataValue(customerName || order?.customerName),
+    customerEmail: stripeMetadataValue(customerEmail || order?.customerEmail),
+    customerPhone: stripeMetadataValue(order?.customerPhone),
+    itemSummary:   stripeMetadataValue(buildItemSummary(items)),
+    itemCount:     stripeMetadataValue(itemCount),
+    orderTotal:    amount !== undefined && amount !== null ? Number(amount).toFixed(2) : "",
+  };
+}
+
+async function updateConnectedAccountDestinationPayment({ transferId, stripeAccountId, description, metadata }) {
+  if (!transferId || !stripeAccountId) return;
+
+  const transfer = await stripe.transfers.retrieve(transferId);
+  const destinationPaymentId = transfer.destination_payment;
+  if (!destinationPaymentId) return;
+
+  await stripe.charges.update(
+    destinationPaymentId,
+    { description, metadata },
+    { stripeAccount: stripeAccountId }
+  );
+}
+
 async function getOrderStripeAccountId(order) {
   if (!order?.sellerId) return null;
   const sellerProfile = await prisma.sellerProfile.findUnique({
@@ -1000,11 +1033,19 @@ async function handlePaymentSucceeded(paymentIntentId) {
     // piChargeType is resolved once above (from the single PaymentIntent retrieval)
     // so this never triggers a redundant Stripe API call inside the seller loop.
     const isDirectCharge = piChargeType === 'direct';
+    const sellerStripeMetadata = buildSellerStripeOrderMetadata({
+      order,
+      sellerId: sid,
+      customerName: toName,
+      customerEmail: order.customerEmail,
+      items: sellerItems,
+      amount: itemTotal,
+    });
 
     if (isDirectCharge) {
       // Direct Charge — Stripe handled payout automatically.
-      // Update the auto-generated transfer with order description + metadata
-      // so it appears correctly in the seller's Express dashboard.
+      // Update the auto-generated transfer and destination payment with order
+      // details so the seller sees useful context in their Standard dashboard.
       (async () => {
         try {
           if (latestChargeId) {
@@ -1014,37 +1055,25 @@ async function handlePaymentSucceeded(paymentIntentId) {
             const charge = await stripe.charges.retrieve(latestChargeId, stripeAccountOptions);
             await stripe.charges.update(latestChargeId, {
               description: sellerTransactionDescription,
-              metadata: {
-                orderId:       order.id,
-                displayId:     order.displayId || order.id,
-                sellerId:      sid,
-                customerName:  toName,
-                customerEmail: order.customerEmail || "",
-                itemSummary:   buildItemSummary(sellerItems),
-              },
+              metadata: sellerStripeMetadata,
             }, stripeAccountOptions);
             const autoTransferId = charge.transfer;
             if (autoTransferId) {
               await stripe.transfers.update(autoTransferId, {
-                description: `Order ${order.displayId || order.id} — seller payout`,
-                metadata: {
-                  orderId:   order.id,
-                  displayId: order.displayId || order.id,
-                  sellerId:  sid,
-                },
-              });
-              console.log(`📝 Transfer description updated — transferId: ${autoTransferId}, order: ${order.displayId}`);
-              await stripe.transfers.update(autoTransferId, {
                 description: sellerTransactionDescription,
-                metadata: {
-                  orderId:       order.id,
-                  displayId:     order.displayId || order.id,
-                  sellerId:      sid,
-                  customerName:  toName,
-                  customerEmail: order.customerEmail || "",
-                  itemSummary:   buildItemSummary(sellerItems),
-                },
+                metadata: sellerStripeMetadata,
               });
+              const sellerProfile = await prisma.sellerProfile.findUnique({
+                where: { userId: sid },
+                select: { stripeAccountId: true },
+              });
+              await updateConnectedAccountDestinationPayment({
+                transferId: autoTransferId,
+                stripeAccountId: sellerProfile?.stripeAccountId,
+                description: sellerTransactionDescription,
+                metadata: sellerStripeMetadata,
+              });
+              console.log(`📝 Seller Stripe payment updated — transferId: ${autoTransferId}, order: ${order.displayId}`);
               if (commissionEarnedId) {
                 await prisma.$executeRaw`
                   UPDATE commission_earned
@@ -1123,16 +1152,13 @@ async function handlePaymentSucceeded(paymentIntentId) {
             ...(latestChargeId && { source_transaction: latestChargeId }),
             description: payoutTransactionDescription,
             metadata: {
+              ...sellerStripeMetadata,
               orderId:            order.id,
               sellerId:           sid,
               commissionAmount:   payout.commissionAmount.toString(),
               gstAmount:          payout.gstAmount.toString(),
               shippingAmount:     payout.shippingAmount.toString(),
               sellerTotalPayout:  payout.sellerTotalPayout.toString(),
-              displayId:          order.displayId || order.id,
-              customerName:       toName,
-              customerEmail:      order.customerEmail || "",
-              itemSummary:        buildItemSummary(sellerItems),
             },
           });
 
@@ -1140,6 +1166,19 @@ async function handlePaymentSucceeded(paymentIntentId) {
 
           await stripe.transfers.update(transfer.id, {
             description: payoutTransactionDescription,
+          });
+
+          await updateConnectedAccountDestinationPayment({
+            transferId: transfer.id,
+            stripeAccountId: sellerProfile.stripeAccountId,
+            description: payoutTransactionDescription,
+            metadata: {
+              ...sellerStripeMetadata,
+              commissionAmount:  payout.commissionAmount.toString(),
+              gstAmount:         payout.gstAmount.toString(),
+              shippingAmount:    payout.shippingAmount.toString(),
+              sellerTotalPayout: payout.sellerTotalPayout.toString(),
+            },
           });
 
           // Notify seller by email (non-blocking)

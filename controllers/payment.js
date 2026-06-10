@@ -390,6 +390,21 @@ exports.createPaymentIntent = async (request, reply) => {
       label: "Made in Arnhem Land",
     });
 
+    if (paymentIntentStripeAccountId) {
+      await stripe.paymentIntents.update(paymentIntent.id, {
+        metadata: {
+          userId,
+          cartId:       cart.id,
+          orderId:      order.id,
+          displayId:    order.displayId,
+          customerName: order.customerName || "",
+          customerEmail: order.customerEmail || "",
+          itemSummary:  buildItemSummary(cart.items),
+          orderTotal:   totalAmount.toFixed(2),
+        },
+        description: stripeOrderDescription,
+      }, paymentIntentCreateOptions);
+    } else {
     // Update PaymentIntent metadata with order ID so it's visible in Stripe Dashboard
     await stripe.paymentIntents.update(paymentIntent.id, {
       metadata: {
@@ -408,6 +423,7 @@ exports.createPaymentIntent = async (request, reply) => {
     await stripe.paymentIntents.update(paymentIntent.id, {
       description: stripeOrderDescription,
     });
+    }
 
     return reply.status(200).send({
       success: true,
@@ -1526,6 +1542,20 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       label: "Made in Arnhem Land guest order",
     });
 
+    if (guestPaymentIntentStripeAccountId) {
+      await stripe.paymentIntents.update(paymentIntent.id, {
+        metadata: {
+          isGuest:      "true",
+          customerEmail,
+          orderId:      order.id,
+          displayId:    order.displayId,
+          customerName: order.customerName || "",
+          itemSummary:  buildItemSummary(cartItems),
+          orderTotal:   totalAmount.toFixed(2),
+        },
+        description: guestStripeOrderDescription,
+      }, guestPaymentIntentCreateOptions);
+    } else {
     await stripe.paymentIntents.update(paymentIntent.id, {
       metadata: {
         isGuest:      "true",
@@ -1542,6 +1572,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     await stripe.paymentIntents.update(paymentIntent.id, {
       description: guestStripeOrderDescription,
     });
+    }
 
     return reply.status(200).send({
       success: true,

@@ -2633,14 +2633,10 @@ exports.retrySellerTransfers = async (request, reply) => {
       return reply.status(200).send({ success: true, message: "No pending transfers found", retried: 0 });
     }
 
-    // Resolve commission rate once
-    const sellerCommission = await getCommissionForSeller(sellerId).catch(() => null);
-    const defaultCommission = await getDefaultCommission().catch(() => null);
-    const commissionRatePct = sellerCommission
-      ? parseFloat(sellerCommission.value)
-      : defaultCommission
-        ? parseFloat(defaultCommission.value)
-        : 10;
+    // Use the commission captured on the original order if available so the
+    // seller's payout does not change when commission settings are updated later.
+    const fallbackSellerCommission = await getCommissionForSeller(sellerId).catch(() => null);
+    const fallbackDefaultCommission = await getDefaultCommission().catch(() => null);
 
     const results = [];
 
@@ -2648,6 +2644,14 @@ exports.retrySellerTransfers = async (request, reply) => {
       try {
         const productTotal = parseFloat(row.order_value);
         const shippingAmount = parseFloat(row.shipping_amount || 0);
+        const storedCommissionRate = parseFloat(row.commission_rate);
+        const commissionRatePct = Number.isFinite(storedCommissionRate)
+          ? storedCommissionRate
+          : fallbackSellerCommission
+            ? parseFloat(fallbackSellerCommission.value)
+            : fallbackDefaultCommission
+              ? parseFloat(fallbackDefaultCommission.value)
+              : 10;
         const payout = calculateSellerPayout(productTotal, shippingAmount, commissionRatePct);
 
         if (payout.sellerTotalPayoutCents <= 0) {

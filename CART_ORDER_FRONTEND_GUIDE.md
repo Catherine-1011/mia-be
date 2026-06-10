@@ -134,12 +134,12 @@ const variantLabel = item.variant
 
 ---
 
-## 5. Place Order
+## 5. Place Order With Stripe
 
-### `POST /api/orders/create`
+### `POST /api/payments/create-intent`
 **Headers:** `Authorization: Bearer <token>`, `Content-Type: application/json`
 
-The cart is read server-side — you do **not** pass cart items in the body. Just pass checkout details:
+The cart is read server-side — you do **not** pass cart items in the body. Create the Stripe PaymentIntent first, then mount Stripe's Payment Element with the returned `clientSecret`:
 
 ```json
 {
@@ -155,46 +155,105 @@ The cart is read server-side — you do **not** pass cart items in the body. Jus
   "zipCode": "400001",
   "country": "India",
   "mobileNumber": "9876543210",
-  "paymentMethod": "STRIPE",
   "shippingMethodId": "shipping-method-id-here",
   "gstId": "gst-id-here",
   "couponCode": "SAVE10"
 }
 ```
 
-**Required fields:** `shippingAddress`, `paymentMethod`, `shippingMethodId`  
+**Required fields:** `shippingAddress`, `shippingMethodId`<br>
 **Optional:** `gstId`, `couponCode`, `city`, `state`, `zipCode`, `country`, `mobileNumber`
 
-**Payment method:** Only `"STRIPE"` is accepted.
-
-#### Response (single seller):
+#### Response:
 ```json
 {
   "success": true,
-  "order": {
-    "id": "...",
-    "displayId": "AB12CD",
-    "totalAmount": 990.00,
-    "overallStatus": "CONFIRMED",
-    "paymentStatus": "PENDING"
-  }
+  "clientSecret": "pi_xxx_secret_xxx",
+  "paymentIntentId": "pi_xxx",
+  "stripeAccountId": "acct_xxx or null",
+  "orderId": "...",
+  "displayId": "AB12CD",
+  "amount": 99000,
+  "displayAmount": 990.00,
+  "currency": "aud",
+  "orderSummary": { "subtotal": "...", "shippingCost": "...", "gstAmount": "...", "grandTotal": "..." }
 }
 ```
 
-#### Response (multi-seller):
-```json
-{
-  "success": true,
-  "order": {
-    "id": "...",
-    "displayId": "AB12CD",
-    "subOrders": [
-      { "id": "...", "subDisplayId": "AB12CD-A", "sellerId": "..." },
-      { "id": "...", "subDisplayId": "AB12CD-B", "sellerId": "..." }
-    ]
+### Required Payment Element flow
+
+Do not call `stripe.confirmPayment()` on the same screen state that creates the intent unless a Payment Element has already mounted. The correct flow is:
+
+```jsx
+import { useState } from "react";
+import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
+import { loadStripe } from "@stripe/stripe-js";
+
+function CheckoutPage() {
+  const [payment, setPayment] = useState(null);
+
+  async function createIntent() {
+    const response = await api.post("/api/payments/create-intent", checkoutPayload);
+    const intent = response.data;
+    const stripePromise = loadStripe(
+      import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY,
+      intent.stripeAccountId ? { stripeAccount: intent.stripeAccountId } : undefined
+    );
+
+    setPayment({ ...intent, stripePromise });
   }
+
+  if (!payment?.clientSecret) {
+    return <button onClick={createIntent}>Continue to payment</button>;
+  }
+
+  return (
+    <Elements
+      key={`${payment.clientSecret}:${payment.stripeAccountId || "platform"}`}
+      stripe={payment.stripePromise}
+      options={{ clientSecret: payment.clientSecret }}
+    >
+      <PaymentForm paymentIntentId={payment.paymentIntentId} />
+    </Elements>
+  );
+}
+
+function PaymentForm({ paymentIntentId }) {
+  const stripe = useStripe();
+  const elements = useElements();
+
+  async function submitPayment(event) {
+    event.preventDefault();
+    if (!stripe || !elements) return;
+
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: "if_required",
+      confirmParams: {
+        return_url: `${window.location.origin}/order-success`,
+      },
+    });
+
+    if (error) {
+      // Show error.message in the UI.
+      return;
+    }
+
+    if (paymentIntent?.status === "succeeded") {
+      await api.post("/api/payments/confirm", { paymentIntentId });
+    }
+  }
+
+  return (
+    <form onSubmit={submitPayment}>
+      <PaymentElement />
+      <button disabled={!stripe || !elements}>Place order</button>
+    </form>
+  );
 }
 ```
+
+If `stripeAccountId` is returned, it must be passed to `loadStripe`. The `Elements` tree must also remount when the `clientSecret` or account changes, which is why the example uses a `key`.
 
 ---
 
@@ -218,8 +277,10 @@ The cart is read server-side — you do **not** pass cart items in the body. Jus
    └─ GET /api/cart/my-cart?shippingMethodId=xxx  → show updated grand total
 
 5. Place Order
-   └─ POST /api/orders/create  { shippingAddress, paymentMethod, shippingMethodId, ... }
-   └─ Redirect to payment (Stripe) with returned order.id
+   └─ POST /api/payments/create-intent  { shippingAddress, shippingMethodId, ... }
+   └─ Mount <Elements options={{ clientSecret }}> with <PaymentElement />
+   └─ Call stripe.confirmPayment({ elements, ... }) only after the Payment Element is mounted
+   └─ POST /api/payments/confirm after Stripe succeeds
 ```
 
 ---
@@ -247,3 +308,4 @@ Disable the "Add to Cart" button if the selected variant has `stock === 0`.
 | `Cannot add more than available stock (N)` | Requested qty > variant stock | Cap qty input to `variant.stock` |
 | `Insufficient stock for product: X` | Stock ran out between cart add and order | Refresh cart and show stock warning |
 | `Invalid or inactive shipping method` | shippingMethodId not found | Fetch fresh from `/api/cart/checkout-options` |
+| `Invalid value for stripe.confirmPayment(): elements should have a mounted Payment Element or Express Checkout Element` | `confirmPayment` was called before `<PaymentElement />` mounted, or `Elements` was initialized without the returned `clientSecret` | Create the intent first, render `<Elements options={{ clientSecret }}>` and `<PaymentElement />`, then call `confirmPayment` from inside that mounted form |

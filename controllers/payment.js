@@ -34,10 +34,9 @@ const { calculateSellerPayout } = require("../utils/commissionCalculator");
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// Destination charges show Stripe-generated "Payment from <platform>" text in
-// Express. Use platform charges + described transfers so sellers can see order
-// and customer context in their dashboard transaction rows.
-const USE_DESTINATION_CHARGES_FOR_SINGLE_SELLER = false;
+// Direct connected-account charges are the reliable way to control the
+// seller Express "Payment" row description.
+const USE_DIRECT_CHARGES_FOR_SINGLE_SELLER = true;
 
 const STRIPE_DESCRIPTION_MAX_LENGTH = 255;
 
@@ -75,6 +74,33 @@ function buildSellerTransactionDescription({
   return truncateStripeDescription(
     `Order ${displayId} | ${label} | Customer: ${customerBits || "N/A"} | Items: ${itemSummary || "Order items"}${amountText}`
   );
+}
+
+async function getOrderStripeAccountId(order) {
+  if (!order?.sellerId) return null;
+  const sellerProfile = await prisma.sellerProfile.findUnique({
+    where: { userId: order.sellerId },
+    select: { stripeAccountId: true },
+  });
+  return sellerProfile?.stripeAccountId || null;
+}
+
+async function retrievePaymentIntentForOrder(paymentIntentId, order) {
+  try {
+    return {
+      paymentIntent: await stripe.paymentIntents.retrieve(paymentIntentId),
+      stripeAccountId: null,
+    };
+  } catch (platformErr) {
+    const stripeAccountId = await getOrderStripeAccountId(order);
+    if (!stripeAccountId) throw platformErr;
+    return {
+      paymentIntent: await stripe.paymentIntents.retrieve(paymentIntentId, {
+        stripeAccount: stripeAccountId,
+      }),
+      stripeAccountId,
+    };
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -180,13 +206,24 @@ exports.createPaymentIntent = async (request, reply) => {
       sellerItemsMap.get(sid).push(item);
     }
     const isMultiSeller = sellerItemsMap.size > 1;
+    const displayId = await generateDisplayId();
+    const destinationPaymentDescription = buildSellerTransactionDescription({
+      order: { id: displayId, displayId },
+      customerName: user.isDeleted ? 'Deleted User' : user.name,
+      customerEmail: user.email,
+      items: cart.items,
+      amount: totalAmount,
+      label: "Seller payment",
+    });
 
     // For single-seller: use Direct Charges — payment goes straight to seller's
     // connected account, ALPA takes application_fee automatically.
     // For multi-seller: fall back to Separate Charges + Transfers (Stripe limitation:
     // a single PaymentIntent can only have one transfer_data destination).
     let directChargeParams = {};
-    if (!isMultiSeller && USE_DESTINATION_CHARGES_FOR_SINGLE_SELLER) {
+    let paymentIntentCreateOptions = {};
+    let paymentIntentStripeAccountId = null;
+    if (!isMultiSeller && USE_DIRECT_CHARGES_FOR_SINGLE_SELLER) {
       const [singleSellerId] = sellerItemsMap.keys();
       const sellerProfile = await prisma.sellerProfile.findUnique({
         where:  { userId: singleSellerId },
@@ -202,6 +239,8 @@ exports.createPaymentIntent = async (request, reply) => {
         const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
         // Check if seller has card_payments capability before using on_behalf_of
         // (requires full KYC — falls back to destination charge if not yet enabled)
+        paymentIntentStripeAccountId = sellerProfile.stripeAccountId;
+        paymentIntentCreateOptions = { stripeAccount: sellerProfile.stripeAccountId };
         let cardPaymentsActive = false;
         try {
           const acct = await stripe.accounts.retrieve(sellerProfile.stripeAccountId);
@@ -212,7 +251,28 @@ exports.createPaymentIntent = async (request, reply) => {
         directChargeParams = {
           ...(cardPaymentsActive && { on_behalf_of: sellerProfile.stripeAccountId }),
           application_fee_amount: payout.commissionAmountCents,
-          transfer_data:          { destination: sellerProfile.stripeAccountId },
+          transfer_data: {
+            destination: sellerProfile.stripeAccountId,
+            description: destinationPaymentDescription,
+            metadata: {
+              displayId,
+              customerName: user.isDeleted ? 'Deleted User' : user.name || "",
+              customerEmail: user.email || "",
+              itemSummary: buildItemSummary(cart.items),
+            },
+            payment_data: {
+              description: destinationPaymentDescription,
+              metadata: {
+                displayId,
+                customerName: user.isDeleted ? 'Deleted User' : user.name || "",
+                customerEmail: user.email || "",
+                itemSummary: buildItemSummary(cart.items),
+              },
+            },
+          },
+        };
+        directChargeParams = {
+          application_fee_amount: payout.commissionAmountCents,
         };
       }
     }
@@ -221,6 +281,7 @@ exports.createPaymentIntent = async (request, reply) => {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
       currency: "aud",
+      description: destinationPaymentDescription,
       metadata: {
         userId,
         cartId: cart.id,
@@ -228,7 +289,7 @@ exports.createPaymentIntent = async (request, reply) => {
       },
       automatic_payment_methods: { enabled: true },
       ...directChargeParams,
-    });
+    }, paymentIntentCreateOptions);
 
     // Build shippingAddress JSON with order summary
     const shippingAddressData =
@@ -255,8 +316,6 @@ exports.createPaymentIntent = async (request, reply) => {
               gstDetails: cartCalculations.gstDetails,
             },
           };
-
-    const displayId = await generateDisplayId();
 
     const orderBaseData = {
       displayId,
@@ -354,6 +413,7 @@ exports.createPaymentIntent = async (request, reply) => {
       success: true,
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
+      stripeAccountId: paymentIntentStripeAccountId,
       orderId: order.id,
       displayId: order.displayId,
       amount: amountInCents,        // in cents (Stripe standard) — e.g. 9500 for $95.00 AUD
@@ -398,16 +458,6 @@ exports.confirmPayment = async (request, reply) => {
       });
     }
 
-    // Verify payment with Stripe
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-
-    if (paymentIntent.status !== "succeeded") {
-      return reply.status(400).send({
-        success: false,
-        message: `Payment not successful. Stripe status: ${paymentIntent.status}`,
-      });
-    }
-
     // Find the associated order
     const order = await prisma.order.findFirst({
       where: { stripePaymentIntentId: paymentIntentId, userId },
@@ -418,6 +468,17 @@ exports.confirmPayment = async (request, reply) => {
       return reply.status(404).send({
         success: false,
         message: "Order not found for this payment",
+      });
+    }
+
+    // Verify payment with Stripe. Direct charges live under the seller's
+    // connected account, so fall back to that account if platform lookup fails.
+    const { paymentIntent } = await retrievePaymentIntentForOrder(paymentIntentId, order);
+
+    if (paymentIntent.status !== "succeeded") {
+      return reply.status(400).send({
+        success: false,
+        message: `Payment not successful. Stripe status: ${paymentIntent.status}`,
       });
     }
 
@@ -679,6 +740,7 @@ async function handlePaymentSucceeded(paymentIntentId) {
   // Captured once here so the per-seller loop never needs a redundant API call.
   let latestChargeId = null;
   let piChargeType = 'platform'; // default — overridden below if PI is retrievable
+  let retrievedPaymentIntentStripeAccountId = null;
   try {
     const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
     latestChargeId = pi.latest_charge || null;
@@ -702,6 +764,15 @@ async function handlePaymentSucceeded(paymentIntentId) {
   });
 
   if (!order) return false;
+
+  try {
+    const { paymentIntent: pi, stripeAccountId } = await retrievePaymentIntentForOrder(paymentIntentId, order);
+    latestChargeId = pi.latest_charge || latestChargeId;
+    piChargeType   = pi.metadata?.chargeType || piChargeType;
+    retrievedPaymentIntentStripeAccountId = stripeAccountId || null;
+  } catch (e) {
+    console.warn(`Could not retrieve PaymentIntent with order context: ${e.message}`);
+  }
 
   // Build a flat list of all items (direct items + sub-order items)
   const allItems = [
@@ -941,7 +1012,10 @@ async function handlePaymentSucceeded(paymentIntentId) {
       (async () => {
         try {
           if (latestChargeId) {
-            const charge = await stripe.charges.retrieve(latestChargeId);
+            const stripeAccountOptions = retrievedPaymentIntentStripeAccountId
+              ? { stripeAccount: retrievedPaymentIntentStripeAccountId }
+              : undefined;
+            const charge = await stripe.charges.retrieve(latestChargeId, stripeAccountOptions);
             await stripe.charges.update(latestChargeId, {
               description: sellerTransactionDescription,
               metadata: {
@@ -952,7 +1026,7 @@ async function handlePaymentSucceeded(paymentIntentId) {
                 customerEmail: order.customerEmail || "",
                 itemSummary:   buildItemSummary(sellerItems),
               },
-            });
+            }, stripeAccountOptions);
             const autoTransferId = charge.transfer;
             if (autoTransferId) {
               await stripe.transfers.update(autoTransferId, {
@@ -980,10 +1054,19 @@ async function handlePaymentSucceeded(paymentIntentId) {
                   UPDATE commission_earned
                   SET stripe_transfer_id     = ${autoTransferId},
                       stripe_transfer_status = 'direct_charge',
+                      status                 = 'PAID'::"CommissionStatus",
                       updated_at             = NOW()
                   WHERE id = ${commissionEarnedId}
                 `;
               }
+            } else if (commissionEarnedId) {
+              await prisma.$executeRaw`
+                UPDATE commission_earned
+                SET stripe_transfer_status = 'direct_charge',
+                    status                 = 'PAID'::"CommissionStatus",
+                    updated_at             = NOW()
+                WHERE id = ${commissionEarnedId}
+              `;
             }
           }
         } catch (e) {
@@ -1261,9 +1344,20 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       guestSellerMap.get(sid).push({ product, productVariant, quantity });
     }
     const guestIsMultiSeller = guestSellerMap.size > 1;
+    const displayId = await generateDisplayId();
+    const guestDestinationPaymentDescription = buildSellerTransactionDescription({
+      order: { id: displayId, displayId },
+      customerName,
+      customerEmail,
+      items: cartItems,
+      amount: totalAmount,
+      label: "Seller payment",
+    });
 
     let guestDirectChargeParams = {};
-    if (!guestIsMultiSeller && USE_DESTINATION_CHARGES_FOR_SINGLE_SELLER) {
+    let guestPaymentIntentCreateOptions = {};
+    let guestPaymentIntentStripeAccountId = null;
+    if (!guestIsMultiSeller && USE_DIRECT_CHARGES_FOR_SINGLE_SELLER) {
       const [singleSellerId] = guestSellerMap.keys();
       const sellerProfile = await prisma.sellerProfile.findUnique({
         where:  { userId: singleSellerId },
@@ -1277,6 +1371,8 @@ exports.createGuestPaymentIntent = async (request, reply) => {
         const perSellerShipping  = parseFloat(cartCalculations.shippingCost);
         const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
         // Check if seller has card_payments capability before using on_behalf_of
+        guestPaymentIntentStripeAccountId = sellerProfile.stripeAccountId;
+        guestPaymentIntentCreateOptions = { stripeAccount: sellerProfile.stripeAccountId };
         let guestCardPaymentsActive = false;
         try {
           const acct = await stripe.accounts.retrieve(sellerProfile.stripeAccountId);
@@ -1287,7 +1383,28 @@ exports.createGuestPaymentIntent = async (request, reply) => {
         guestDirectChargeParams = {
           ...(guestCardPaymentsActive && { on_behalf_of: sellerProfile.stripeAccountId }),
           application_fee_amount: payout.commissionAmountCents,
-          transfer_data:          { destination: sellerProfile.stripeAccountId },
+          transfer_data: {
+            destination: sellerProfile.stripeAccountId,
+            description: guestDestinationPaymentDescription,
+            metadata: {
+              displayId,
+              customerName: customerName || "",
+              customerEmail: customerEmail || "",
+              itemSummary: buildItemSummary(cartItems),
+            },
+            payment_data: {
+              description: guestDestinationPaymentDescription,
+              metadata: {
+                displayId,
+                customerName: customerName || "",
+                customerEmail: customerEmail || "",
+                itemSummary: buildItemSummary(cartItems),
+              },
+            },
+          },
+        };
+        guestDirectChargeParams = {
+          application_fee_amount: payout.commissionAmountCents,
         };
       }
     }
@@ -1296,6 +1413,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
       currency: "aud",
+      description: guestDestinationPaymentDescription,
       metadata: {
         isGuest: "true",
         customerEmail,
@@ -1303,7 +1421,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       },
       automatic_payment_methods: { enabled: true },
       ...guestDirectChargeParams,
-    });
+    }, guestPaymentIntentCreateOptions);
 
     // Build shippingAddress JSON with order summary
     const shippingAddressData =
@@ -1335,8 +1453,6 @@ exports.createGuestPaymentIntent = async (request, reply) => {
           };
 
     // Create PENDING guest order (stock deducted on payment success via webhook / confirm)
-    const displayId = await generateDisplayId();
-
     const guestOrderBaseData = {
       displayId,
       // userId intentionally omitted — guest order
@@ -1431,6 +1547,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       success: true,
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
+      stripeAccountId: guestPaymentIntentStripeAccountId,
       orderId: order.id,
       displayId: order.displayId,
       amount: amountInCents,
@@ -1482,11 +1599,27 @@ exports.confirmGuestPayment = async (request, reply) => {
     try {
       paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
     } catch (stripeErr) {
+      const orderForStripe = await prisma.order.findFirst({
+        where: {
+          stripePaymentIntentId: paymentIntentId,
+          customerEmail,
+          userId: null,
+        },
+      });
+      if (orderForStripe) {
+        try {
+          ({ paymentIntent } = await retrievePaymentIntentForOrder(paymentIntentId, orderForStripe));
+        } catch (connectedErr) {
+          console.error("Stripe connected-account retrieve error:", connectedErr.message);
+        }
+      }
+      if (paymentIntent?.status !== "succeeded") {
       console.error("❌ Stripe retrieve error:", stripeErr.message);
       return reply.status(400).send({
         success: false,
         message: "Failed to verify payment with Stripe",
       });
+      }
     }
 
     // If Stripe says it already succeeded, honour that and proceed to confirmation

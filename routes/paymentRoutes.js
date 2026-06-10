@@ -74,8 +74,8 @@ async function paymentRoutes(fastify, options) {
    *   "clientSecret"  : "pi_xxx_secret_xxx",   ← pass this to stripe.js
    *   "paymentIntentId": "pi_xxx",
    *   "orderId"       : "clxxx...",
-   *   "amount"        : 150.00,
-   *   "amountInCents" : 15000,
+  *   "amount"        : 15000,
+  *   "displayAmount" : 150.00,
    *   "currency"      : "aud",
    *   "orderSummary"  : { subtotal, shippingCost, gstAmount, grandTotal }
    * }
@@ -148,7 +148,9 @@ async function paymentRoutes(fastify, options) {
   /**
    * POST /api/payments/guest/confirm
    *
-   * Call after stripe.confirmPayment() succeeds on the frontend.
+    * Call after stripe.confirmPayment() succeeds on the frontend. The frontend
+    * must mount a Payment Element with the clientSecret from /guest/create-intent
+    * before calling confirmPayment().
    *
    * Request body:
    * { "paymentIntentId": "pi_xxx", "customerEmail": "jane@example.com" }

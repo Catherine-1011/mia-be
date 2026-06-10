@@ -73,10 +73,9 @@ async function paymentRoutes(fastify, options) {
    *   "success"       : true,
    *   "clientSecret"  : "pi_xxx_secret_xxx",   ← pass this to stripe.js
    *   "paymentIntentId": "pi_xxx",
-    *   "stripeAccountId": "acct_xxx or null",   ← pass to loadStripe when present
    *   "orderId"       : "clxxx...",
-    *   "amount"        : 15000,
-    *   "displayAmount" : 150.00,
+  *   "amount"        : 15000,
+  *   "displayAmount" : 150.00,
    *   "currency"      : "aud",
    *   "orderSummary"  : { subtotal, shippingCost, gstAmount, grandTotal }
    * }

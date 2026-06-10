@@ -34,8 +34,9 @@ const { calculateSellerPayout } = require("../utils/commissionCalculator");
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// Direct connected-account charges are the reliable way to control the
-// seller Express "Payment" row description.
+// Keep checkout PaymentIntents on the platform account so the frontend can
+// confirm them with the platform publishable key. Single-seller orders still
+// route funds to the seller through Connect destination charges.
 const USE_DIRECT_CHARGES_FOR_SINGLE_SELLER = true;
 
 const STRIPE_DESCRIPTION_MAX_LENGTH = 255;
@@ -216,8 +217,9 @@ exports.createPaymentIntent = async (request, reply) => {
       label: "Seller payment",
     });
 
-    // For single-seller: use Direct Charges — payment goes straight to seller's
-    // connected account, ALPA takes application_fee automatically.
+    // For single-seller: use a platform PaymentIntent with transfer_data —
+    // checkout stays compatible with the existing frontend while Stripe routes
+    // funds to the connected seller account and ALPA takes application_fee.
     // For multi-seller: fall back to Separate Charges + Transfers (Stripe limitation:
     // a single PaymentIntent can only have one transfer_data destination).
     let directChargeParams = {};
@@ -237,10 +239,8 @@ exports.createPaymentIntent = async (request, reply) => {
         const itemTotal = cart.items.reduce((s, i) => s + Number(i.productVariant?.price ?? i.product.price) * i.quantity, 0);
         const perSellerShipping  = parseFloat(cartCalculations.shippingCost);
         const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
-        // Check if seller has card_payments capability before using on_behalf_of
-        // (requires full KYC — falls back to destination charge if not yet enabled)
-        paymentIntentStripeAccountId = sellerProfile.stripeAccountId;
-        paymentIntentCreateOptions = { stripeAccount: sellerProfile.stripeAccountId };
+        // Check if seller has card_payments capability before using on_behalf_of.
+        // The PaymentIntent itself must remain on the platform account.
         let cardPaymentsActive = false;
         try {
           const acct = await stripe.accounts.retrieve(sellerProfile.stripeAccountId);
@@ -253,26 +253,7 @@ exports.createPaymentIntent = async (request, reply) => {
           application_fee_amount: payout.commissionAmountCents,
           transfer_data: {
             destination: sellerProfile.stripeAccountId,
-            description: destinationPaymentDescription,
-            metadata: {
-              displayId,
-              customerName: user.isDeleted ? 'Deleted User' : user.name || "",
-              customerEmail: user.email || "",
-              itemSummary: buildItemSummary(cart.items),
-            },
-            payment_data: {
-              description: destinationPaymentDescription,
-              metadata: {
-                displayId,
-                customerName: user.isDeleted ? 'Deleted User' : user.name || "",
-                customerEmail: user.email || "",
-                itemSummary: buildItemSummary(cart.items),
-              },
-            },
           },
-        };
-        directChargeParams = {
-          application_fee_amount: payout.commissionAmountCents,
         };
       }
     }
@@ -1070,7 +1051,6 @@ async function handlePaymentSucceeded(paymentIntentId) {
                   UPDATE commission_earned
                   SET stripe_transfer_id     = ${autoTransferId},
                       stripe_transfer_status = 'direct_charge',
-                      status                 = 'PAID'::"CommissionStatus",
                       updated_at             = NOW()
                   WHERE id = ${commissionEarnedId}
                 `;
@@ -1386,9 +1366,8 @@ exports.createGuestPaymentIntent = async (request, reply) => {
         const itemTotal = cartItems.reduce((s, i) => s + (i.productVariant ? Number(i.productVariant.price) : Number(i.product.price)) * i.quantity, 0);
         const perSellerShipping  = parseFloat(cartCalculations.shippingCost);
         const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
-        // Check if seller has card_payments capability before using on_behalf_of
-        guestPaymentIntentStripeAccountId = sellerProfile.stripeAccountId;
-        guestPaymentIntentCreateOptions = { stripeAccount: sellerProfile.stripeAccountId };
+        // Check if seller has card_payments capability before using on_behalf_of.
+        // The PaymentIntent itself must remain on the platform account.
         let guestCardPaymentsActive = false;
         try {
           const acct = await stripe.accounts.retrieve(sellerProfile.stripeAccountId);
@@ -1401,26 +1380,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
           application_fee_amount: payout.commissionAmountCents,
           transfer_data: {
             destination: sellerProfile.stripeAccountId,
-            description: guestDestinationPaymentDescription,
-            metadata: {
-              displayId,
-              customerName: customerName || "",
-              customerEmail: customerEmail || "",
-              itemSummary: buildItemSummary(cartItems),
-            },
-            payment_data: {
-              description: guestDestinationPaymentDescription,
-              metadata: {
-                displayId,
-                customerName: customerName || "",
-                customerEmail: customerEmail || "",
-                itemSummary: buildItemSummary(cartItems),
-              },
-            },
           },
-        };
-        guestDirectChargeParams = {
-          application_fee_amount: payout.commissionAmountCents,
         };
       }
     }

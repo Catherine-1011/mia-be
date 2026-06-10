@@ -170,7 +170,6 @@ The cart is read server-side — you do **not** pass cart items in the body. Cre
   "success": true,
   "clientSecret": "pi_xxx_secret_xxx",
   "paymentIntentId": "pi_xxx",
-  "stripeAccountId": "acct_xxx or null",
   "orderId": "...",
   "displayId": "AB12CD",
   "amount": 99000,
@@ -195,10 +194,7 @@ function CheckoutPage() {
   async function createIntent() {
     const response = await api.post("/api/payments/create-intent", checkoutPayload);
     const intent = response.data;
-    const stripePromise = loadStripe(
-      import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY,
-      intent.stripeAccountId ? { stripeAccount: intent.stripeAccountId } : undefined
-    );
+    const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
     setPayment({ ...intent, stripePromise });
   }
@@ -209,7 +205,7 @@ function CheckoutPage() {
 
   return (
     <Elements
-      key={`${payment.clientSecret}:${payment.stripeAccountId || "platform"}`}
+      key={payment.clientSecret}
       stripe={payment.stripePromise}
       options={{ clientSecret: payment.clientSecret }}
     >
@@ -253,7 +249,7 @@ function PaymentForm({ paymentIntentId }) {
 }
 ```
 
-If `stripeAccountId` is returned, it must be passed to `loadStripe`. The `Elements` tree must also remount when the `clientSecret` or account changes, which is why the example uses a `key`.
+No connected-account Stripe setup is needed on the frontend for checkout. The backend creates a platform PaymentIntent and routes seller funds through Stripe Connect server-side.
 
 ---
 

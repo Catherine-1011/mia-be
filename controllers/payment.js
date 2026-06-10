@@ -34,6 +34,11 @@ const { calculateSellerPayout } = require("../utils/commissionCalculator");
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+// Destination charges show Stripe-generated "Payment from <platform>" text in
+// Express. Use platform charges + described transfers so sellers can see order
+// and customer context in their dashboard transaction rows.
+const USE_DESTINATION_CHARGES_FOR_SINGLE_SELLER = false;
+
 const STRIPE_DESCRIPTION_MAX_LENGTH = 255;
 
 function truncateStripeDescription(value) {
@@ -181,7 +186,7 @@ exports.createPaymentIntent = async (request, reply) => {
     // For multi-seller: fall back to Separate Charges + Transfers (Stripe limitation:
     // a single PaymentIntent can only have one transfer_data destination).
     let directChargeParams = {};
-    if (!isMultiSeller) {
+    if (!isMultiSeller && USE_DESTINATION_CHARGES_FOR_SINGLE_SELLER) {
       const [singleSellerId] = sellerItemsMap.keys();
       const sellerProfile = await prisma.sellerProfile.findUnique({
         where:  { userId: singleSellerId },
@@ -1038,7 +1043,7 @@ async function handlePaymentSucceeded(paymentIntentId) {
             currency:    "aud",
             destination: sellerProfile.stripeAccountId,
             ...(latestChargeId && { source_transaction: latestChargeId }),
-            description: `Order ${order.displayId || order.id} — seller payout`,
+            description: payoutTransactionDescription,
             metadata: {
               orderId:            order.id,
               sellerId:           sid,
@@ -1258,7 +1263,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     const guestIsMultiSeller = guestSellerMap.size > 1;
 
     let guestDirectChargeParams = {};
-    if (!guestIsMultiSeller) {
+    if (!guestIsMultiSeller && USE_DESTINATION_CHARGES_FOR_SINGLE_SELLER) {
       const [singleSellerId] = guestSellerMap.keys();
       const sellerProfile = await prisma.sellerProfile.findUnique({
         where:  { userId: singleSellerId },

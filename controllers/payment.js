@@ -223,7 +223,6 @@ exports.createPaymentIntent = async (request, reply) => {
     // For multi-seller: fall back to Separate Charges + Transfers (Stripe limitation:
     // a single PaymentIntent can only have one transfer_data destination).
     let directChargeParams = {};
-    let paymentIntentCreateOptions = {};
     let paymentIntentStripeAccountId = null;
     if (!isMultiSeller && USE_DIRECT_CHARGES_FOR_SINGLE_SELLER) {
       const [singleSellerId] = sellerItemsMap.keys();
@@ -270,7 +269,7 @@ exports.createPaymentIntent = async (request, reply) => {
       },
       automatic_payment_methods: { enabled: true },
       ...directChargeParams,
-    }, paymentIntentCreateOptions);
+    });
 
     // Build shippingAddress JSON with order summary
     const shippingAddressData =
@@ -384,7 +383,7 @@ exports.createPaymentIntent = async (request, reply) => {
           orderTotal:   totalAmount.toFixed(2),
         },
         description: stripeOrderDescription,
-      }, paymentIntentCreateOptions);
+      });
     } else {
     // Update PaymentIntent metadata with order ID so it's visible in Stripe Dashboard
     await stripe.paymentIntents.update(paymentIntent.id, {
@@ -1351,7 +1350,6 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     });
 
     let guestDirectChargeParams = {};
-    let guestPaymentIntentCreateOptions = {};
     let guestPaymentIntentStripeAccountId = null;
     if (!guestIsMultiSeller && USE_DIRECT_CHARGES_FOR_SINGLE_SELLER) {
       const [singleSellerId] = guestSellerMap.keys();
@@ -1397,7 +1395,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       },
       automatic_payment_methods: { enabled: true },
       ...guestDirectChargeParams,
-    }, guestPaymentIntentCreateOptions);
+    });
 
     // Build shippingAddress JSON with order summary
     const shippingAddressData =
@@ -1514,7 +1512,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
           orderTotal:   totalAmount.toFixed(2),
         },
         description: guestStripeOrderDescription,
-      }, guestPaymentIntentCreateOptions);
+      });
     } else {
     await stripe.paymentIntents.update(paymentIntent.id, {
       metadata: {

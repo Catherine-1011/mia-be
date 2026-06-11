@@ -328,7 +328,7 @@ exports.createPaymentIntent = async (request, reply) => {
 
     // Build shippingAddress JSON with order summary
     const shippingAddressData =
-      typeof shippingAddress === "string"
+         typeof shippingAddress === "string"
         ? { address: shippingAddress }
         : {
             ...shippingAddress,

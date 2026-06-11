@@ -71,6 +71,7 @@ function buildSellerTransactionDescription({
   gstAmount = null,
   shippingAmount = null,
 }) {
+  // If order is a SubOrder with subDisplayId, use it; otherwise fallback to displayId or id
   const displayId = order?.subDisplayId || order?.displayId || order?.id || "unknown";
   const itemSummary = buildItemSummary(items);
   const amountText = amount !== undefined && amount !== null ? ` | Amount A$${Number(amount).toFixed(2)}` : "";
@@ -88,6 +89,7 @@ function buildSellerTransactionDescription({
     }
   }
   
+  // ✅ CRITICAL: Always use the display ID (with -A, -B suffix), never the database ID
   return truncateStripeDescription(
     `Order ${displayId} | ${label} | Customer: ${customerBits || "N/A"} | Items: ${itemSummary || "Order items"}${amountText}${feesBreakdown}`
   );
@@ -1033,9 +1035,26 @@ async function handlePaymentSucceeded(paymentIntentId) {
 
     // ── Commission Earned ───────────────────────────────────────────────────
     // Records commission using GST-exclusive product price only (shipping excluded).
-    const sellerSubOrderId = order.subOrders?.find(
+    const sellerSubOrder = order.subOrders?.find(
       sub => sub.sellerId === sid || sub.seller?.id === sid
-    )?.id || null;
+    ) || null;
+    const sellerSubOrderId = sellerSubOrder?.id || null;
+    
+    // Ensure subDisplayId is populated: either from DB or construct it based on seller position
+    let subDisplayIdForStipe = sellerSubOrder?.subDisplayId;
+    if (!subDisplayIdForStipe && sellerSubOrder && order.subOrders) {
+      // Find the position of this seller in the subOrders array
+      const sellerIndex = order.subOrders.findIndex(sub => sub.id === sellerSubOrder.id);
+      if (sellerIndex >= 0) {
+        const suffix = String.fromCharCode(65 + sellerIndex); // A, B, C, etc.
+        subDisplayIdForStipe = `${order.displayId}-${suffix}`;
+      }
+    }
+    
+    // Ensure sellerSubOrder has the subDisplayId for the description function
+    if (sellerSubOrder && !sellerSubOrder.subDisplayId && subDisplayIdForStipe) {
+      sellerSubOrder.subDisplayId = subDisplayIdForStipe;
+    }
 
     const commissionEarnedId = await createCommissionEarned({
       orderId:        order.id,

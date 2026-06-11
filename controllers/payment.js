@@ -1180,12 +1180,13 @@ async function handlePaymentSucceeded(paymentIntentId) {
             description: payoutTransactionDescription,
             metadata: {
               ...sellerStripeMetadata,
-              orderId:            order.id,
               sellerId:           sid,
               commissionAmount:   payout.commissionAmount.toString(),
+              commissionRate:     payout.commissionRatePct.toString(),
               gstAmount:          payout.gstAmount.toString(),
               shippingAmount:     payout.shippingAmount.toString(),
               sellerTotalPayout:  payout.sellerTotalPayout.toString(),
+              productValueExGST:  payout.productValueExGST.toString(),
             },
           });
 
@@ -1201,14 +1202,15 @@ async function handlePaymentSucceeded(paymentIntentId) {
             description: payoutTransactionDescription,
             metadata: {
               ...sellerStripeMetadata,
+              sellerId:          sid,
               commissionAmount:  payout.commissionAmount.toString(),
+              commissionRate:    payout.commissionRatePct.toString(),
               gstAmount:         payout.gstAmount.toString(),
               shippingAmount:    payout.shippingAmount.toString(),
               sellerTotalPayout: payout.sellerTotalPayout.toString(),
-              platformFeeLabel:  "Platform Commission",
-              platformFeeAmount: payout.commissionAmount.toFixed(2),
+              platformFee:       payout.commissionAmount.toFixed(2),
               productValueExGST: payout.productValueExGST.toString(),
-              commissionRatePct: payout.commissionRatePct.toString(),
+              netEarning:        payout.sellerProductEarning.toString(),
             },
           });
 

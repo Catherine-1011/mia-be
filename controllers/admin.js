@@ -3252,7 +3252,7 @@ exports.restoreCoupon = async (request, reply) => {
     reply.status(500).send({ success: false, error: error.message });
   }
 };
-
+// new
 // HARD DELETE COUPON — permanent, irreversible (Admin only; must be in recycle bin first)
 exports.hardDeleteCoupon = async (request, reply) => {
   try {

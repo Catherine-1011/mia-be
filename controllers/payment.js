@@ -68,7 +68,7 @@ function buildSellerTransactionDescription({
   amount,
   label = "Seller payout",
 }) {
-  const displayId = order?.displayId || order?.id || "unknown";
+  const displayId = order?.subDisplayId || order?.displayId || order?.id || "unknown";
   const itemSummary = buildItemSummary(items);
   const amountText = amount !== undefined && amount !== null ? ` | Amount A$${Number(amount).toFixed(2)}` : "";
   const customerBits = [customerName, customerEmail].filter(Boolean).join(" / ");
@@ -81,11 +81,17 @@ function stripeMetadataValue(value) {
   return String(value ?? "").slice(0, 500);
 }
 
-function buildSellerStripeOrderMetadata({ order, sellerId, customerName, customerEmail, items = [], amount }) {
+function buildSellerStripeOrderMetadata({ order, subOrder = null, sellerId, customerName, customerEmail, items = [], amount }) {
   const itemCount = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+  const orderId = subOrder?.id || order?.id;
+  const displayId = subOrder?.subDisplayId || order?.displayId || order?.id;
   return {
-    orderId:       stripeMetadataValue(order?.id),
-    displayId:     stripeMetadataValue(order?.displayId || order?.id),
+    orderId:       stripeMetadataValue(orderId),
+    displayId:     stripeMetadataValue(displayId),
+    parentOrderId: stripeMetadataValue(order?.id),
+    parentDisplayId: stripeMetadataValue(order?.displayId || order?.id),
+    subOrderId:    stripeMetadataValue(subOrder?.id),
+    subDisplayId:  stripeMetadataValue(subOrder?.subDisplayId),
     sellerId:      stripeMetadataValue(sellerId),
     customerName:  stripeMetadataValue(customerName || order?.customerName),
     customerEmail: stripeMetadataValue(customerEmail || order?.customerEmail),
@@ -1033,8 +1039,10 @@ async function handlePaymentSucceeded(paymentIntentId) {
     // piChargeType is resolved once above (from the single PaymentIntent retrieval)
     // so this never triggers a redundant Stripe API call inside the seller loop.
     const isDirectCharge = piChargeType === 'direct';
+    const sellerSubOrder = order.subOrders?.find((sub) => sub.sellerId === sid || sub.seller?.id === sid) || null;
     const sellerStripeMetadata = buildSellerStripeOrderMetadata({
       order,
+      subOrder: sellerSubOrder,
       sellerId: sid,
       customerName: toName,
       customerEmail: order.customerEmail,
@@ -1137,7 +1145,7 @@ async function handlePaymentSucceeded(paymentIntentId) {
           }
 
           const payoutTransactionDescription = buildSellerTransactionDescription({
-            order,
+            order: sellerSubOrder || order,
             customerName: toName,
             customerEmail: order.customerEmail,
             items: sellerItems,

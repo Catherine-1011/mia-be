@@ -2622,7 +2622,7 @@ exports.retrySellerTransfers = async (request, reply) => {
 
     // Find all PENDING commission_earned rows with no transfer yet
     const pending = await prisma.$queryRaw`
-      SELECT id, order_id, order_value, shipping_amount, commission_rate
+      SELECT id, order_id, sub_order_id, order_value, shipping_amount, commission_rate
       FROM commission_earned
       WHERE seller_id = ${sellerId}
         AND status = 'PENDING'::"CommissionStatus"
@@ -2662,6 +2662,7 @@ exports.retrySellerTransfers = async (request, reply) => {
         // Get the charge ID from the order's PaymentIntent (needed for source_transaction)
         let latestChargeId = null;
         let orderForDescription = null;
+        let subOrderForDescription = null;
         let itemSummary = "";
         if (row.order_id) {
           try {
@@ -2676,6 +2677,12 @@ exports.retrySellerTransfers = async (request, reply) => {
               },
             });
             orderForDescription = order;
+            if (row.sub_order_id) {
+              subOrderForDescription = await prisma.subOrder.findUnique({
+                where: { id: row.sub_order_id },
+                select: { id: true, subDisplayId: true, parentOrderId: true },
+              });
+            }
             if (order?.stripePaymentIntentId) {
               const pi = await stripe.paymentIntents.retrieve(order.stripePaymentIntentId);
               latestChargeId = pi.latest_charge || null;
@@ -2700,22 +2707,29 @@ exports.retrySellerTransfers = async (request, reply) => {
         }
 
         const retryDescription = buildRetryTransferDescription({
-          order: orderForDescription || { id: row.order_id },
+          order: subOrderForDescription || orderForDescription || { id: row.order_id },
           customerName: orderForDescription?.customerName,
           customerEmail: orderForDescription?.customerEmail,
           itemSummary,
           amount: payout.sellerTotalPayout,
         });
 
+        const effectiveOrderId = row.sub_order_id || row.order_id || "";
+        const effectiveDisplayId = subOrderForDescription?.subDisplayId || orderForDescription?.displayId || row.order_id || "";
+
         const transfer = await stripe.transfers.create({
           amount: payout.sellerTotalPayoutCents,
           currency: "aud",
           destination: sellerProfile.stripeAccountId,
           ...(latestChargeId && { source_transaction: latestChargeId }),
-          description: `Retry payout — order ${row.order_id}`,
+          description: `Retry payout — order ${effectiveDisplayId}`,
           metadata: {
-            orderId: row.order_id || "",
-            displayId: orderForDescription?.displayId || "",
+            orderId: effectiveOrderId,
+            displayId: effectiveDisplayId,
+            parentOrderId: row.order_id || "",
+            parentDisplayId: orderForDescription?.displayId || "",
+            subOrderId: row.sub_order_id || "",
+            subDisplayId: subOrderForDescription?.subDisplayId || "",
             sellerId,
             customerName: orderForDescription?.customerName || "",
             customerEmail: orderForDescription?.customerEmail || "",

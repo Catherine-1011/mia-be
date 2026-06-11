@@ -1035,9 +1035,6 @@ async function handlePaymentSucceeded(paymentIntentId) {
 
     // ── Commission Earned ───────────────────────────────────────────────────
     // Records commission using GST-exclusive product price only (shipping excluded).
-    const sellerSubOrder = order.subOrders?.find(
-      sub => sub.sellerId === sid || sub.seller?.id === sid
-    ) || null;
     const sellerSubOrderId = sellerSubOrder?.id || null;
     
     // Ensure subDisplayId is populated: either from DB or construct it based on seller position

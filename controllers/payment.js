@@ -67,13 +67,29 @@ function buildSellerTransactionDescription({
   items = [],
   amount,
   label = "Seller payout",
+  platformFee = null,
+  gstAmount = null,
+  shippingAmount = null,
 }) {
   const displayId = order?.subDisplayId || order?.displayId || order?.id || "unknown";
   const itemSummary = buildItemSummary(items);
   const amountText = amount !== undefined && amount !== null ? ` | Amount A$${Number(amount).toFixed(2)}` : "";
   const customerBits = [customerName, customerEmail].filter(Boolean).join(" / ");
+  
+  // Build fees breakdown for display
+  let feesBreakdown = "";
+  if (platformFee !== null || gstAmount !== null || shippingAmount !== null) {
+    const feeParts = [];
+    if (platformFee !== null && platformFee > 0) feeParts.push(`Platform Fee A$${Number(platformFee).toFixed(2)}`);
+    if (gstAmount !== null && gstAmount > 0) feeParts.push(`GST A$${Number(gstAmount).toFixed(2)}`);
+    if (shippingAmount !== null && shippingAmount > 0) feeParts.push(`Shipping A$${Number(shippingAmount).toFixed(2)}`);
+    if (feeParts.length > 0) {
+      feesBreakdown = ` | Fees: ${feeParts.join(", ")}`;
+    }
+  }
+  
   return truncateStripeDescription(
-    `Order ${displayId} | ${label} | Customer: ${customerBits || "N/A"} | Items: ${itemSummary || "Order items"}${amountText}`
+    `Order ${displayId} | ${label} | Customer: ${customerBits || "N/A"} | Items: ${itemSummary || "Order items"}${amountText}${feesBreakdown}`
   );
 }
 
@@ -1151,6 +1167,9 @@ async function handlePaymentSucceeded(paymentIntentId) {
             items: sellerItems,
             amount: payout.sellerTotalPayout,
             label: "Seller payout",
+            platformFee: payout.commissionAmount,
+            gstAmount: payout.gstAmount,
+            shippingAmount: payout.shippingAmount,
           });
 
           const transfer = await stripe.transfers.create({
@@ -1186,6 +1205,10 @@ async function handlePaymentSucceeded(paymentIntentId) {
               gstAmount:         payout.gstAmount.toString(),
               shippingAmount:    payout.shippingAmount.toString(),
               sellerTotalPayout: payout.sellerTotalPayout.toString(),
+              platformFeeLabel:  "Platform Commission",
+              platformFeeAmount: payout.commissionAmount.toFixed(2),
+              productValueExGST: payout.productValueExGST.toString(),
+              commissionRatePct: payout.commissionRatePct.toString(),
             },
           });
 

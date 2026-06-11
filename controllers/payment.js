@@ -991,8 +991,9 @@ async function handlePaymentSucceeded(paymentIntentId) {
     const itemCount = sellerItems.reduce((s, i) => s + i.quantity, 0);
     const itemTotal = sellerItems.reduce((s, i) => s + Number(i.price) * i.quantity, 0);
     const productNames = sellerItems.map(i => i.product?.title).filter(Boolean);
+    const sellerSubOrder = order.subOrders?.find((sub) => sub.sellerId === sid || sub.seller?.id === sid) || null;
     const sellerTransactionDescription = buildSellerTransactionDescription({
-      order,
+      order: sellerSubOrder || order,
       customerName: toName,
       customerEmail: order.customerEmail,
       items: sellerItems,
@@ -1055,7 +1056,6 @@ async function handlePaymentSucceeded(paymentIntentId) {
     // piChargeType is resolved once above (from the single PaymentIntent retrieval)
     // so this never triggers a redundant Stripe API call inside the seller loop.
     const isDirectCharge = piChargeType === 'direct';
-    const sellerSubOrder = order.subOrders?.find((sub) => sub.sellerId === sid || sub.seller?.id === sid) || null;
     const sellerStripeMetadata = buildSellerStripeOrderMetadata({
       order,
       subOrder: sellerSubOrder,

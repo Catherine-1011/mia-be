@@ -1,4 +1,4 @@
-const { validateLocation } = require('../utils/googleLocationService');
+const { validateLocation } = require('../utils/mapboxLocationService');
 const axios = require('axios');
 const { Country, State, City } = require('country-state-city');
 
@@ -19,24 +19,16 @@ const getCities = async (request, reply) => {
   return reply.send({ success: true, data });
 };
 
-// Backend: Accept place_id and validate via Geocoding API
 const validate = async (request, reply) => {
-  const { place_id } = request.body;
+  const { mapbox_id } = request.body;
 
-  if (!place_id) {
-    return reply.code(400).send({
-      success: false,
-      message: 'place_id is required'
-    });
+  if (!mapbox_id) {
+    return reply.code(400).send({ success: false, message: 'mapbox_id is required' });
   }
 
-//   console.log('🚀 Starting location validation for place_id:', place_id);
-
   try {
-    // Use the utility function for validation
-    const result = await validateLocation(place_id);
+    const result = await validateLocation(mapbox_id);
 
-    // If validation failed or not in NT → manual_review
     if (!result.valid) {
       console.log('⚠️ Validation failed:', result.reason);
       return reply.send({
@@ -44,11 +36,10 @@ const validate = async (request, reply) => {
         status: 'manual_review',
         message: result.reason || 'Location could not be verified automatically. Will be reviewed manually.',
         formattedAddress: result.formattedAddress,
-        place_id
+        mapbox_id
       });
     }
 
-    // Location verified in NT
     console.log('✅ Location validated successfully');
     return reply.send({
       success: true,
@@ -57,17 +48,16 @@ const validate = async (request, reply) => {
       formattedAddress: result.formattedAddress,
       lat: result.location.lat,
       lng: result.location.lng,
-      place_id
+      mapbox_id
     });
 
   } catch (error) {
     console.error('❌ Location validation error:', error);
-    // Even on error, allow with manual review
     return reply.send({
       success: true,
       status: 'manual_review',
       message: 'Location validation failed. Will be reviewed manually.',
-      place_id
+      mapbox_id
     });
   }
 };
@@ -76,50 +66,43 @@ const autocomplete = async (request, reply) => {
   const { input } = request.query;
 
   if (!input) {
-    return reply.code(400).send({
-      success: false,
-      message: 'input parameter is required'
-    });
+    return reply.code(400).send({ success: false, message: 'input parameter is required' });
   }
 
   try {
-    const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json`;
+    const accessToken = process.env.MAPBOX_ACCESS_TOKEN;
+    const encoded = encodeURIComponent(input);
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json`;
+
     const { data } = await axios.get(url, {
       params: {
-        input: input,
-        key: process.env.GOOGLE_MAPS_API_KEY,
-        components: 'country:au', // Restrict to Australia
-        types: 'geocode' // Only return addresses
+        access_token: accessToken,
+        country: 'AU',
+        types: 'address,place',
+        autocomplete: true,
+        limit: 5
       }
     });
 
-    if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-      return reply.send({
-        success: false,
-        message: 'Autocomplete service error',
-        predictions: []
-      });
-    }
+    const predictions = (data.features || []).map(f => {
+      const commaSplit = f.place_name.indexOf(',');
+      const mainText = commaSplit !== -1 ? f.place_name.substring(0, commaSplit) : f.place_name;
+      const secondaryText = commaSplit !== -1 ? f.place_name.substring(commaSplit + 2) : '';
 
-    const predictions = data.predictions.map(p => ({
-      placeId: p.place_id,
-      description: p.description,
-      mainText: p.structured_formatting?.main_text || '',
-      secondaryText: p.structured_formatting?.secondary_text || ''
-    }));
-
-    return reply.send({
-      success: true,
-      predictions
+      return {
+        placeId: f.id,       // renamed mapbox_id kept as placeId for API compatibility
+        mapboxId: f.id,
+        description: f.place_name,
+        mainText,
+        secondaryText
+      };
     });
+
+    return reply.send({ success: true, predictions });
 
   } catch (error) {
     console.error('❌ Autocomplete error:', error);
-    reply.code(500).send({
-      success: false,
-      message: 'Autocomplete failed',
-      predictions: []
-    });
+    reply.code(500).send({ success: false, message: 'Autocomplete failed', predictions: [] });
   }
 };
 

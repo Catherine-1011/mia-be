@@ -16,11 +16,11 @@ async function locationRoutes(fastify, options) {
       schema: {
         body: {
           type: 'object',
-          required: ['place_id'],
+          required: ['mapbox_id'],
           properties: {
-            place_id: { 
+            mapbox_id: {
               type: 'string',
-              description: 'Google Place ID from Places Autocomplete'
+              description: 'Mapbox feature ID from Mapbox Geocoding autocomplete'
             }
           }
         }

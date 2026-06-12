@@ -5101,6 +5101,102 @@ const sendDisputeAlertEmail = async ({ adminEmail, adminName, disputeId, amount,
   return sendWithFallback(msg, 'Dispute Alert Email');
 };
 
+// Send seller account deactivated email
+const sendSellerAccountDeactivatedEmail = async (email, sellerName, reason) => {
+  if (isDevelopmentMode) {
+    console.log("\n" + "=".repeat(50));
+    console.log("DEVELOPMENT MODE - Seller Account Deactivated");
+    console.log("=".repeat(50));
+    console.log(`To: ${email}`);
+    console.log(`Seller Name: ${sellerName}`);
+    console.log(`Reason: ${reason || 'No reason provided'}`);
+    console.log("=".repeat(50) + "\n");
+    return { success: true };
+  }
+
+  const msg = {
+    to: email,
+    from: { email: senderEmail, name: senderName },
+    subject: "Account Status Update - Made in Arnhem Land",
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+          <tr><td align="center">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">Account Status Update</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Important notification about your seller account</p>
+                </td>
+              </tr>
+              <!-- Warning banner -->
+              <tr>
+                <td style="background-color:#FF9800;padding:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Account Deactivated</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Your seller account on Made in Arnhem Land has been <strong style="color:#C4603A;">deactivated</strong> by our administration team, effective immediately.</p>
+
+                  <!-- What this means -->
+                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #FF9800;margin-bottom:24px;">
+                    <p style="margin:0 0 16px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">What This Means</p>
+                    <p style="color:#555;font-size:14px;line-height:1.6;margin:0 0 12px;">
+                      <strong>You can still:</strong>
+                    </p>
+                    <ul style="color:#555;font-size:14px;line-height:1.6;margin:0 0 16px;padding-left:20px;">
+                      <li>Log in to your account</li>
+                      <li>View your products and orders</li>
+                      <li>View your payment history</li>
+                    </ul>
+                    <p style="color:#555;font-size:14px;line-height:1.6;margin:0 0 12px;">
+                      <strong>You cannot:</strong>
+                    </p>
+                    <ul style="color:#555;font-size:14px;line-height:1.6;margin:0;padding-left:20px;">
+                      <li>Add or edit products</li>
+                      <li>Create or manage coupons</li>
+                      <li>Request payouts or bank changes</li>
+                      <li>Update order status or tracking information</li>
+                    </ul>
+                  </div>
+
+                  <!-- Reason -->
+                  ${reason ? `
+                  <div style="background:#fff3cd;border-radius:8px;padding:16px;border-left:4px solid #FF9800;margin-bottom:24px;">
+                    <p style="margin:0 0 8px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Reason</p>
+                    <p style="margin:0;color:#555;font-size:14px;line-height:1.6;">${reason}</p>
+                  </div>
+                  ` : ''}
+
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">If you believe this decision was made in error or have questions about your account status, please contact our support team for further assistance.</p>
+
+                  <!-- CTA -->
+                  <div style="text-align:center;">
+                    <a href="${FRONTEND_URL || 'https://madeinarnhemland.com.au'}/contact-support" style="display:inline-block;background:#5A1E12;color:#ffffff;padding:12px 28px;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;margin-bottom:24px;">Contact Support</a>
+                  </div>
+
+                  <p style="color:#888;font-size:12px;margin:0;text-align:center;">Made in Arnhem Land — Seller Account Management</p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `
+  };
+
+  return sendWithFallback(msg, 'Seller Account Deactivated Email');
+};
+
 module.exports = { 
   generateOTP,
   sendOTPEmail, 
@@ -5143,7 +5239,8 @@ module.exports = {
   sendNewsletterCampaignEmail,
   sendDisputeAlertEmail,
   sendSellerStripeApprovedEmail,
-  sendSellerPayoutTransferEmail
+  sendSellerPayoutTransferEmail,
+  sendSellerAccountDeactivatedEmail
 };
 
 

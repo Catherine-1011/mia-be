@@ -284,7 +284,7 @@ exports.verifyOTP = async (request, reply) => {
           userId: user.id,
           contactPerson: pending.name,
           onboardingStep: 2,
-          status: 'PENDING',
+          status: 'ACTIVE',
           productCount: 0,
           minimumProductsUploaded: false
         }
@@ -859,11 +859,10 @@ exports.submitForReview = async (request, reply) => {
       });
     }
 
-    // Update status to pending review
     const updatedProfile = await prisma.sellerProfile.update({
       where: { userId },
       data: {
-        status: 'PENDING',
+        status: 'ACTIVE',
         submittedForReviewAt: new Date(),
         onboardingStep: 8,
         updatedAt: new Date()
@@ -1726,7 +1725,7 @@ exports.verifyAndSubmit = async (request, reply) => {
           kycDocuments: fd.kycDocuments || undefined,
           kycSubmitted: fd.kycDocuments && fd.kycDocuments.length > 0 ? true : false,
           onboardingStep: 2,
-          status: 'PENDING',
+          status: 'ACTIVE',
           productCount: 0,
           minimumProductsUploaded: false
         }
@@ -1895,12 +1894,20 @@ exports.requestBankDetailsChange = async (request, reply) => {
       select: {
         password: true,
         name: true,
-        sellerProfile: { select: { storeName: true } }
+        sellerProfile: { select: { storeName: true, isActive: true, inactiveReason: true } }
       }
     });
 
     if (!user) {
       return reply.status(404).send({ success: false, message: "User not found" });
+    }
+
+    // Check if seller is inactive
+    if (!user.sellerProfile?.isActive) {
+      return reply.status(403).send({
+        success: false,
+        message: "Your account has been deactivated. You cannot request bank changes. Reason: " + (user.sellerProfile?.inactiveReason || "No reason provided")
+      });
     }
 
     const passwordValid = await bcrypt.compare(currentPassword, user.password);

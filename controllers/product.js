@@ -224,6 +224,14 @@ exports.addProduct = async (request, reply) => {
       });
     }
 
+    // Check if seller is inactive
+    if (!seller.isActive) {
+      return reply.status(403).send({
+        success: false,
+        message: "Your account has been deactivated. You cannot add products. Reason: " + (seller.inactiveReason || "No reason provided")
+      });
+    }
+
     // Determine product status based on user role
     const userRole = request.user.role; // From auth middleware
     let productStatus = "PENDING"; // Default for sellers - requires approval
@@ -928,6 +936,20 @@ exports.updateProduct = async (request, reply) => {
       return reply.status(403).send({ success: false, message: "You are not authorized to update this product" });
     }
 
+    // Check if seller is inactive (only for sellers, not admin)
+    if (userRole === "SELLER") {
+      const seller = await prisma.sellerProfile.findUnique({
+        where: { userId }
+      });
+      
+      if (!seller?.isActive) {
+        return reply.status(403).send({
+          success: false,
+          message: "Your account has been deactivated. You cannot update products. Reason: " + (seller?.inactiveReason || "No reason provided")
+        });
+      }
+    }
+
     // Support both JSON and form/multipart bodies
     const body = request.body || {};
     let { title, description, price, weight, stock, category, featured, tags, artistName, "artist name": artistNameWithSpace } = body;
@@ -1287,6 +1309,20 @@ exports.deleteProduct = async (request, reply) => {
     // Only the owning seller or an admin may delete
     if (userRole !== "ADMIN" && userRole !== "SUPER_ADMIN" && product.sellerId !== userId) {
       return reply.status(403).send({ success: false, message: "You are not authorized to delete this product" });
+    }
+
+    // Check if seller is inactive (only for sellers, not admin)
+    if (userRole === "SELLER") {
+      const seller = await prisma.sellerProfile.findUnique({
+        where: { userId }
+      });
+      
+      if (!seller?.isActive) {
+        return reply.status(403).send({
+          success: false,
+          message: "Your account has been deactivated. You cannot delete products. Reason: " + (seller?.inactiveReason || "No reason provided")
+        });
+      }
     }
 
     const now = new Date();

@@ -161,6 +161,10 @@ model SellerProfile {
   stripeKycStatus         String?             @map("stripe_kyc_status")   // 'unverified' | 'pending' | 'verified'
   stripeAbnProvided       Boolean             @default(false) @map("stripe_abn_provided")  // ABN submitted to Stripe (actual value is masked)
   stripeBankConnected     Boolean             @default(false) @map("stripe_bank_connected") // at least one bank account added
+  isActive                Boolean             @default(true) // Seller can operate when true
+  inactiveReason          String? // Reason for deactivation
+  deactivatedAt           DateTime? // When seller was deactivated
+  deactivatedBy           String? // Admin/SuperAdmin ID who deactivated
   bankChangeRequests      BankChangeRequest[]
   commission              Commission?         @relation(fields: [commissionId], references: [id])
   user                    User                @relation(fields: [userId], references: [id], onDelete: Cascade)

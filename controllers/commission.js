@@ -757,6 +757,18 @@ exports.requestPayout = async (request, reply) => {
     const sellerId = request.user.userId;
     const { requestedAmount, note } = request.body || {};
 
+    // Check if seller is inactive
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId: sellerId }
+    });
+
+    if (!seller?.isActive) {
+      return reply.status(403).send({
+        success: false,
+        message: "Your account has been deactivated. You cannot request payouts. Reason: " + (seller?.inactiveReason || "No reason provided")
+      });
+    }
+
     // Block if a PENDING payout request already exists
     const existing = await prisma.$queryRaw`
       SELECT id FROM payout_requests

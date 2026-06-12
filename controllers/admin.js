@@ -2,7 +2,7 @@ const prisma = require("../config/prisma");
 const Stripe = require("stripe");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const { generateSalesReportCSV } = require("../utils/csvExport");
-const { sendSellerApprovedEmail, sendSellerLowStockEmail, sendSellerProductApprovedEmail, sendSellerProductRejectedEmail, sendSellerProductActivatedEmail, sendSellerProductDeactivatedEmail, sendAdminLowStockDeactivationEmail, sendRefundStatusUpdateEmail, sendSellerRefundStatusEmail } = require("../utils/emailService");
+const { sendSellerApprovedEmail, sendSellerLowStockEmail, sendSellerProductApprovedEmail, sendSellerProductRejectedEmail, sendSellerProductActivatedEmail, sendSellerProductDeactivatedEmail, sendAdminLowStockDeactivationEmail, sendRefundStatusUpdateEmail, sendSellerRefundStatusEmail, sendSellerAccountDeactivatedEmail } = require("../utils/emailService");
 const { uploadToCloudinary } = require("../config/cloudinary");
 const fs = require('fs');
 const path = require('path');
@@ -2232,108 +2232,22 @@ exports.getPendingSellers = async (request, reply) => {
   }
 };
 
-// APPROVE SELLER
-exports.approveSeller = async (request, reply) => {
+
+// MIGRATE EXISTING SELLERS TO ACTIVE (PENDING, PENDING_APPROVAL, APPROVED → ACTIVE)
+exports.migrateSellerStatusToActive = async (request, reply) => {
   try {
-    const sellerId = request.params.id;
-    
-    console.log("📝 Approve seller - ID:", sellerId);
-    
-    if (!sellerId) {
-      return reply.status(400).send({ 
-        success: false, 
-        message: "Seller ID is required" 
-      });
-    }
-    
-    const seller = await prisma.sellerProfile.findUnique({
-      where: { userId: sellerId },
-      include: { user: true }
-    });
-    
-    if (!seller) {
-      return reply.status(404).send({ 
-        success: false, 
-        message: "Seller not found" 
-      });
-    }
-
-    await prisma.sellerProfile.update({
-      where: { userId: sellerId },
-      data: {
-        status: "APPROVED",
-        approvedAt: new Date()
-      }
+    const result = await prisma.sellerProfile.updateMany({
+      where: { status: { in: ["PENDING", "PENDING_APPROVAL", "APPROVED"] } },
+      data: { status: "ACTIVE", approvedAt: new Date() }
     });
 
-    // Send approval notification
-    await notifySellerApproved(sellerId, seller.user.name);
-
-    // Send approval email to seller
-    try {
-      await sendSellerApprovedEmail(seller.user.email, seller.user.name || "Seller");
-    } catch (emailErr) {
-      console.error("Seller approval email error (non-fatal):", emailErr.message);
-    }
-    
-    // Send product recommendation notification
-    await notifySellerProductRecommendation(sellerId, seller.user.name);
-
-    return reply.status(200).send({ 
-      success: true, 
-      message: "Seller approved successfully" 
+    return reply.status(200).send({
+      success: true,
+      message: `${result.count} seller(s) updated to ACTIVE`,
+      updated: result.count
     });
   } catch (err) {
-    console.error("Approve seller error:", err);
-    reply.status(500).send({ success: false, error: err.message });
-  }
-};
-
-// REJECT SELLER
-exports.rejectSeller = async (request, reply) => {
-  try {
-    const sellerId = request.params.id;
-    const { reason } = request.body;
-    
-    console.log("📝 Reject seller - ID:", sellerId);
-    
-    if (!sellerId) {
-      return reply.status(400).send({ 
-        success: false, 
-        message: "Seller ID is required" 
-      });
-    }
-    
-    const seller = await prisma.sellerProfile.findUnique({
-      where: { userId: sellerId },
-      include: { user: true }
-    });
-    
-    if (!seller) {
-      return reply.status(404).send({ 
-        success: false, 
-        message: "Seller not found" 
-      });
-    }
-
-    await prisma.sellerProfile.update({
-      where: { userId: sellerId },
-      data: {
-        status: "REJECTED",
-        rejectionReason: reason || "Not specified",
-        rejectedAt: new Date()
-      }
-    });
-
-    // Send rejection notification
-    await notifySellerApprovalRejected(sellerId, reason || "Not specified", seller.user.name);
-
-    return reply.status(200).send({ 
-      success: true, 
-      message: "Seller rejected" 
-    });
-  } catch (err) {
-    console.error("Reject seller error:", err);
+    console.error("migrateSellerStatusToActive error:", err);
     reply.status(500).send({ success: false, error: err.message });
   }
 };
@@ -2370,6 +2284,114 @@ exports.suspendSeller = async (request, reply) => {
     });
   } catch (err) {
     console.error("Suspend seller error:", err);
+    reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// TOGGLE SELLER ACTIVE/INACTIVE STATUS
+exports.toggleSellerActiveStatus = async (request, reply) => {
+  try {
+    const { sellerId } = request.params;
+    const { isActive, reason } = request.body;
+    const adminId = request.user.userId;
+
+    if (typeof isActive !== 'boolean') {
+      return reply.status(400).send({
+        success: false,
+        message: "isActive must be a boolean value (true or false)"
+      });
+    }
+
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId: sellerId },
+      include: { user: true }
+    });
+
+    if (!seller) {
+      return reply.status(404).send({
+        success: false,
+        message: "Seller not found"
+      });
+    }
+
+    // Prepare update data
+    const updateData = {
+      isActive,
+      deactivatedAt: isActive ? null : new Date(),
+      deactivatedBy: isActive ? null : adminId,
+      inactiveReason: isActive ? null : (reason || "Deactivated by admin")
+    };
+
+    // Update seller status
+    const updatedSeller = await prisma.sellerProfile.update({
+      where: { userId: sellerId },
+      data: updateData,
+      include: { user: true }
+    });
+
+    // If deactivating, automatically deactivate all seller's active products
+    if (!isActive) {
+      const deactivatedProducts = await prisma.product.updateMany({
+        where: {
+          sellerId: sellerId,
+          isActive: true,
+          deletedAt: null
+        },
+        data: {
+          isActive: false,
+          status: 'INACTIVE',
+          sellerInactiveReason: reason || "Seller account deactivated"
+        }
+      });
+
+      // Send deactivation email to seller
+      try {
+        await sendSellerAccountDeactivatedEmail(
+          updatedSeller.user.email,
+          updatedSeller.user.name || updatedSeller.storeName || "Seller",
+          reason || "Your account has been deactivated by the administration team"
+        );
+      } catch (emailError) {
+        console.error("Failed to send deactivation email:", emailError);
+        // Don't fail the deactivation if email fails to send
+      }
+
+      return reply.status(200).send({
+        success: true,
+        message: `Seller account deactivated successfully. ${deactivatedProducts.count} active products have been deactivated. Notification email sent to seller.`,
+        data: {
+          seller: {
+            id: updatedSeller.id,
+            userId: updatedSeller.userId,
+            storeName: updatedSeller.storeName,
+            isActive: updatedSeller.isActive,
+            deactivatedAt: updatedSeller.deactivatedAt,
+            deactivatedBy: updatedSeller.deactivatedBy,
+            inactiveReason: updatedSeller.inactiveReason
+          },
+          productsDeactivated: deactivatedProducts.count
+        }
+      });
+    } else {
+      // If activating seller, we don't automatically reactivate products
+      return reply.status(200).send({
+        success: true,
+        message: "Seller account activated successfully. Products remain in their current state.",
+        data: {
+          seller: {
+            id: updatedSeller.id,
+            userId: updatedSeller.userId,
+            storeName: updatedSeller.storeName,
+            isActive: updatedSeller.isActive,
+            deactivatedAt: updatedSeller.deactivatedAt,
+            deactivatedBy: updatedSeller.deactivatedBy,
+            inactiveReason: updatedSeller.inactiveReason
+          }
+        }
+      });
+    }
+  } catch (err) {
+    console.error("Toggle seller active status error:", err);
     reply.status(500).send({ success: false, error: err.message });
   }
 };
@@ -2438,82 +2460,6 @@ exports.updateSellerNotes = async (request, reply) => {
   }
 };
 
-// ACTIVATE SELLER (GO LIVE)
-exports.activateSeller = async (request, reply) => {
-  try {
-    const { id } = request.params;
-    const adminId = request.user?.userId || "admin";
-
-    const seller = await prisma.sellerProfile.findUnique({
-      where: { userId: id }
-    });
-
-    if (!seller) {
-      return reply.status(404).send({
-        success: false,
-        message: "Seller not found"
-      });
-    }
-
-    // Validation checks
-    if (seller.status !== "APPROVED") {
-      return reply.status(400).send({
-        success: false,
-        message: "Seller must be approved before activation"
-      });
-    }
-
-    if (seller.productCount < 1) {
-      return reply.status(400).send({
-        success: false,
-        message: "Seller must upload at least 1-2 products before going live. 5+ products recommended."
-      });
-    }
-
-    // Update seller to active status and activate pending products in a transaction
-    const result = await prisma.$transaction(async (tx) => {
-      // Update seller status
-      const updatedSeller = await tx.sellerProfile.update({
-        where: { userId: id },
-        data: {
-          status: "ACTIVE",
-          activatedBy: adminId,
-          activatedAt: new Date()
-        }
-      });
-
-      // Activate all seller's pending products (status + isActive)
-      const activatedProducts = await tx.product.updateMany({
-        where: {
-          sellerId: id,
-          status: "PENDING"
-        },
-        data: {
-          status: "ACTIVE"
-        }
-      });
-
-      // Also flip isActive = true via raw SQL (field managed outside Prisma schema)
-      await tx.$executeRaw`
-        UPDATE "products"
-        SET "isActive" = true
-        WHERE "sellerId" = ${id} AND status = 'ACTIVE'
-      `;
-
-      return { updatedSeller, activatedCount: activatedProducts.count };
-    });
-
-    reply.status(200).send({
-      success: true,
-      message: `Seller is now LIVE! ${result.activatedCount} products activated and visible to customers.`,
-      seller: result.updatedSeller,
-      productsActivated: result.activatedCount
-    });
-  } catch (error) {
-    console.error("Activate seller error:", error);
-    reply.status(500).send({ success: false, message: "Server error" });
-  }
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SYNC SELLER STRIPE STATUS

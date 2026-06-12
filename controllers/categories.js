@@ -300,6 +300,18 @@ exports.requestCategory = async (request, reply) => {
       return reply.status(400).send({ success: false, message: 'Category name is required' });
     }
 
+    // Check if seller is inactive
+    const sellerProfile = await prisma.sellerProfile.findUnique({
+      where: { userId: request.user?.userId }
+    });
+
+    if (sellerProfile && !sellerProfile.isActive) {
+      return reply.status(403).send({
+        success: false,
+        message: "Your account has been deactivated. You cannot request categories. Reason: " + (sellerProfile.inactiveReason || "No reason provided")
+      });
+    }
+
     const existingCategory = await prisma.$queryRaw`
       SELECT id FROM "category_requests"
       WHERE LOWER("categoryName") = LOWER(${categoryName.trim()})

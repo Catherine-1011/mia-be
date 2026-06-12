@@ -309,6 +309,14 @@ exports.updateSellerProfile = async (request, reply) => {
     const seller = await prisma.sellerProfile.findUnique({ where: { userId } });
     if (!seller) return reply.status(404).send({ success: false, message: 'Seller profile not found' });
 
+    // Check if seller is inactive
+    if (!seller.isActive) {
+      return reply.status(403).send({
+        success: false,
+        message: "Your account has been deactivated. You cannot update your profile. Reason: " + (seller.inactiveReason || "No reason provided")
+      });
+    }
+
     // Collect fields — support both multipart (with optional file) and JSON
     const fields = {};
     let storeLogoUrl, storeBannerUrl;

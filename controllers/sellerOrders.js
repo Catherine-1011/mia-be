@@ -919,6 +919,18 @@ exports.updateTrackingInfo = async (request, reply) => {
           return reply.status(403).send({ success: false, message: "Unauthorized - this order doesn't contain your products" });
         }
       }
+
+      // Check if seller is inactive (only for sellers, not admin)
+      const seller = await prisma.sellerProfile.findUnique({
+        where: { userId }
+      });
+      
+      if (!seller?.isActive) {
+        return reply.status(403).send({
+          success: false,
+          message: "Your account has been deactivated. You cannot update order status. Reason: " + (seller?.inactiveReason || "No reason provided")
+        });
+      }
     }
 
     // ── Validate transition to SHIPPED ────────────────────────────────────
@@ -1212,6 +1224,22 @@ exports.bulkUpdateOrderStatus = async (request, reply) => {
         if (!isAdmin && orderRecord.sellerId !== userId) {
           results.push({ orderId, success: false, message: "Unauthorized — not your order" });
           continue;
+        }
+
+        // Check if seller is inactive (only for sellers, not admin)
+        if (!isAdmin) {
+          const seller = await prisma.sellerProfile.findUnique({
+            where: { userId }
+          });
+          
+          if (!seller?.isActive) {
+            results.push({ 
+              orderId, 
+              success: false, 
+              message: "Your account has been deactivated. You cannot update order status. Reason: " + (seller?.inactiveReason || "No reason provided")
+            });
+            continue;
+          }
         }
 
         // ── Validate transition ───────────────────────────────────────────

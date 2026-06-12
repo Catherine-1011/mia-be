@@ -55,19 +55,17 @@ async function adminRoutes(fastify, options) {
   // Get all orders by seller ID (admin only)
   fastify.get("/orders/by-seller/:sellerId", { preHandler: adminAuth }, adminController.getOrdersBySellerId);
 
-  // Seller approval actions
-  fastify.post("/sellers/approve/:id", { preHandler: adminAuth }, adminController.approveSeller);
-  fastify.post("/sellers/reject/:id", { preHandler: adminAuth }, adminController.rejectSeller);
   fastify.put("/sellers/suspend/:sellerId", { preHandler: adminAuth }, adminController.suspendSeller);
+  fastify.post("/sellers/migrate-to-active", { preHandler: adminAuth }, adminController.migrateSellerStatusToActive);
+
+  // Toggle seller active/inactive status (deactivates products automatically)
+  fastify.put("/sellers/:sellerId/toggle-active", { preHandler: adminAuth }, adminController.toggleSellerActiveStatus);
 
   // Update seller notes
   fastify.put("/sellers/notes/:id", { preHandler: adminAuth }, adminController.updateSellerNotes);
 
   // Update seller profile fields (abn, businessName, etc.)
   fastify.put("/sellers/:sellerId/profile", { preHandler: adminAuth }, adminController.updateSellerProfile);
-
-  // Activate seller (Go Live - SOW Requirement)
-  fastify.post("/sellers/activate/:id", { preHandler: adminAuth }, adminController.activateSeller);
 
   // Sync seller Stripe KYC status → auto-approves platform status if charges_enabled
   fastify.post("/sellers/stripe-sync/:id", { preHandler: adminAuth }, adminController.syncSellerStripeStatus);

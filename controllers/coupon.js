@@ -92,6 +92,18 @@ exports.createSellerCoupon = async (request, reply) => {
       }
     } else {
       sellerId = actor.userId;
+      
+      // Check if seller is inactive (only for sellers, not admin)
+      const seller = await prisma.sellerProfile.findUnique({
+        where: { userId: sellerId }
+      });
+      
+      if (!seller?.isActive) {
+        return reply.status(403).send({
+          success: false,
+          message: "Your account has been deactivated. You cannot create coupons. Reason: " + (seller?.inactiveReason || "No reason provided")
+        });
+      }
     }
 
     const {
@@ -251,6 +263,20 @@ exports.updateSellerCoupon = async (request, reply) => {
     }
     if (isSellerRole(actor.role) && existing.sellerId !== actor.userId) {
       return reply.status(403).send({ success: false, message: 'Access denied' });
+    }
+
+    // Check if seller is inactive (only for sellers, not admin)
+    if (isSellerRole(actor.role)) {
+      const seller = await prisma.sellerProfile.findUnique({
+        where: { userId: actor.userId }
+      });
+      
+      if (!seller?.isActive) {
+        return reply.status(403).send({
+          success: false,
+          message: "Your account has been deactivated. You cannot update coupons. Reason: " + (seller?.inactiveReason || "No reason provided")
+        });
+      }
     }
 
     const {

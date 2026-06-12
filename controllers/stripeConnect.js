@@ -491,3 +491,5 @@ exports.getSellerLoginLink = async (request, reply) => {
     return reply.status(500).send({ success: false, message: 'Failed to get Stripe login info.' });
   }
 };
+
+// new

@@ -277,11 +277,10 @@ exports.createPaymentIntent = async (request, reply) => {
     // For single-seller: use a platform PaymentIntent with transfer_data —
     // checkout stays compatible with the existing frontend while Stripe routes
     // funds to the connected seller account and ALPA takes application_fee.
-    // For multi-seller: calculate total fees upfront and set application_fee_amount
-    // so the platform fee is visible in the charge breakdown.
+    // For multi-seller: fall back to platform charge (no transfer_data, no application_fee).
+    // Stripe limitation: can only have ONE transfer_data destination per PaymentIntent.
     let directChargeParams = {};
     let paymentIntentStripeAccountId = null;
-    let totalApplicationFeeAmountCents = 0;
     
     if (!isMultiSeller && USE_DIRECT_CHARGES_FOR_SINGLE_SELLER) {
       const [singleSellerId] = sellerItemsMap.keys();
@@ -312,25 +311,6 @@ exports.createPaymentIntent = async (request, reply) => {
           transfer_data: {
             destination: sellerProfile.stripeAccountId,
           },
-        };
-      }
-    } else if (isMultiSeller) {
-      // ── Multi-seller orders: Pre-calculate total platform fees ──
-      // Calculate fees for each seller so we can set application_fee_amount on the charge.
-      // This makes the fees visible in Stripe's payment breakdown.
-      const perSellerShipping = parseFloat(cartCalculations.shippingCost);
-      for (const [sellerId, items] of sellerItemsMap) {
-        const itemTotal = items.reduce((s, i) => s + Number(i.productVariant?.price ?? i.product.price) * i.quantity, 0);
-        const sellerCommission = await getCommissionForSeller(sellerId);
-        const resolvedCommission = sellerCommission || (await getDefaultCommission());
-        const commissionRatePct = resolvedCommission ? parseFloat(resolvedCommission.value) : 10;
-        const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
-        totalApplicationFeeAmountCents += payout.commissionAmountCents;
-      }
-      // Set the total application fee on the platform charge
-      if (totalApplicationFeeAmountCents > 0) {
-        directChargeParams = {
-          application_fee_amount: totalApplicationFeeAmountCents,
         };
       }
     }
@@ -1472,8 +1452,6 @@ exports.createGuestPaymentIntent = async (request, reply) => {
 
     let guestDirectChargeParams = {};
     let guestPaymentIntentStripeAccountId = null;
-    let guestTotalApplicationFeeAmountCents = 0;
-    
     if (!guestIsMultiSeller && USE_DIRECT_CHARGES_FOR_SINGLE_SELLER) {
       const [singleSellerId] = guestSellerMap.keys();
       const sellerProfile = await prisma.sellerProfile.findUnique({
@@ -1502,23 +1480,6 @@ exports.createGuestPaymentIntent = async (request, reply) => {
           transfer_data: {
             destination: sellerProfile.stripeAccountId,
           },
-        };
-      }
-    } else if (guestIsMultiSeller) {
-      // ── Guest Multi-seller orders: Pre-calculate total platform fees ──
-      const perSellerShipping = parseFloat(cartCalculations.shippingCost);
-      for (const [sellerId, sellerItems] of guestSellerMap) {
-        const itemTotal = sellerItems.reduce((s, i) => s + (i.productVariant ? Number(i.productVariant.price) : Number(i.product.price)) * i.quantity, 0);
-        const sellerCommission = await getCommissionForSeller(sellerId);
-        const resolvedCommission = sellerCommission || (await getDefaultCommission());
-        const commissionRatePct = resolvedCommission ? parseFloat(resolvedCommission.value) : 10;
-        const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
-        guestTotalApplicationFeeAmountCents += payout.commissionAmountCents;
-      }
-      // Set the total application fee on the platform charge
-      if (guestTotalApplicationFeeAmountCents > 0) {
-        guestDirectChargeParams = {
-          application_fee_amount: guestTotalApplicationFeeAmountCents,
         };
       }
     }

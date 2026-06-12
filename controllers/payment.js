@@ -994,12 +994,24 @@ async function handlePaymentSucceeded(paymentIntentId) {
     const itemTotal = sellerItems.reduce((s, i) => s + Number(i.price) * i.quantity, 0);
     const productNames = sellerItems.map(i => i.product?.title).filter(Boolean);
     const sellerSubOrder = order.subOrders?.find((sub) => sub.sellerId === sid || sub.seller?.id === sid) || null;
+    
+    // ── Calculate commission for this seller (needed for description + commission record) ──
+    const sellerCommission = await getCommissionForSeller(sid);
+    const resolvedCommission = sellerCommission || (await getDefaultCommission());
+    const commissionRatePct = resolvedCommission ? parseFloat(resolvedCommission.value) : 10;
+    const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
+    
+    // ── Build transaction description WITH fee details so sellers can see the breakdown ──
     const sellerTransactionDescription = buildSellerTransactionDescription({
       order: sellerSubOrder || order,
       customerName: toName,
       customerEmail: order.customerEmail,
       items: sellerItems,
+      amount: payout.sellerTotalPayout,
       label: "Seller payout",
+      platformFee: payout.commissionAmount,
+      gstAmount: payout.gstAmount,
+      shippingAmount: payout.shippingAmount,
     });
     createOrderNotification(order.id, sid, 'ORDER_PROCESSING', 'HIGH', {
       message: `New order received from ${toName}`,

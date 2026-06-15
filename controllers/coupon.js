@@ -505,6 +505,7 @@ exports.hardDeleteSellerCoupon = async (request, reply) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // GET ACTIVE SELLER COUPONS (Public — browse available offers)
 // Optional ?sellerId=xxx to filter by seller
+// Optional ?items=[{"productId":"...","quantity":2}] to compute isEligible per coupon
 // ─────────────────────────────────────────────────────────────────────────────
 exports.getActiveSellerCoupons = async (request, reply) => {
   try {
@@ -540,7 +541,35 @@ exports.getActiveSellerCoupons = async (request, reply) => {
       }
     });
 
-    return reply.send({ success: true, coupons, count: coupons.length });
+    // Parse cart items if provided — used to compute real-time eligibility
+    let cartItems = [];
+    if (request.query?.items) {
+      try {
+        cartItems = JSON.parse(request.query.items);
+      } catch { /* ignore malformed JSON — treat as no cart */ }
+    }
+
+    // For each coupon, compute isEligible based on cart contents
+    const couponsWithEligibility = coupons.map(coupon => {
+      let isEligible = false;
+      let requiredQty = coupon.couponType === 'bundle' ? (coupon.bundleQty || 2) : (coupon.minQty || 1);
+
+      if (cartItems.length > 0) {
+        // Group cart quantities by productId for products that qualify for this coupon
+        const qualifyingQty = cartItems.reduce((total, item) => {
+          const matchesSeller = true; // seller filtering handled by productIds below
+          const inProductList = !coupon.productIds?.length || coupon.productIds.includes(item.productId);
+          if (inProductList) return total + (item.quantity || 0);
+          return total;
+        }, 0);
+
+        isEligible = qualifyingQty >= requiredQty;
+      }
+
+      return { ...coupon, isEligible, requiredQty };
+    });
+
+    return reply.send({ success: true, coupons: couponsWithEligibility, count: couponsWithEligibility.length });
   } catch (error) {
     console.error('Get active seller coupons error:', error);
     return reply.status(500).send({ success: false, error: error.message });

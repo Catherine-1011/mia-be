@@ -310,6 +310,18 @@ const getPrintSafeCSS = () => `
 `;
 
 /**
+ * Helper function to create VML gradient background for better email client support
+ * This ensures gradients show on Apple Mail, Outlook, and other email clients
+ */
+const getVMLGradient = (color1, color2, fallback) => {
+  return `<!--[if mso]>
+    <v:rect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" fill="true" stroke="false" style="width:100%;height:100%;">
+      <v:fill type="gradient" color="${color1}" color2="${color2}" />
+    </v:rect>
+  <![endif]-->`
+};
+
+/**
  * Generate responsive email template with dark mode support
  * @param {Object} options - Template configuration options
  * @param {string} options.title - Email title
@@ -529,15 +541,20 @@ const sendOTPEmail = async (email, otp, name) => {
           
           /* Comprehensive print CSS for all email templates */
           ${getPrintSafeCSS().replace(/^@media screen[\s\S]*?}\s*/, '').replace(/^@media print \{/, '@media print {')}
+          
+          /* Apple Mail specific color fixes */
+          .header-gradient { background-color: #5A1E12; }
+          .footer-dark { background-color: #3D1009; }
+          .alert-box { background-color: #F9EDE9; }
         </style>
       </head>
-      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;" class="dark-bg">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;" class="dark-bg">
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;" bgcolor="#FDF5F3" class="dark-bg">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;" bgcolor="#FDF5F3" class="dark-bg">
           <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:95%;" class="email-container dark-card">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:95%;" bgcolor="#ffffff" class="email-container dark-card">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;" class="email-header">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);background-color:#5A1E12;padding:36px 40px;text-align:center;" class="email-header header-gradient">
                   <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;letter-spacing:1px;">Email Verification</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Verify your identity to continue</p>
@@ -550,20 +567,24 @@ const sendOTPEmail = async (email, otp, name) => {
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 30px;">Thank you for registering! Use the One-Time Password below to verify your email address.</p>
 
                   <!-- OTP Box -->
-                  <div style="background:linear-gradient(135deg,#F9EDE9 0%,#FDF5F3 100%);border:2px dashed #C4603A;border-radius:10px;padding:28px;text-align:center;margin:0 0 30px;">
-                    <p style="margin:0 0 6px;color:#7D2E1E;font-size:13px;letter-spacing:2px;text-transform:uppercase;">Your OTP Code</p>
-                    <div style="font-size:40px;font-weight:800;letter-spacing:12px;color:#5A1E12;">${otp}</div>
-                    <p style="margin:10px 0 0;color:#C4603A;font-size:13px;"> Expires in 10 minutes</p>
-                  </div>
+                  <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#F9EDE9 0%,#FDF5F3 100%);background-color:#F9EDE9;border:2px dashed #C4603A;border-radius:10px;padding:28px;text-align:center;margin:0 0 30px;">
+                    <tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:28px;text-align:center;">
+                      <p style="margin:0 0 6px;color:#7D2E1E;font-size:13px;letter-spacing:2px;text-transform:uppercase;">Your OTP Code</p>
+                      <div style="font-size:40px;font-weight:800;letter-spacing:12px;color:#5A1E12;">${otp}</div>
+                      <p style="margin:10px 0 0;color:#C4603A;font-size:13px;"> Expires in 10 minutes</p>
+                    </td></tr>
+                  </table>
 
-                  <div style="background-color:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 6px 6px 0;padding:14px 18px;">
-                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">If you did not request this OTP, please ignore this email. Your account remains secure.</p>
-                  </div>
+                  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9EDE9;background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 6px 6px 0;padding:14px 18px;">
+                    <tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-left:4px solid #C4603A;padding:14px 18px;">
+                      <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">If you did not request this OTP, please ignore this email. Your account remains secure.</p>
+                    </td></tr>
+                  </table>
                 </td>
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;" class="email-footer footer-dark">
                   <p style="margin:0;color:#F0D0C8;font-size:12px;">This is an automated email &mdash; please do not reply.</p>
                   <p style="margin:6px 0 0;color:#8B5C54;font-size:11px;">&copy;? 2026 Made in Arnhem Land. All rights reserved.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
@@ -615,26 +636,26 @@ const sendFinanceOrderInvoiceEmail = async (orderDetails, pdfBuffer) => {
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
         <thead>
           <tr>
-            <th style="background: #5A1E12; color: #fff; text-align: left; padding: 12px 15px; border-radius: 6px 0 0 0;">Field</th>
-            <th style="background: #5A1E12; color: #fff; text-align: left; padding: 12px 15px; border-radius: 0 6px 0 0;">Details</th>
+            <th bgcolor="#5A1E12" style="background: #5A1E12; background-color: #5A1E12; color: #fff; text-align: left; padding: 12px 15px; border-radius: 6px 0 0 0;">Field</th>
+            <th bgcolor="#5A1E12" style="background: #5A1E12; background-color: #5A1E12; color: #fff; text-align: left; padding: 12px 15px; border-radius: 0 6px 0 0;">Details</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td style="padding: 12px 15px; border-bottom: 1px solid #eee; border-left: 1px solid #eee;"><strong>Order Number</strong></td>
-            <td style="padding: 12px 15px; border-bottom: 1px solid #eee; border-right: 1px solid #eee;">#${orderDetails.displayId}</td>
+            <td bgcolor="#ffffff" style="padding: 12px 15px; border-bottom: 1px solid #eee; border-left: 1px solid #eee; background-color: #ffffff;"><strong>Order Number</strong></td>
+            <td bgcolor="#ffffff" style="padding: 12px 15px; border-bottom: 1px solid #eee; border-right: 1px solid #eee; background-color: #ffffff;">#${orderDetails.displayId}</td>
           </tr>
           <tr>
-            <td style="padding: 12px 15px; border-bottom: 1px solid #eee; border-left: 1px solid #eee;"><strong>Total Amount</strong></td>
-            <td style="padding: 12px 15px; border-bottom: 1px solid #eee; border-right: 1px solid #eee;">${(orderDetails.totalAmount || 0).toFixed(2)}</td>
+            <td bgcolor="#ffffff" style="padding: 12px 15px; border-bottom: 1px solid #eee; border-left: 1px solid #eee; background-color: #ffffff;"><strong>Total Amount</strong></td>
+            <td bgcolor="#ffffff" style="padding: 12px 15px; border-bottom: 1px solid #eee; border-right: 1px solid #eee; background-color: #ffffff;">${(orderDetails.totalAmount || 0).toFixed(2)}</td>
           </tr>
           <tr>
-            <td style="padding: 12px 15px; border-bottom: 1px solid #eee; border-left: 1px solid #eee;"><strong>Payment Method</strong></td>
-            <td style="padding: 12px 15px; border-bottom: 1px solid #eee; border-right: 1px solid #eee;">${orderDetails.paymentMethod || 'N/A'}</td>
+            <td bgcolor="#ffffff" style="padding: 12px 15px; border-bottom: 1px solid #eee; border-left: 1px solid #eee; background-color: #ffffff;"><strong>Payment Method</strong></td>
+            <td bgcolor="#ffffff" style="padding: 12px 15px; border-bottom: 1px solid #eee; border-right: 1px solid #eee; background-color: #ffffff;">${orderDetails.paymentMethod || 'N/A'}</td>
           </tr>
           <tr>
-            <td style="padding: 12px 15px; border-left: 1px solid #eee; border-bottom: 1px solid #eee;"><strong>Customer Email</strong></td>
-            <td style="padding: 12px 15px; border-right: 1px solid #eee; border-bottom: 1px solid #eee;">${orderDetails.customerEmail || 'No Email'}</td>
+            <td bgcolor="#ffffff" style="padding: 12px 15px; border-left: 1px solid #eee; border-bottom: 1px solid #eee; background-color: #ffffff;"><strong>Customer Email</strong></td>
+            <td bgcolor="#ffffff" style="padding: 12px 15px; border-right: 1px solid #eee; border-bottom: 1px solid #eee; background-color: #ffffff;">${orderDetails.customerEmail || 'No Email'}</td>
           </tr>
         </tbody>
       </table>
@@ -740,7 +761,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
   const content = `
     <!-- Header -->
     <tr>
-      <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;" class="email-header">
+      <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);background-color:#5A1E12;padding:36px 40px;text-align:center;" class="email-header">
         <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
         <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">Order Confirmed!</h1>
         <p style="margin:10px 0 0;color:#F0D0C8;font-size:15px;">
@@ -756,9 +777,9 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     <!-- Invoice Meta -->
     <tr>
       <td style="padding:0;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9EDE9;border-bottom:3px solid #C4603A;" class="dark-table-header">
+        <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-bottom:3px solid #C4603A;" class="dark-table-header">
           <tr>
-            <td style="padding:16px 40px;" class="mobile-padding">
+            <td bgcolor="#F9EDE9" style="padding:16px 40px;background-color:#F9EDE9;" class="mobile-padding">
               <table width="100%" cellpadding="0" cellspacing="0" class="responsive-table mobile-table-stack">
                 <tr>
                   <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Invoice #</strong></td>
@@ -809,12 +830,12 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
         <p style="color:#5A1E12;font-size:16px;font-weight:700;margin:0 0 12px;" class="dark-text">Order Items</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(90,30,18,0.1);" class="responsive-table dark-table-bg">
           <thead>
-            <tr style="background-color:#5A1E12;">
-              <th style="padding:13px 12px;text-align:left;color:#fff;font-size:13px;">Product</th>
-              <th style="padding:13px 12px;text-align:center;color:#fff;font-size:13px;">Qty</th>
-              <th style="padding:13px 12px;text-align:right;color:#fff;font-size:13px;">Unit Price</th>
-              <th style="padding:13px 12px;text-align:right;color:#fff;font-size:13px;">GST</th>
-              <th style="padding:13px 12px;text-align:right;color:#fff;font-size:13px;">Total</th>
+            <tr bgcolor="#5A1E12" style="background-color:#5A1E12;">
+              <th bgcolor="#5A1E12" style="padding:13px 12px;text-align:left;color:#fff;font-size:13px;background-color:#5A1E12;">Product</th>
+              <th bgcolor="#5A1E12" style="padding:13px 12px;text-align:center;color:#fff;font-size:13px;background-color:#5A1E12;">Qty</th>
+              <th bgcolor="#5A1E12" style="padding:13px 12px;text-align:right;color:#fff;font-size:13px;background-color:#5A1E12;">Unit Price</th>
+              <th bgcolor="#5A1E12" style="padding:13px 12px;text-align:right;color:#fff;font-size:13px;background-color:#5A1E12;">GST</th>
+              <th bgcolor="#5A1E12" style="padding:13px 12px;text-align:right;color:#fff;font-size:13px;background-color:#5A1E12;">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -822,20 +843,20 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
           </tbody>
           <tfoot>
             <!-- Subtotal row -->
-            <tr style="background-color:#fdf5f3;">
-              <td colspan="4" style="padding:10px 12px;text-align:right;color:#555;font-size:14px;">Subtotal (inc. GST)</td>
-              <td style="padding:10px 12px;text-align:right;color:#333;font-size:14px;">$${
+            <tr bgcolor="#fdf5f3" style="background-color:#fdf5f3;">
+              <td colspan="4" bgcolor="#fdf5f3" style="padding:10px 12px;text-align:right;color:#555;font-size:14px;background-color:#fdf5f3;">Subtotal (inc. GST)</td>
+              <td bgcolor="#fdf5f3" style="padding:10px 12px;text-align:right;color:#333;font-size:14px;background-color:#fdf5f3;">$${
                 orderDetails.orderSummary
                   ? parseFloat(orderDetails.orderSummary.subtotal || 0).toFixed(2)
                   : orderDetails.totalAmount.toFixed(2)
               }</td>
             </tr>
             <!-- Shipping row -->
-            <tr style="background-color:#fdf5f3;">
-              <td colspan="4" style="padding:6px 12px;text-align:right;color:#555;font-size:14px;">
+            <tr bgcolor="#fdf5f3" style="background-color:#fdf5f3;">
+              <td colspan="4" bgcolor="#fdf5f3" style="padding:6px 12px;text-align:right;color:#555;font-size:14px;background-color:#fdf5f3;">
                 Shipping${orderDetails.orderSummary?.shippingMethod?.name ? ` &mdash; ${orderDetails.orderSummary.shippingMethod.name}` : ''}${orderDetails.orderSummary?.shippingMethod?.estimatedDays ? ` (${orderDetails.orderSummary.shippingMethod.estimatedDays})` : ''}
               </td>
-              <td style="padding:6px 12px;text-align:right;color:#333;font-size:14px;">${
+              <td bgcolor="#fdf5f3" style="padding:6px 12px;text-align:right;color:#333;font-size:14px;background-color:#fdf5f3;">${
                 orderDetails.orderSummary && parseFloat(orderDetails.orderSummary.shippingCost || 0) > 0
                   ? `$${parseFloat(orderDetails.orderSummary.shippingCost).toFixed(2)}`
                   : '<span style="color:#2e7d32;font-weight:600;">FREE</span>'
@@ -843,34 +864,34 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
             </tr>
             <!-- Coupon Discount row (only shown when a coupon was applied) -->
             ${orderDetails.orderSummary?.discountAmount && parseFloat(orderDetails.orderSummary.discountAmount) > 0 ? `
-            <tr style="background-color:#fdf5f3;">
-              <td colspan="4" style="padding:6px 12px;text-align:right;color:#2e7d32;font-size:14px;">Coupon Discount${orderDetails.orderSummary.couponCode ? ` (${orderDetails.orderSummary.couponCode})` : ''}</td>
-              <td style="padding:6px 12px;text-align:right;color:#2e7d32;font-size:14px;font-weight:600;">-$${parseFloat(orderDetails.orderSummary.discountAmount).toFixed(2)}</td>
+            <tr bgcolor="#fdf5f3" style="background-color:#fdf5f3;">
+              <td colspan="4" bgcolor="#fdf5f3" style="padding:6px 12px;text-align:right;color:#2e7d32;font-size:14px;background-color:#fdf5f3;">Coupon Discount${orderDetails.orderSummary.couponCode ? ` (${orderDetails.orderSummary.couponCode})` : ''}</td>
+              <td bgcolor="#fdf5f3" style="padding:6px 12px;text-align:right;color:#2e7d32;font-size:14px;font-weight:600;background-color:#fdf5f3;">-$${parseFloat(orderDetails.orderSummary.discountAmount).toFixed(2)}</td>
             </tr>` : ''}
             <!-- GST extracted row -->
-            <tr style="background-color:#fdf5f3;">
-              <td colspan="4" style="border-top:1px dashed #ddd;padding:6px 12px;text-align:right;font-size:13px;color:#555">
+            <tr bgcolor="#fdf5f3" style="background-color:#fdf5f3;">
+              <td colspan="4" bgcolor="#fdf5f3" style="border-top:1px dashed #ddd;padding:6px 12px;text-align:right;font-size:13px;color:#555;background-color:#fdf5f3">
                 GST included${orderDetails.orderSummary?.gstPercentage ? ` (${parseFloat(orderDetails.orderSummary.gstPercentage).toFixed(0)}%)` : ''}
               </td>
-              <td style="border-top:1px dashed #ddd;padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;">$${
+              <td bgcolor="#fdf5f3" style="border-top:1px dashed #ddd;padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;background-color:#fdf5f3;">$${
                 orderDetails.orderSummary
                   ? parseFloat(orderDetails.orderSummary.gstAmount || 0).toFixed(2)
                   : '0.00'
               }</td>
             </tr>
             <!-- Net ex-GST row -->
-            <tr style="background-color:#fdf5f3;">
-              <td colspan="4" style="padding:6px 12px;text-align:right;font-size:13px;color:#555">Net amount (ex. GST)</td>
-              <td style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;">$${
+            <tr bgcolor="#fdf5f3" style="background-color:#fdf5f3;">
+              <td colspan="4" bgcolor="#fdf5f3" style="padding:6px 12px;text-align:right;font-size:13px;color:#555;background-color:#fdf5f3">Net amount (ex. GST)</td>
+              <td bgcolor="#fdf5f3" style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;background-color:#fdf5f3;">$${
                 orderDetails.orderSummary
                   ? parseFloat(orderDetails.orderSummary.subtotalExGST || 0).toFixed(2)
                   : '0.00'
               }</td>
             </tr>
             <!-- Grand Total row -->
-            <tr style="background-color:#F9EDE9;">
-              <td colspan="4" style="border-top:2px solid #C4603A;padding:16px 12px;text-align:right;color:#5A1E12;font-size:16px;font-weight:700;">Grand Total</td>
-              <td style="border-top:2px solid #C4603A;padding:16px 12px;text-align:right;color:#5A1E12;font-size:20px;font-weight:800;">$${orderDetails.totalAmount.toFixed(2)}</td>
+            <tr bgcolor="#F9EDE9" style="background-color:#F9EDE9;">
+              <td colspan="4" bgcolor="#F9EDE9" style="border-top:2px solid #C4603A;padding:16px 12px;text-align:right;color:#5A1E12;font-size:16px;font-weight:700;background-color:#F9EDE9;">Grand Total</td>
+              <td bgcolor="#F9EDE9" style="border-top:2px solid #C4603A;padding:16px 12px;text-align:right;color:#5A1E12;font-size:20px;font-weight:800;background-color:#F9EDE9;">$${orderDetails.totalAmount.toFixed(2)}</td>
             </tr>
           </tfoot>
         </table>
@@ -903,7 +924,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     </tr>
     <!-- Footer -->
     <tr>
-      <td style="background-color:#3D1009;padding:22px 40px;text-align:center;" class="email-footer">
+      <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;" class="email-footer">
         <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for supporting Aboriginal artists!</p>
         <p style="margin:0 0 8px;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
         <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
@@ -1085,7 +1106,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
 
               <!-- Brand Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);background-color:#5A1E12;padding:30px 40px;text-align:center;">
                   <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">  Order Update</h1>
                 </td>
@@ -1109,7 +1130,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
               <!-- Order Meta -->
               <tr>
                 <td style="padding:0 40px 20px;">
-                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-radius:8px;border-top:3px solid #5A1E12;"><tr><td style="padding:20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-radius:8px;border-top:3px solid #5A1E12;"><tr><td bgcolor="#F9EDE9" style="padding:20px;background-color:#F9EDE9;">
                     <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Order Details</p>
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
@@ -1205,7 +1226,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
 
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for shopping with us!   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
@@ -1271,12 +1292,12 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;" bgcolor="#FDF5F3">
           <tr><td align="center">
-            <table width="650" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+            <table width="650" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);" bgcolor="#ffffff">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);background-color:#5A1E12;padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Seller Dashboard</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">New Order Received!</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">You have a new order to process</p>
@@ -1284,7 +1305,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
               </tr>
               <!-- Alert banner -->
               <tr>
-                <td style="background-color:#C4603A;padding:12px 40px;text-align:center;">
+                <td bgcolor="#C4603A" style="background-color:#C4603A;padding:12px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:14px;font-weight:600;">Action Required &mdash; please process this order promptly</p>
                 </td>
               </tr>
@@ -1298,23 +1319,25 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
               <!-- Order summary -->
               <tr>
                 <td style="padding:0 40px 20px;">
-                  <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #5A1E12;">
-                    <p style="margin:0 0 14px;color:#5A1E12;font-size:14px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Order Summary</p>
-                    <table width="100%" cellpadding="0" cellspacing="0">
-                      <tr>
-                        <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">#${orderDetails.displayId}</td>
-                      </tr>
-                      <tr>
-                        <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Date</strong></td>
-                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date().toLocaleDateString('en-AU',{year:'numeric',month:'long',day:'numeric',timeZone:'Australia/Sydney'})}</td>
-                      </tr>
-                      <tr>
-                        <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Your Earnings</strong></td>
-                        <td style="padding:6px 0;color:#5A1E12;font-size:18px;font-weight:800;text-align:right;">$${orderDetails.totalAmount.toFixed(2)}</td>
-                      </tr>
-                    </table>
-                  </div>
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #5A1E12;">
+                    <tr><td bgcolor="#F9EDE9" style="padding:20px;background-color:#F9EDE9;">
+                      <p style="margin:0 0 14px;color:#5A1E12;font-size:14px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Order Summary</p>
+                      <table width="100%" cellpadding="0" cellspacing="0">
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">#${orderDetails.displayId}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Date</strong></td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date().toLocaleDateString('en-AU',{year:'numeric',month:'long',day:'numeric',timeZone:'Australia/Sydney'})}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Your Earnings</strong></td>
+                          <td style="padding:6px 0;color:#5A1E12;font-size:18px;font-weight:800;text-align:right;">$${orderDetails.totalAmount.toFixed(2)}</td>
+                        </tr>
+                      </table>
+                    </td></tr>
+                  </table>
                 </td>
               </tr>
               <!-- Products -->
@@ -1323,7 +1346,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
                 <td style="padding:0 40px 20px;">
                   <p style="color:#5A1E12;font-size:15px;font-weight:700;margin:0 0 10px;">Products Ordered</p>
                   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:8px;overflow:hidden;">
-                    <thead><tr style="background-color:#5A1E12;"><th style="padding:11px 12px;text-align:left;color:#fff;font-size:13px;">Product</th><th style="padding:11px 12px;text-align:center;color:#fff;font-size:13px;">Qty</th><th style="padding:11px 12px;text-align:right;color:#fff;font-size:13px;">Price</th></tr></thead>
+                    <thead><tr bgcolor="#5A1E12" style="background-color:#5A1E12;"><th bgcolor="#5A1E12" style="padding:11px 12px;text-align:left;color:#fff;font-size:13px;background-color:#5A1E12;">Product</th><th bgcolor="#5A1E12" style="padding:11px 12px;text-align:center;color:#fff;font-size:13px;background-color:#5A1E12;">Qty</th><th bgcolor="#5A1E12" style="padding:11px 12px;text-align:right;color:#fff;font-size:13px;background-color:#5A1E12;">Price</th></tr></thead>
                     <tbody>${productRows}</tbody>
                   </table>
                 </td>
@@ -1331,13 +1354,15 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
               <!-- Action Required ?-->
               <tr>
                 <td style="padding:0 40px 20px;">
-                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
-                    <p style="margin:0 0 8px;color:#5A1E12;font-weight:700;font-size:14px;">Checklist</p>
-                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Log into your seller dashboard</p>
-                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Confirm the order and verify stock</p>
-                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Pack and ship within 2?3 business days</p>
-                    <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Add tracking information once dispatched</p>
-                  </div>
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-left:4px solid #C4603A;padding:16px 20px;">
+                      <p style="margin:0 0 8px;color:#5A1E12;font-weight:700;font-size:14px;">Checklist</p>
+                      <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Log into your seller dashboard</p>
+                      <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Confirm the order and verify stock</p>
+                      <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Pack and ship within 2?3 business days</p>
+                      <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Add tracking information once dispatched</p>
+                    </td></tr>
+                  </table>
                 </td>
               </tr>
               <!-- CTA -->
@@ -1355,7 +1380,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued Made in Arnhem Land seller!</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
@@ -1404,10 +1429,10 @@ const sendContactFormEmail = async (email, name, subject, message) => {
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
           <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);" bgcolor="#ffffff">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);background-color:#5A1E12;padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">Message Received</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">We'll be in touch soon!</p>
@@ -1419,22 +1444,26 @@ const sendContactFormEmail = async (email, name, subject, message) => {
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${name}</strong>,</p>
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Thank you for reaching out! We've received your message and our support team will review it shortly.</p>
 
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:22px;">
-                    <p style="margin:0 0 14px;color:#5A1E12;font-size:14px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Your Message</p>
-                    <p style="margin:0 0 8px;color:#7D2E1E;font-size:14px;"><strong>Subject:</strong> <span style="color:#3D1009;">${subject}</span></p>
-                    <p style="margin:0 0 6px;color:#7D2E1E;font-size:14px;"><strong>Message:</strong></p>
-                    <p style="margin:0;color:#555;font-size:14px;line-height:1.7;">${message}</p>
-                  </div>
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:22px;">
+                    <tr><td bgcolor="#F9EDE9" style="padding:22px;background-color:#F9EDE9;">
+                      <p style="margin:0 0 14px;color:#5A1E12;font-size:14px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Your Message</p>
+                      <p style="margin:0 0 8px;color:#7D2E1E;font-size:14px;"><strong>Subject:</strong> <span style="color:#3D1009;">${subject}</span></p>
+                      <p style="margin:0 0 6px;color:#7D2E1E;font-size:14px;"><strong>Message:</strong></p>
+                      <p style="margin:0;color:#555;font-size:14px;line-height:1.7;">${message}</p>
+                    </td></tr>
+                  </table>
 
-                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
-                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">? Response Time</p>
-                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Our support team typically responds within 24?48 business hours. You'll receive a reply at this email address.</p>
-                  </div>
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                    <tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-left:4px solid #C4603A;padding:16px 20px;">
+                      <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">? Response Time</p>
+                      <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Our support team typically responds within 24?48 business hours. You'll receive a reply at this email address.</p>
+                    </td></tr>
+                  </table>
                 </td>
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Customer Support</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated confirmation &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>

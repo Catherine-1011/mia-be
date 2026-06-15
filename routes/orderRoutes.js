@@ -58,6 +58,10 @@ async function orderRoutes(fastify, options) {
 
   // Guest single refund request tracking (no authentication; verified by orderId + customerEmail)
   fastify.get("/guest/refund-requests/:requestId", { preHandler: guestRefundRateLimit }, orderController.getGuestRefundRequestById);
+
+  // Guest cancel order (no authentication; verified by orderId + customerEmail)
+  // Only allows cancellation when order status is CONFIRMED (multi-seller: all sub-orders must be CONFIRMED)
+  fastify.post("/guest/cancel", { preHandler: guestRefundRateLimit }, orderController.cancelGuestOrder);
 }
 
 module.exports = orderRoutes;

@@ -1094,7 +1094,17 @@ exports.getMyOrders = async (request, reply) => {
           }
         },
         subOrders: {
-          include: {
+          select: {
+            id: true,
+            sellerId: true,
+            parentOrderId: true,
+            status: true,
+            statusReason: true,
+            trackingNumber: true,
+            estimatedDelivery: true,
+            subtotal: true,
+            createdAt: true,
+            updatedAt: true,
             seller: {
               select: {
                 id: true,
@@ -1178,19 +1188,24 @@ exports.getMyOrders = async (request, reply) => {
           }))
         );
 
-        // Compute overall status from sub-orders
-        const subOrderStatuses = order.subOrders.map(sub => sub.status);
-        
-        if (subOrderStatuses.every(status => status === 'DELIVERED')) {
-          computedStatus = 'DELIVERED';
-        } else if (subOrderStatuses.every(status => status === 'CANCELLED')) {
+        // Compute overall status from parent order and sub-orders
+        // If parent order is CANCELLED, the entire order is CANCELLED regardless of sub-orders
+        if (order.status === 'CANCELLED') {
           computedStatus = 'CANCELLED';
-        } else if (subOrderStatuses.some(status => status === 'SHIPPED')) {
-          computedStatus = 'SHIPPED';  
-        } else if (subOrderStatuses.some(status => status === 'PROCESSING')) {
-          computedStatus = 'PROCESSING';
         } else {
-          computedStatus = subOrderStatuses[0] || 'CONFIRMED';
+          const subOrderStatuses = order.subOrders.map(sub => sub.status);
+          
+          if (subOrderStatuses.every(status => status === 'DELIVERED')) {
+            computedStatus = 'DELIVERED';
+          } else if (subOrderStatuses.every(status => status === 'CANCELLED')) {
+            computedStatus = 'CANCELLED';
+          } else if (subOrderStatuses.some(status => status === 'SHIPPED')) {
+            computedStatus = 'SHIPPED';  
+          } else if (subOrderStatuses.some(status => status === 'PROCESSING')) {
+            computedStatus = 'PROCESSING';
+          } else {
+            computedStatus = subOrderStatuses[0] || 'CONFIRMED';
+          }
         }
 
         // Sub-orders data for multi-seller orders
@@ -1354,7 +1369,7 @@ exports.getMyOrders = async (request, reply) => {
   }
 };
 
-// USER — CANCEL ORDER (with SMS notification)
+// USER — CANCEL ORDER (with SMS notification) - FIXED FOR SUB-ORDERS
 exports.cancelOrder = async (request, reply) => {
   try {
     const displayId = request.params.id;
@@ -1368,7 +1383,8 @@ exports.cancelOrder = async (request, reply) => {
           include: {
             product: { select: { id: true, title: true, price: true, sellerId: true } }
           }
-        }
+        },
+        subOrders: true // Include sub-orders for multi-seller orders
       }
     });
 
@@ -1376,8 +1392,21 @@ exports.cancelOrder = async (request, reply) => {
 
     if (order.userId !== userId) return reply.status(403).send({ success: false, message: "Not authorized" });
 
-    if (!['PENDING', 'CONFIRMED'].includes(order.status)) {
-      return reply.status(400).send({ success: false, message: "Order cannot be cancelled" });
+    // For multi-seller orders: ALL sub-orders must be CONFIRMED to cancel
+    if (order.subOrders && order.subOrders.length > 0) {
+      const allConfirmed = order.subOrders.every(sub => sub.status === 'CONFIRMED');
+      if (!allConfirmed) {
+        return reply.status(400).send({ 
+          success: false, 
+          message: "Cannot cancel order. All items from all sellers must be in CONFIRMED status before cancellation." 
+        });
+      }
+      // Multi-seller order passed validation: all sub-orders are CONFIRMED
+    } else {
+      // For single-seller orders: allow PENDING or CONFIRMED
+      if (!['PENDING', 'CONFIRMED'].includes(order.status)) {
+        return reply.status(400).send({ success: false, message: "Order cannot be cancelled" });
+      }
     }
 
     const orderId = order.id; // resolve to internal CUID for all remaining operations
@@ -1404,12 +1433,31 @@ exports.cancelOrder = async (request, reply) => {
       });
     }
 
-    await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status: "CANCELLED",
-        statusReason: finalReason
+    // Use transaction to ensure atomicity: cancel sub-orders and parent order together
+    await prisma.$transaction(async (tx) => {
+      // If multi-seller order: cancel all sub-orders first
+      if (order.subOrders && order.subOrders.length > 0) {
+        const updateResult = await tx.subOrder.updateMany({
+          where: { parentOrderId: orderId },
+          data: {
+            status: "CANCELLED",
+            statusReason: finalReason,
+            updatedAt: new Date()
+          }
+        });
+        console.log(`✅ Cancelled ${updateResult.count} sub-orders for order ${orderId}`);
       }
+
+      // Then cancel the parent order
+      const updatedOrder = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: "CANCELLED",
+          statusReason: finalReason,
+          updatedAt: new Date()
+        }
+      });
+      console.log(`✅ Cancelled parent order ${orderId}`);
     });
 
     // Send email notification about cancellation
@@ -1536,6 +1584,230 @@ exports.cancelOrder = async (request, reply) => {
 
   } catch (error) {
     console.error("Cancel order error:", error);
+    return reply.status(500).send({ success: false, message: error.message });
+  }
+};
+
+// GUEST — CANCEL ORDER (No authentication required) 
+// Only allows cancellation when status is CONFIRMED for guest orders
+// Works for multi-seller orders: all sub-orders must be CONFIRMED
+exports.cancelGuestOrder = async (request, reply) => {
+  try {
+    const { displayId, customerEmail, reason } = request.body || {};
+
+    if (!displayId || !customerEmail) {
+      return reply.status(400).send({ 
+        success: false, 
+        message: "Display ID and customer email are required" 
+      });
+    }
+
+    const order = await prisma.order.findFirst({
+      where: { 
+        displayId,
+        customerEmail: customerEmail.trim(),
+        userId: null // Only guest orders (no authenticated user) can be cancelled via this endpoint
+      },
+      include: {
+        items: {
+          include: {
+            product: { select: { id: true, title: true, price: true, sellerId: true } }
+          }
+        },
+        subOrders: true // Include sub-orders for multi-seller orders
+      }
+    });
+
+    if (!order) {
+      return reply.status(404).send({ 
+        success: false, 
+        message: "Order not found or email does not match" 
+      });
+    }
+
+    // For guests: ONLY CONFIRMED status is allowed (stricter than authenticated users)
+    if (order.status !== 'CONFIRMED') {
+      return reply.status(400).send({ 
+        success: false, 
+        message: "Guest orders can only be cancelled when status is CONFIRMED" 
+      });
+    }
+
+    // For multi-seller orders: ALL sub-orders must also be CONFIRMED
+    if (order.subOrders && order.subOrders.length > 0) {
+      const allConfirmed = order.subOrders.every(sub => sub.status === 'CONFIRMED');
+      if (!allConfirmed) {
+        return reply.status(400).send({ 
+          success: false, 
+          message: "Cannot cancel order. All items from all sellers must be in CONFIRMED status before cancellation." 
+        });
+      }
+    }
+
+    const orderId_internal = order.id; // Internal CUID
+
+    const finalReason = (reason || 'Guest requested cancellation').trim();
+
+    const transitionValidation = validateStatusTransition({
+      currentStatus: 'CONFIRMED',
+      nextStatus: 'CANCELLED',
+      reason: finalReason
+    });
+
+    if (!transitionValidation.isValid) {
+      return reply.status(400).send({
+        success: false,
+        message: transitionValidation.message
+      });
+    }
+
+    // Use transaction to ensure atomicity: cancel sub-orders and parent order together
+    await prisma.$transaction(async (tx) => {
+      // If multi-seller order: cancel all sub-orders first
+      if (order.subOrders && order.subOrders.length > 0) {
+        const updateResult = await tx.subOrder.updateMany({
+          where: { parentOrderId: orderId_internal },
+          data: {
+            status: "CANCELLED",
+            statusReason: finalReason,
+            updatedAt: new Date()
+          }
+        });
+        console.log(`✅ Cancelled ${updateResult.count} guest sub-orders for order ${orderId_internal}`);
+      }
+
+      // Then cancel the parent order
+      const updatedOrder = await tx.order.update({
+        where: { id: orderId_internal },
+        data: {
+          status: "CANCELLED",
+          statusReason: finalReason,
+          updatedAt: new Date()
+        }
+      });
+      console.log(`✅ Cancelled parent guest order ${orderId_internal}`);
+    });
+
+    // ── In-app notifications (non-blocking) ─────────────────────────────────
+    // Notify all sellers whose products are in this cancelled order
+    const cancelledSellerIds = [...new Set(
+      order.items.map(item => item.product?.sellerId).filter(Boolean)
+    )];
+    const readableOrderId = orderId_internal.slice(-8).toUpperCase();
+    const cancelledSellerNames = [];
+
+    await Promise.all(cancelledSellerIds.map(async (sellerId) => {
+      const sellerProducts = order.items
+        .filter(item => item.product?.sellerId === sellerId)
+        .map(item => item.product?.title || 'Product');
+
+      const sellerUser = await prisma.user.findUnique({
+        where: { id: sellerId },
+        select: { email: true, name: true, sellerProfile: { select: { storeName: true, businessName: true } } }
+      }).catch(() => null);
+
+      const resolvedSellerName = sellerUser?.sellerProfile?.storeName
+        || sellerUser?.sellerProfile?.businessName
+        || sellerUser?.name
+        || 'Unknown';
+      cancelledSellerNames.push(resolvedSellerName);
+
+      prisma.notification.create({
+        data: {
+          userId: sellerId,
+          title: 'Guest Order Cancelled',
+          message: `Guest customer cancelled order #${readableOrderId}. Items: ${sellerProducts.join(', ')}. Reason: ${finalReason}`,
+          type: 'ORDER_CANCELLED',
+          relatedId: orderId_internal,
+          relatedType: 'order',
+          metadata: {
+            orderId: orderId_internal,
+            reason: finalReason,
+            customerEmail: order.customerEmail,
+            cancelledProducts: sellerProducts
+          }
+        }
+      }).catch(err => console.error(`Seller cancel notification error (sellerId=${sellerId}):`, err.message));
+
+      if (sellerUser?.email) {
+        sendSellerOrderStatusEmail(sellerUser.email, resolvedSellerName, {
+          displayId: order.displayId, 
+          status: 'cancelled', 
+          updatedBy: 'Guest Customer',
+          customerName: order.customerName || 'Guest',
+          totalAmount: order.totalAmount, 
+          reason: finalReason
+        }).catch(err => console.error(`Seller cancel email error (sellerId=${sellerId}):`, err.message));
+      }
+    }));
+
+    const cancelledSellerNameStr = cancelledSellerNames.join(', ') || 'Unknown';
+
+    // Notify admins
+    notifyAdminOrderStatusChange(orderId_internal, 'cancelled', {
+      customerName: order.customerName || 'Guest',
+      sellerName: cancelledSellerNameStr,
+      totalAmount: order.totalAmount.toString(),
+      itemCount: order.items?.length || 0,
+      reason: finalReason,
+      updatedBy: 'Guest Customer',
+      isGuest: true
+    }).catch(err => console.error("Admin cancel in-app notification error (non-blocking):", err.message));
+
+    prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } })
+      .then(admins => {
+        for (const admin of admins) {
+          if (admin.email) {
+            sendAdminOrderStatusEmail(admin.email, admin.name, {
+              displayId: order.displayId, 
+              status: 'cancelled', 
+              updatedBy: 'Guest Customer',
+              customerName: order.customerName || 'Guest',
+              sellerName: cancelledSellerNameStr,
+              totalAmount: order.totalAmount, 
+              reason: finalReason
+            }).catch(err => console.error("Admin cancel email error (non-blocking):", err.message));
+          }
+        }
+      }).catch(err => console.error("Admin lookup error for cancel email (non-blocking):", err.message));
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── Email notification to guest ──────────────────────────────────────────
+    if (order.customerEmail) {
+      console.log(`📧 Sending cancellation email to guest: ${order.customerEmail}`);
+
+      sendOrderStatusEmail(order.customerEmail, order.customerName, {
+        displayId: order.displayId,
+        status: "cancelled",
+        reason: finalReason,
+        totalAmount: order.totalAmount,
+        paymentMethod: order.paymentMethod,
+        orderDate: order.createdAt,
+        shippingName: order.customerName,
+        shippingAddress: order.shippingAddressLine,
+        shippingCity: order.shippingCity,
+        shippingState: order.shippingState,
+        shippingZipCode: order.shippingZipCode,
+        shippingCountry: order.shippingCountry,
+        shippingPhone: order.shippingPhone,
+        isGuest: true,
+        products: order.items?.map(item => ({
+          title: item.product?.title || 'Product',
+          quantity: item.quantity,
+          price: parseFloat(item.price)
+        }))
+      }).catch(error => {
+        console.error("Email error (non-blocking):", error.message);
+      });
+    }
+
+    return reply.status(200).send({ 
+      success: true, 
+      message: "Order cancelled successfully. Confirmation email sent to your email address." 
+    });
+
+  } catch (error) {
+    console.error("Guest cancel order error:", error);
     return reply.status(500).send({ success: false, message: error.message });
   }
 };

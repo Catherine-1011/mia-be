@@ -3507,8 +3507,9 @@ exports.trackGuestOrder = async (request, reply) => {
 
     // Shape sub-orders into a clean structure the frontend can consume directly
     const shapedSubOrders = isMultiSeller
-      ? order.subOrders.map(sub => ({
+      ? order.subOrders.map((sub, index) => ({
           id: sub.id,
+          subDisplayId: sub.subDisplayId || `${order.displayId}-${String.fromCharCode(65 + index)}`,
           status: sub.status,
           trackingNumber: sub.trackingNumber || null,
           estimatedDelivery: sub.estimatedDelivery || null,

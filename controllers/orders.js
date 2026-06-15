@@ -48,6 +48,37 @@ const { normalizeOrderStatus, validateStatusTransition } = require("../utils/ord
 const { createCommissionEarned } = require("./commission");
 const { lookupZone } = require("../utils/internationalShipping");
 const PDFDocument = require('pdfkit');
+const Stripe = require('stripe');
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+// ─── Stripe Cancel / Refund Helper ───────────────────────────────────────────
+// Called after an order is marked CANCELLED in the DB.
+// - If the PaymentIntent was never captured → cancels it (no charge to customer)
+// - If payment was already captured → issues a full refund with the cancellation reason as description
+async function triggerStripeRefund(paymentIntentId, reason, displayId) {
+  if (!paymentIntentId) return;
+  try {
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+    const desc = `Order #${displayId} cancelled — ${reason}`.slice(0, 255);
+
+    if (pi.status === 'succeeded') {
+      await stripe.refunds.create({
+        payment_intent: paymentIntentId,
+        reason: 'requested_by_customer',
+        metadata: { displayId, cancellationReason: reason.slice(0, 500) }
+      });
+      console.log(`↩️  Stripe refund issued for order #${displayId}`);
+    } else if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(pi.status)) {
+      await stripe.paymentIntents.cancel(paymentIntentId);
+      console.log(`❌ Stripe PaymentIntent cancelled for order #${displayId} (not yet captured)`);
+    } else {
+      console.log(`ℹ️  Stripe PI ${paymentIntentId} status "${pi.status}" — no action needed`);
+    }
+  } catch (err) {
+    console.error(`⚠️  Stripe refund/cancel error for order #${displayId}:`, err.message);
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Low Stock Alert Helper ───────────────────────────────────────────────────
 // Checks each ordered product's stock after decrement.
@@ -1460,6 +1491,9 @@ exports.cancelOrder = async (request, reply) => {
       console.log(`✅ Cancelled parent order ${orderId}`);
     });
 
+    // Trigger Stripe refund / cancellation (non-blocking — DB is already updated)
+    triggerStripeRefund(order.stripePaymentIntentId, finalReason, order.displayId);
+
     // Send email notification about cancellation
     const user = await prisma.user.findUnique({
       where: { id: userId }
@@ -1687,6 +1721,9 @@ exports.cancelGuestOrder = async (request, reply) => {
       });
       console.log(`✅ Cancelled parent guest order ${orderId_internal}`);
     });
+
+    // Trigger Stripe refund / cancellation (non-blocking — DB is already updated)
+    triggerStripeRefund(order.stripePaymentIntentId, finalReason, order.displayId);
 
     // ── In-app notifications (non-blocking) ─────────────────────────────────
     // Notify all sellers whose products are in this cancelled order

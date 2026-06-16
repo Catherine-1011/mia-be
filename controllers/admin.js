@@ -2,6 +2,7 @@ const prisma = require("../config/prisma");
 const Stripe = require("stripe");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const { generateSalesReportCSV } = require("../utils/csvExport");
+const { calculateSellerPayout } = require("../utils/commissionCalculator");
 const { sendSellerApprovedEmail, sendSellerLowStockEmail, sendSellerProductApprovedEmail, sendSellerProductRejectedEmail, sendSellerProductActivatedEmail, sendSellerProductDeactivatedEmail, sendAdminLowStockDeactivationEmail, sendRefundStatusUpdateEmail, sendSellerRefundStatusEmail, sendSellerAccountDeactivatedEmail } = require("../utils/emailService");
 const { uploadToCloudinary } = require("../config/cloudinary");
 const fs = require('fs');
@@ -458,6 +459,51 @@ exports.getAllOrders = async (request, reply) => {
   }
 };
 
+// ─── Shared financial summary helper (admin context) ─────────────────────────
+function _round2(n) { return Math.round(n * 100) / 100; }
+
+function buildAdminFinancialSummary({ items = [], storedOrderSummary = null, commissionRecord = null, couponCode = null, couponDiscount = null, isSubOrder = false }) {
+  const productsSubtotal = _round2(items.reduce((s, i) => s + Number(i.price) * Number(i.quantity), 0));
+  const gstPercentage = storedOrderSummary?.gstPercentage ? parseFloat(storedOrderSummary.gstPercentage) : 10;
+  const productsSubtotalExGST = _round2(productsSubtotal / (1 + gstPercentage / 100));
+  const gstAmount = _round2(productsSubtotal - productsSubtotalExGST);
+  const shippingCost = storedOrderSummary?.shippingCost ? _round2(parseFloat(storedOrderSummary.shippingCost)) : 0;
+
+  let platformCommissionRate, platformCommission, sellerProductEarning, sellerPayout;
+  if (commissionRecord) {
+    platformCommissionRate = parseFloat(commissionRecord.commissionRate);
+    platformCommission     = _round2(parseFloat(commissionRecord.commissionAmount));
+    sellerProductEarning   = _round2(parseFloat(commissionRecord.productValueExGST || productsSubtotalExGST) - platformCommission);
+    sellerPayout           = _round2(parseFloat(commissionRecord.netPayable));
+  } else {
+    const c = calculateSellerPayout(productsSubtotal, shippingCost, 10);
+    platformCommissionRate = c.commissionRatePct;
+    platformCommission     = c.commissionAmount;
+    sellerProductEarning   = c.sellerProductEarning;
+    sellerPayout           = c.sellerTotalPayout;
+  }
+
+  const customerTotal = _round2(productsSubtotal + shippingCost - (isSubOrder ? 0 : (couponDiscount ? parseFloat(couponDiscount) : 0)));
+
+  return {
+    productsSubtotal,
+    productsSubtotalExGST,
+    gstAmount,
+    gstPercentage,
+    shippingCost,
+    ...(isSubOrder
+      ? { parentCouponCode: couponCode || null, parentCouponDiscount: couponDiscount ? _round2(parseFloat(couponDiscount)) : null }
+      : { couponCode: couponCode || null, couponDiscount: couponDiscount ? _round2(parseFloat(couponDiscount)) : null }
+    ),
+    customerTotal,
+    platformCommissionRate,
+    platformCommission,
+    sellerProductEarning,
+    sellerPayout,
+  };
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // GET ORDERS BY SELLER ID (ADMIN ONLY) - Updated to include legacy orders
 exports.getOrdersBySellerId = async (request, reply) => {
   try {
@@ -633,6 +679,26 @@ exports.getOrdersBySellerId = async (request, reply) => {
 
     console.log(`[Admin] Found ${allDirectOrders.length} direct orders, ${subOrders.length} sub-orders, and ${legacyMultiSellerOrders.length} legacy multi-seller orders for seller ${sellerId}`);
 
+    // ── Batch-fetch commission_earned records ─────────────────────────────────
+    const _directOrderIds = allDirectOrders.map(o => o.id);
+    const _subOrderIds    = subOrders.map(s => s.id);
+    const _commissionRows = (_directOrderIds.length + _subOrderIds.length) > 0
+      ? await prisma.commissionEarned.findMany({
+          where: {
+            sellerId,
+            OR: [
+              ...(_directOrderIds.length ? [{ orderId: { in: _directOrderIds }, subOrderId: null }] : []),
+              ...(_subOrderIds.length    ? [{ subOrderId: { in: _subOrderIds } }]                  : [])
+            ]
+          },
+          select: { orderId: true, subOrderId: true, commissionRate: true, commissionAmount: true, netPayable: true, productValueExGST: true, gstAmount: true, shippingAmount: true }
+        })
+      : [];
+    const _commByOrderId    = {};
+    const _commBySubOrderId = {};
+    _commissionRows.forEach(c => { if (c.subOrderId) _commBySubOrderId[c.subOrderId] = c; else if (c.orderId) _commByOrderId[c.orderId] = c; });
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Fetch ALL siblings for every parent so A/B/C index is globally stable
     const parentIds = [...new Set(subOrders.map(s => s.parentOrderId))];
     const globalSubsByParent = {};
@@ -652,116 +718,153 @@ exports.getOrdersBySellerId = async (request, reply) => {
     const transformedSubOrders = subOrders.map(subOrder => {
       const siblings = globalSubsByParent[subOrder.parentOrderId] || [];
       const idx      = siblings.indexOf(subOrder.id);
+      const parent   = subOrder.parentOrder;
+      const storedSummary = parent?.shippingAddress?.orderSummary || null;
+      const items = subOrder.items || [];
       return ({
-      id: subOrder.id,
-      displaySubId:    toSubDisplayId(subOrder.parentOrder?.displayId ?? subOrder.parentOrderId, idx),
-      subOrderId: subOrder.id,
-      parentOrderId: subOrder.parentOrderId,
-      parentDisplayId: toDisplayId(subOrder.parentOrder?.displayId ?? subOrder.parentOrderId),
-      sellerId: subOrder.sellerId,
-      status: subOrder.status,
-      trackingNumber: subOrder.trackingNumber,
-      estimatedDelivery: subOrder.estimatedDelivery,
-      subtotal: subOrder.subtotal,
-      createdAt: subOrder.createdAt,
-      updatedAt: subOrder.updatedAt,
-      type: 'SUB_ORDER',
-      
-      // Parent order fields
-      totalAmount: subOrder.parentOrder.totalAmount, // Full order total (for context)
-      paymentMethod: subOrder.parentOrder.paymentMethod,
-      paymentStatus: subOrder.parentOrder.paymentStatus,
-      shippingAddress: subOrder.parentOrder.shippingAddress,
-      shippingAddressLine: subOrder.parentOrder.shippingAddressLine,
-      shippingCity: subOrder.parentOrder.shippingCity,
-      shippingState: subOrder.parentOrder.shippingState,
-      shippingZipCode: subOrder.parentOrder.shippingZipCode,
-      shippingCountry: subOrder.parentOrder.shippingCountry,
-      shippingPhone: subOrder.parentOrder.shippingPhone,
-      customerName: subOrder.parentOrder.customerName,
-      customerEmail: subOrder.parentOrder.customerEmail,
-      customerPhone: subOrder.parentOrder.customerPhone,
-      
-      // Customer info
-      user: subOrder.parentOrder.user,
-      
-      items: trimItems(subOrder.items),
-      isSubOrder: true,
-      sellerSpecific: true,
-      ...(subOrder.parentOrder?.user ? {} : { isGuest: 'guest' })
-    });});
+        id: subOrder.id,
+        displaySubId:    toSubDisplayId(parent?.displayId ?? subOrder.parentOrderId, idx),
+        subOrderId: subOrder.id,
+        parentOrderId: subOrder.parentOrderId,
+        parentDisplayId: toDisplayId(parent?.displayId ?? subOrder.parentOrderId),
+        sellerId: subOrder.sellerId,
+        status: subOrder.status,
+        trackingNumber: subOrder.trackingNumber,
+        estimatedDelivery: subOrder.estimatedDelivery,
+        subtotal: subOrder.subtotal,
+        createdAt: subOrder.createdAt,
+        updatedAt: subOrder.updatedAt,
+        type: 'SUB_ORDER',
+        totalAmount: parent?.totalAmount,
+        originalTotal: parent?.originalTotal || parent?.totalAmount,
+        couponCode: parent?.couponCode || null,
+        discountAmount: parent?.discountAmount ? _round2(parseFloat(parent.discountAmount)) : null,
+        paymentMethod: parent?.paymentMethod,
+        paymentStatus: parent?.paymentStatus,
+        shippingAddress: parent?.shippingAddress,
+        shippingAddressLine: parent?.shippingAddressLine,
+        shippingCity: parent?.shippingCity,
+        shippingState: parent?.shippingState,
+        shippingZipCode: parent?.shippingZipCode,
+        shippingCountry: parent?.shippingCountry,
+        shippingPhone: parent?.shippingPhone,
+        customerName: parent?.customerName,
+        customerEmail: parent?.customerEmail,
+        customerPhone: parent?.customerPhone,
+        user: parent?.user,
+        items: trimItems(items),
+        isSubOrder: true,
+        sellerSpecific: true,
+        ...(parent?.user ? {} : { isGuest: 'guest' }),
+        financialSummary: buildAdminFinancialSummary({
+          items,
+          storedOrderSummary: storedSummary,
+          commissionRecord: _commBySubOrderId[subOrder.id] || null,
+          couponCode: parent?.couponCode || null,
+          couponDiscount: parent?.discountAmount || null,
+          isSubOrder: true
+        })
+      });
+    });
 
     // Transform direct orders
-    const transformedDirectOrders = allDirectOrders.map(order => ({
-      id: order.id,
-      displayId: toDisplayId(order.displayId),
-      subOrderId: null,
-      parentOrderId: null,
-      sellerId: order.sellerId || sellerId,
-      status: order.status || order.overallStatus,
-      trackingNumber: order.trackingNumber,
-      estimatedDelivery: order.estimatedDelivery,
-      subtotal: order.totalAmount || order.items.reduce((sum, item) => sum + (parseFloat(item.price || 0) * item.quantity), 0),
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
-      type: 'DIRECT',
-      
-      // Order fields
-      totalAmount: order.totalAmount,
-      paymentMethod: order.paymentMethod,
-      paymentStatus: order.paymentStatus,
-      shippingAddress: order.shippingAddress,
-      shippingAddressLine: order.shippingAddressLine,
-      shippingCity: order.shippingCity,
-      shippingState: order.shippingState,
-      shippingZipCode: order.shippingZipCode,
-      shippingCountry: order.shippingCountry,
-      shippingPhone: order.shippingPhone,
-      customerName: order.customerName,
-      customerEmail: order.customerEmail,
-      customerPhone: order.customerPhone,
-      
-      user: order.user,
-      items: trimItems(order.items),
-      isSubOrder: false,
-      sellerSpecific: true,
-      ...(order.user ? {} : { isGuest: 'guest' })
-    }));
+    const transformedDirectOrders = allDirectOrders.map(order => {
+      const storedSummary = order.shippingAddress?.orderSummary || null;
+      const items = order.items || [];
+      return {
+        id: order.id,
+        displayId: toDisplayId(order.displayId),
+        subOrderId: null,
+        parentOrderId: null,
+        sellerId: order.sellerId || sellerId,
+        status: order.status || order.overallStatus,
+        trackingNumber: order.trackingNumber,
+        estimatedDelivery: order.estimatedDelivery,
+        subtotal: order.totalAmount || items.reduce((s, i) => s + parseFloat(i.price || 0) * i.quantity, 0),
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        type: 'DIRECT',
+        totalAmount: order.totalAmount,
+        originalTotal: order.originalTotal || order.totalAmount,
+        couponCode: order.couponCode || null,
+        discountAmount: order.discountAmount ? _round2(parseFloat(order.discountAmount)) : null,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        shippingAddress: order.shippingAddress,
+        shippingAddressLine: order.shippingAddressLine,
+        shippingCity: order.shippingCity,
+        shippingState: order.shippingState,
+        shippingZipCode: order.shippingZipCode,
+        shippingCountry: order.shippingCountry,
+        shippingPhone: order.shippingPhone,
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        customerPhone: order.customerPhone,
+        user: order.user,
+        items: trimItems(items),
+        isSubOrder: false,
+        sellerSpecific: true,
+        ...(order.user ? {} : { isGuest: 'guest' }),
+        financialSummary: buildAdminFinancialSummary({
+          items,
+          storedOrderSummary: storedSummary,
+          commissionRecord: _commByOrderId[order.id] || null,
+          couponCode: order.couponCode || null,
+          couponDiscount: order.discountAmount || null,
+          isSubOrder: false
+        })
+      };
+    });
 
     // Transform legacy multi-seller old orders (show only this seller's items)
-    const transformedLegacyOrders = legacyMultiSellerOrders.map((order, idx) => ({
-      id: order.id,
-      displaySubId: toSubDisplayId(order.displayId, idx),
-      subOrderId: null,
-      parentOrderId: order.id,
-      parentDisplayId: toDisplayId(order.displayId),
-      sellerId: sellerId,
-      status: order.status || order.overallStatus,
-      trackingNumber: order.trackingNumber,
-      estimatedDelivery: order.estimatedDelivery,
-      subtotal: order.items.reduce((sum, item) => sum + (parseFloat(item.price || 0) * item.quantity), 0),
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
-      type: 'SUB_ORDER',
-      totalAmount: order.totalAmount,
-      paymentMethod: order.paymentMethod,
-      paymentStatus: order.paymentStatus,
-      shippingAddress: order.shippingAddress,
-      shippingAddressLine: order.shippingAddressLine,
-      shippingCity: order.shippingCity,
-      shippingState: order.shippingState,
-      shippingZipCode: order.shippingZipCode,
-      shippingCountry: order.shippingCountry,
-      shippingPhone: order.shippingPhone,
-      customerName: order.customerName,
-      customerEmail: order.customerEmail,
-      customerPhone: order.customerPhone,
-      user: order.user,
-      items: trimItems(order.items),
-      isSubOrder: true,
-      sellerSpecific: true,
-      ...(order.user ? {} : { isGuest: 'guest' })
-    }));
+    const transformedLegacyOrders = legacyMultiSellerOrders.map((order, idx) => {
+      const storedSummary = order.shippingAddress?.orderSummary || null;
+      const items = order.items || [];
+      return {
+        id: order.id,
+        displaySubId: toSubDisplayId(order.displayId, idx),
+        subOrderId: null,
+        parentOrderId: order.id,
+        parentDisplayId: toDisplayId(order.displayId),
+        sellerId: sellerId,
+        status: order.status || order.overallStatus,
+        trackingNumber: order.trackingNumber,
+        estimatedDelivery: order.estimatedDelivery,
+        subtotal: items.reduce((s, i) => s + parseFloat(i.price || 0) * i.quantity, 0),
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        type: 'SUB_ORDER',
+        totalAmount: order.totalAmount,
+        originalTotal: order.originalTotal || order.totalAmount,
+        couponCode: order.couponCode || null,
+        discountAmount: order.discountAmount ? _round2(parseFloat(order.discountAmount)) : null,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        shippingAddress: order.shippingAddress,
+        shippingAddressLine: order.shippingAddressLine,
+        shippingCity: order.shippingCity,
+        shippingState: order.shippingState,
+        shippingZipCode: order.shippingZipCode,
+        shippingCountry: order.shippingCountry,
+        shippingPhone: order.shippingPhone,
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        customerPhone: order.customerPhone,
+        user: order.user,
+        items: trimItems(items),
+        isSubOrder: true,
+        sellerSpecific: true,
+        ...(order.user ? {} : { isGuest: 'guest' }),
+        financialSummary: buildAdminFinancialSummary({
+          items,
+          storedOrderSummary: storedSummary,
+          commissionRecord: _commByOrderId[order.id] || null,
+          couponCode: order.couponCode || null,
+          couponDiscount: order.discountAmount || null,
+          isSubOrder: true
+        })
+      };
+    });
 
     // Combine all order types and sort by creation date (newest first)
     const allOrders = [...transformedDirectOrders, ...transformedSubOrders, ...transformedLegacyOrders]

@@ -8,6 +8,7 @@ const {
   ORDER_STATUS_SEQUENCE,
   TERMINAL_STATUSES
 } = require("../utils/orderStatusRules");
+const { calculateSellerPayout } = require("../utils/commissionCalculator");
 
 const { 
   generateSalesReportCSV,
@@ -72,6 +73,74 @@ const mapStatusForDisplay = (dbStatus) => {
   };
   return displayMap[dbStatus] || dbStatus.toLowerCase();
 };
+
+// ─── Financial Summary Builder ────────────────────────────────────────────────
+// Builds a unified financial breakdown for one seller's slice of an order.
+// Works for both DIRECT orders and SUB-ORDERS (multi-seller).
+//
+// Sources (in priority order):
+//   1. commissionRecord  — actual recorded CommissionEarned row (most accurate)
+//   2. storedOrderSummary — JSON embedded in shippingAddress at order creation
+//   3. items             — fallback: recompute from line items + defaults
+//
+// Australian rules: GST-inclusive pricing, commission on ex-GST only, seller keeps 100% shipping.
+function round2(n) { return Math.round(n * 100) / 100; }
+
+function buildFinancialSummary({ items = [], storedOrderSummary = null, commissionRecord = null, couponCode = null, couponDiscount = null, isSubOrder = false }) {
+  // 1. Products subtotal (GST-inclusive) from line items
+  const productsSubtotal = round2(items.reduce((sum, i) => sum + Number(i.price) * Number(i.quantity), 0));
+
+  // 2. GST rate — prefer stored, default 10 % (Australia)
+  const gstPercentage = storedOrderSummary?.gstPercentage ? parseFloat(storedOrderSummary.gstPercentage) : 10;
+  const gstDivisor = 1 + gstPercentage / 100;
+
+  // 3. Ex-GST product value
+  const productsSubtotalExGST = round2(productsSubtotal / gstDivisor);
+  const gstAmount = round2(productsSubtotal - productsSubtotalExGST);
+
+  // 4. Shipping — per-seller allocation stored as shippingCost (not totalShippingCost)
+  const shippingCost = storedOrderSummary?.shippingCost ? round2(parseFloat(storedOrderSummary.shippingCost)) : 0;
+
+  // 5. Commission — use recorded values if available, otherwise recompute
+  let platformCommissionRate, platformCommission, sellerProductEarning, sellerPayout;
+
+  if (commissionRecord) {
+    platformCommissionRate = parseFloat(commissionRecord.commissionRate);
+    platformCommission     = round2(parseFloat(commissionRecord.commissionAmount));
+    sellerProductEarning   = round2(parseFloat(commissionRecord.productValueExGST || productsSubtotalExGST) - platformCommission);
+    sellerPayout           = round2(parseFloat(commissionRecord.netPayable));
+  } else {
+    const computed = calculateSellerPayout(productsSubtotal, shippingCost, 10);
+    platformCommissionRate = computed.commissionRatePct;
+    platformCommission     = computed.commissionAmount;
+    sellerProductEarning   = computed.sellerProductEarning;
+    sellerPayout           = computed.sellerTotalPayout;
+  }
+
+  // 6. Customer total for this seller's slice (products + shipping — coupon applied at parent level for sub-orders)
+  const customerTotal = round2(productsSubtotal + shippingCost - (isSubOrder ? 0 : (couponDiscount ? parseFloat(couponDiscount) : 0)));
+
+  return {
+    // ── Customer perspective ──────────────────────────────────────────────────
+    productsSubtotal,
+    productsSubtotalExGST,
+    gstAmount,
+    gstPercentage,
+    shippingCost,
+    // Coupon: on DIRECT orders show the actual discount; on sub-orders show parent coupon for context only
+    ...(isSubOrder
+      ? { parentCouponCode: couponCode || null, parentCouponDiscount: couponDiscount ? round2(parseFloat(couponDiscount)) : null }
+      : { couponCode: couponCode || null, couponDiscount: couponDiscount ? round2(parseFloat(couponDiscount)) : null }
+    ),
+    customerTotal,
+    // ── Seller / platform perspective ─────────────────────────────────────────
+    platformCommissionRate,
+    platformCommission,
+    sellerProductEarning,
+    sellerPayout,
+  };
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 const normalizeTrackingNumber = (value) => {
   if (typeof value !== 'string') return null;
@@ -256,6 +325,35 @@ exports.getSellerOrders = async (request, reply) => {
     // Legacy multi-seller old orders (show only this seller's items, like a sub-order)
     const legacyMultiSellerOrders = processedOldOrders.filter(o => !o.isDirectOrder);
 
+    // ── Batch-fetch commission_earned records (one query for all orders) ──────
+    const directOrderIds = allDirectOrders.map(o => o.id);
+    const subOrderIds    = subOrders.map(s => s.id);
+    const commissionRecords = (directOrderIds.length + subOrderIds.length) > 0
+      ? await prisma.commissionEarned.findMany({
+          where: {
+            sellerId,
+            OR: [
+              ...(directOrderIds.length ? [{ orderId: { in: directOrderIds }, subOrderId: null }] : []),
+              ...(subOrderIds.length    ? [{ subOrderId: { in: subOrderIds } }]                  : [])
+            ]
+          },
+          select: {
+            orderId: true, subOrderId: true,
+            commissionRate: true, commissionAmount: true,
+            netPayable: true, productValueExGST: true,
+            gstAmount: true, shippingAmount: true
+          }
+        })
+      : [];
+
+    const commissionByOrderId    = {};
+    const commissionBySubOrderId = {};
+    commissionRecords.forEach(c => {
+      if (c.subOrderId) commissionBySubOrderId[c.subOrderId] = c;
+      else if (c.orderId) commissionByOrderId[c.orderId] = c;
+    });
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Fetch ALL siblings for every parent so A/B/C index is globally stable
     const parentIds = [...new Set(subOrders.map(s => s.parentOrderId))];
     const globalSubsByParent = {};
@@ -272,93 +370,132 @@ exports.getSellerOrders = async (request, reply) => {
     }
 
     // Transform direct orders to unified format
-    const transformedDirectOrders = allDirectOrders.map(order => ({
-      id:        order.id,
-      displayId: toDisplayId(order.displayId),   // e.g. #1001
-      parentOrderId: null,
-      type: 'DIRECT',
-      status: mapStatusForDisplay(order.status || order.overallStatus),
-      trackingNumber: order.trackingNumber,
-      estimatedDelivery: order.estimatedDelivery,
-      subtotal: order.totalAmount,
-      items: trimItems(order.items),
-      user: order.user,
-      customerName: order.customerName,
-      customerEmail: order.customerEmail,
-      customerPhone: order.customerPhone,
-      shippingAddress: order.shippingAddress,
-      shippingAddressLine: order.shippingAddressLine,
-      shippingCity: order.shippingCity,
-      shippingState: order.shippingState,
-      shippingZipCode: order.shippingZipCode,
-      shippingCountry: order.shippingCountry,
-      shippingPhone: order.shippingPhone,
-      paymentMethod: order.paymentMethod,
-      paymentStatus: order.paymentStatus,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt
-    }));
+    const transformedDirectOrders = allDirectOrders.map(order => {
+      const storedSummary = order.shippingAddress?.orderSummary || null;
+      const items = order.items || [];
+      return {
+        id:        order.id,
+        displayId: toDisplayId(order.displayId),
+        parentOrderId: null,
+        type: 'DIRECT',
+        status: mapStatusForDisplay(order.status || order.overallStatus),
+        trackingNumber: order.trackingNumber,
+        estimatedDelivery: order.estimatedDelivery,
+        subtotal: order.totalAmount,
+        originalTotal: order.originalTotal || order.totalAmount,
+        couponCode: order.couponCode || null,
+        discountAmount: order.discountAmount ? round2(parseFloat(order.discountAmount)) : null,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        items: trimItems(items),
+        user: order.user,
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        customerPhone: order.customerPhone,
+        shippingAddress: order.shippingAddress,
+        shippingAddressLine: order.shippingAddressLine,
+        shippingCity: order.shippingCity,
+        shippingState: order.shippingState,
+        shippingZipCode: order.shippingZipCode,
+        shippingCountry: order.shippingCountry,
+        shippingPhone: order.shippingPhone,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        financialSummary: buildFinancialSummary({
+          items,
+          storedOrderSummary: storedSummary,
+          commissionRecord: commissionByOrderId[order.id] || null,
+          couponCode: order.couponCode || null,
+          couponDiscount: order.discountAmount || null,
+          isSubOrder: false
+        })
+      };
+    });
 
     // Transform sub-orders to unified format (backward compatibility)
     const transformedSubOrders = subOrders.map(subOrder => {
       const siblings = globalSubsByParent[subOrder.parentOrderId] || [];
       const idx      = siblings.indexOf(subOrder.id);
+      const parent   = subOrder.parentOrder;
+      const storedSummary = parent?.shippingAddress?.orderSummary || null;
+      const items = subOrder.items || [];
       return ({
-      id:              subOrder.id,
-      displaySubId:    toSubDisplayId(subOrder.parentOrder?.displayId ?? subOrder.parentOrderId, idx), // e.g. #1001-A
-      parentOrderId:   subOrder.parentOrderId,
-      parentDisplayId: toDisplayId(subOrder.parentOrder?.displayId ?? subOrder.parentOrderId),         // e.g. #1001
-      type: 'SUB_ORDER',
-      status: mapStatusForDisplay(subOrder.status),
-      trackingNumber: subOrder.trackingNumber,
-      estimatedDelivery: subOrder.estimatedDelivery,
-      subtotal: subOrder.subtotal,
-      items: trimItems(subOrder.items),
-      user: subOrder.parentOrder.user,
-      customerName: subOrder.parentOrder.customerName,
-      customerEmail: subOrder.parentOrder.customerEmail,
-      customerPhone: subOrder.parentOrder.customerPhone,
-      shippingAddress: subOrder.parentOrder.shippingAddress,
-      shippingAddressLine: subOrder.parentOrder.shippingAddressLine,
-      shippingCity: subOrder.parentOrder.shippingCity,
-      shippingState: subOrder.parentOrder.shippingState,
-      shippingZipCode: subOrder.parentOrder.shippingZipCode,
-      shippingCountry: subOrder.parentOrder.shippingCountry,
-      shippingPhone: subOrder.parentOrder.shippingPhone,
-      paymentMethod: subOrder.parentOrder.paymentMethod,
-      paymentStatus: subOrder.parentOrder.paymentStatus,
-      createdAt: subOrder.createdAt,
-      updatedAt: subOrder.updatedAt
-    });});
+        id:              subOrder.id,
+        displaySubId:    toSubDisplayId(parent?.displayId ?? subOrder.parentOrderId, idx),
+        parentOrderId:   subOrder.parentOrderId,
+        parentDisplayId: toDisplayId(parent?.displayId ?? subOrder.parentOrderId),
+        type: 'SUB_ORDER',
+        status: mapStatusForDisplay(subOrder.status),
+        trackingNumber: subOrder.trackingNumber,
+        estimatedDelivery: subOrder.estimatedDelivery,
+        subtotal: subOrder.subtotal,
+        paymentMethod: parent?.paymentMethod,
+        paymentStatus: parent?.paymentStatus,
+        items: trimItems(items),
+        user: parent?.user,
+        customerName: parent?.customerName,
+        customerEmail: parent?.customerEmail,
+        customerPhone: parent?.customerPhone,
+        shippingAddress: parent?.shippingAddress,
+        shippingAddressLine: parent?.shippingAddressLine,
+        shippingCity: parent?.shippingCity,
+        shippingState: parent?.shippingState,
+        shippingZipCode: parent?.shippingZipCode,
+        shippingCountry: parent?.shippingCountry,
+        shippingPhone: parent?.shippingPhone,
+        createdAt: subOrder.createdAt,
+        updatedAt: subOrder.updatedAt,
+        financialSummary: buildFinancialSummary({
+          items,
+          storedOrderSummary: storedSummary,
+          commissionRecord: commissionBySubOrderId[subOrder.id] || null,
+          couponCode: parent?.couponCode || null,
+          couponDiscount: parent?.discountAmount || null,
+          isSubOrder: true
+        })
+      });
+    });
 
     // Transform legacy multi-seller old orders (show only this seller's items, like a sub-order)
-    const transformedLegacyOrders = legacyMultiSellerOrders.map((order, idx) => ({
-      id:              order.id,
-      displaySubId:    toSubDisplayId(order.displayId, idx), // e.g. #1001-A (treated as sub)
-      parentOrderId:   order.id,
-      parentDisplayId: toDisplayId(order.displayId),
-      type: 'SUB_ORDER',
-      status: mapStatusForDisplay(order.status || order.overallStatus),
-      trackingNumber: order.trackingNumber,
-      estimatedDelivery: order.estimatedDelivery,
-      subtotal: order.items.reduce((sum, i) => sum + Number(i.price) * i.quantity, 0),
-      items: trimItems(order.items),
-      user: order.user,
-      customerName: order.customerName,
-      customerEmail: order.customerEmail,
-      customerPhone: order.customerPhone,
-      shippingAddress: order.shippingAddress,
-      shippingAddressLine: order.shippingAddressLine,
-      shippingCity: order.shippingCity,
-      shippingState: order.shippingState,
-      shippingZipCode: order.shippingZipCode,
-      shippingCountry: order.shippingCountry,
-      shippingPhone: order.shippingPhone,
-      paymentMethod: order.paymentMethod,
-      paymentStatus: order.paymentStatus,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt
-    }));
+    const transformedLegacyOrders = legacyMultiSellerOrders.map((order, idx) => {
+      const storedSummary = order.shippingAddress?.orderSummary || null;
+      const items = order.items || [];
+      return {
+        id:              order.id,
+        displaySubId:    toSubDisplayId(order.displayId, idx),
+        parentOrderId:   order.id,
+        parentDisplayId: toDisplayId(order.displayId),
+        type: 'SUB_ORDER',
+        status: mapStatusForDisplay(order.status || order.overallStatus),
+        trackingNumber: order.trackingNumber,
+        estimatedDelivery: order.estimatedDelivery,
+        subtotal: items.reduce((sum, i) => sum + Number(i.price) * Number(i.quantity), 0),
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        items: trimItems(items),
+        user: order.user,
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        customerPhone: order.customerPhone,
+        shippingAddress: order.shippingAddress,
+        shippingAddressLine: order.shippingAddressLine,
+        shippingCity: order.shippingCity,
+        shippingState: order.shippingState,
+        shippingZipCode: order.shippingZipCode,
+        shippingCountry: order.shippingCountry,
+        shippingPhone: order.shippingPhone,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        financialSummary: buildFinancialSummary({
+          items,
+          storedOrderSummary: storedSummary,
+          commissionRecord: commissionByOrderId[order.id] || null,
+          couponCode: order.couponCode || null,
+          couponDiscount: order.discountAmount || null,
+          isSubOrder: true
+        })
+      };
+    });
 
     // Combine and sort by creation date (newest first)
     const allOrders = [...transformedDirectOrders, ...transformedSubOrders, ...transformedLegacyOrders]

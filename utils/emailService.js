@@ -51,7 +51,7 @@ const duoCircleCampaignTransporter = nodemailer.createTransport({
 
 if (process.env.DUO_CIRCLE_USER && process.env.DUO_CIRCLE_PASS) {
   duoCircleConfigured = true;
-  console.log("?? Duo Circle email service initialized");
+  console.log("Duo Circle email service initialized");
 }
 
 // Initialize SendGrid
@@ -60,11 +60,11 @@ let emailConfigured = false;
 if (process.env.SENDGRID_API_KEY) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
   emailConfigured = true;
-  console.log("?? SendGrid email service initialized");
+  console.log("SendGrid email service initialized");
   console.log("SendGrid senderEmail:", process.env.SENDER_EMAIL);
   console.log("SendGrid API Key present:", !!process.env.SENDGRID_API_KEY);
 } else {
-  console.log("?? SendGrid API key not configured. Emails will be logged to console.");
+  console.log("SendGrid API key not configured. Emails will be logged to console.");
 }
 
 const isDevelopmentMode = (!emailConfigured && !duoCircleConfigured);
@@ -92,10 +92,10 @@ const sendWithFallback = async (msg, context = 'Email', extraInfo = {}) => {
       
       try {
         await duoCircleTransporter.sendMail(mailOptions);
-        console.log(`? [Duo Circle] ${context} sent successfully to:`, msg.to);
+        console.log(`[Duo Circle] ${context} sent successfully to:`, msg.to);
         return { success: true };
       } catch (duoErr) {
-        console.error(`? [Duo Circle] ${context} failed:`, duoErr.message);
+        console.error(`[Duo Circle] ${context} failed:`, duoErr.message);
         // Fall through to SendGrid if available
         if (emailConfigured) {
           console.log(`?? Falling back to SendGrid for ${context}...`);
@@ -765,11 +765,9 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
         <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
         <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">Order Confirmed!</h1>
         <p style="margin:10px 0 0;color:#F0D0C8;font-size:15px;">
-          ${orderDetails.isSuperAdminCopy 
-            ? `(Super Admin Copy for Order placed by ${orderDetails.customerName || customerName})` 
-            : orderDetails.isSellerCopy 
-              ? `(Seller Copy for Order placed by ${orderDetails.customerName || customerName})`
-              : `Thank you for your purchase, ${customerName}!`
+          ${orderDetails.isSellerCopy 
+            ? `Seller Copy - Order placed by ${orderDetails.customerName || customerName}`
+            : `Thank you for your purchase, ${customerName}!`
           }
         </p>
       </td>
@@ -925,12 +923,9 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     <!-- Footer -->
     <tr>
       <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;" class="email-footer">
-        <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for supporting Aboriginal artists!</p>
+        <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for the order</p>
         <p style="margin:0 0 8px;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
         <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
-        <p style="margin:0;color:#B8998F;font-size:10px;">
-          <strong>Print Tip:</strong> To see colors when printing, enable "Background graphics" in your browser's print settings.
-        </p>
       </td>
     </tr>
   `;
@@ -941,9 +936,9 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
       email: senderEmail,
       name: senderName
     },
-    subject: `${orderDetails.isSuperAdminCopy ? '[Super Admin Copy] ' : ''}Order Confirmation - Invoice #${orderDetails.displayId}`,
+    subject: `Order Confirmation - Invoice #${orderDetails.displayId}`,
     html: generateResponsiveEmailTemplate({
-      title: `${orderDetails.isSuperAdminCopy ? '[Super Admin Copy] ' : ''}Order Confirmation - Made in Arnhem Land`,
+      title: `Order Confirmation - Made in Arnhem Land`,
       content: content,
       maxWidth: 650
     }),
@@ -960,10 +955,10 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
       }];
     }
     await sgMail.send(msg);
-    console.log(`? Order confirmation email sent to ${email}`);
+    console.log(`Order confirmation email sent to ${email}`);
     return { success: true, message: "Email sent successfully" };
   } catch (error) {
-    console.error("? Email sending error:", error.response?.body || error.message);
+    console.error("Email sending error:", error.response?.body || error.message);
     return { success: false, error: error.message };
   }
 };
@@ -1068,7 +1063,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
       name: senderName,
       email: senderEmail
     },
-        subject: `Order Update: #${orderDetails.displayId} ? Made in Arnhem Land`,
+        subject: `Order Update: #${orderDetails.displayId} - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -1286,7 +1281,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
       email: senderEmail,
       name: senderName
     },
-    subject: `New Order Received: #${orderDetails.displayId} ? Made in Arnhem Land`,
+    subject: `New Order Received: #${orderDetails.displayId} - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1512,7 +1507,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
         email: senderEmail,
         name: senderName
       },
-      subject: `Action Required: ${notificationType} ? Order #${orderId} ? Made in Arnhem Land`,
+      subject: `Action Required: ${notificationType} - Order #${orderId} - Made in Arnhem Land`,
       html: `
         <!DOCTYPE html>
         <html lang="en">
@@ -2178,7 +2173,7 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-        subject: `Product Pending Review: "${productTitle}" ? Made in Arnhem Land`,
+        subject: `Product Pending Review: "${productTitle}" - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2190,7 +2185,7 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
               <!-- Header -->
               <tr>
                 <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land ? Admin</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land - Admin</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;"> Product Pending Review</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A seller has updated a product that requires your approval</p>
                 </td>
@@ -2280,7 +2275,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-        subject: `Product Approved: "${productTitle}" is Now Live ? Made in Arnhem Land`,
+        subject: `Product Approved: "${productTitle}" is Now Live - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2354,7 +2349,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
               <!-- Footer -->
               <tr>
                 <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Supporting Aboriginal Artists   </p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land - Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                 </td>
@@ -2369,11 +2364,11 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
 
   try {
     await sgMail.send(msg);
-    console.log(`? Seller product approved email sent to ${sellerEmail} for product: "${productTitle}"`);
+    console.log(`Seller product approved email sent to ${sellerEmail} for product: "${productTitle}"`);
     return { success: true };
   } catch (error) {
     const detail = error.response?.body?.errors?.[0]?.message || error.response?.body || error.message;
-    console.error("? Seller product approved email error:", detail);
+    console.error("Seller product approved email error:", detail);
     return { success: false, error: typeof detail === 'string' ? detail : JSON.stringify(detail) };
   }
 };
@@ -2394,7 +2389,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-        subject: `Product Review: "${productTitle}" Requires Changes ? Made in Arnhem Land`,
+        subject: `Product Review: "${productTitle}" Requires Changes - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2414,7 +2409,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
               <!-- Rejected banner -->
               <tr>
                 <td style="background-color:#C62828;padding:14px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Product Not Approved ? Action Required</p>
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Product Not Approved - Action Required</p>
                 </td>
               </tr>
               <!-- Body -->
@@ -2514,7 +2509,7 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Category Approved: "${categoryName}" ? Made in Arnhem Land`,
+    subject: `Category Approved: "${categoryName}" - Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">

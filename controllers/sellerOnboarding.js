@@ -1168,17 +1168,18 @@ exports.resumeOnboarding = async (request, reply) => {
       });
     }
 
-    if (user.sellerProfile.status === 'APPROVED') {
+    // If Stripe onboarding is complete (or admin-approved), the seller has
+    // finished the entire flow — nothing left to resume.
+    if (user.sellerProfile.stripeOnboardingComplete || user.sellerProfile.status === 'APPROVED') {
       return reply.status(200).send({
         success: true,
         canResume: false,
-        message: "Your seller application is already approved. Please log in to your dashboard.",
-        action: "login",
-        loginEndpoint: "/seller-onboarding/login"
+        message: "Your seller account setup is already complete. Please log in to access your seller dashboard.",
+        action: "already_complete"
       });
     }
 
-    // ── Real seller account found — send OTP to verify ownership ─────────
+    // ── Real seller account found, Stripe not yet done — send OTP to verify ownership ─────────
     const otp = generateOTP();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
@@ -1193,7 +1194,7 @@ exports.resumeOnboarding = async (request, reply) => {
         name:  user.name  || '',
         otp,
         otpExpiry,
-        role: 'SELLER_RESUME'
+        role: 'SELLER'
       }
     });
 

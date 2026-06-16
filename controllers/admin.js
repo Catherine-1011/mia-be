@@ -3676,6 +3676,7 @@ exports.getGstReport = async (request, reply) => {
     const prevGst = prevGross - (prevGross / (1 + defaultGstRate / 100));
 
     let grossTotal = 0;
+    let platformCommissionTotal = 0;
     const paymentMethods = {};
     const sellersData = {};
     const rateBreakdowns = {
@@ -3684,7 +3685,8 @@ exports.getGstReport = async (request, reply) => {
         transactions: 0,
         netAmount: 0,
         gstAmount: 0,
-        grossAmount: 0
+        grossAmount: 0,
+        platformCommission: 0
       }
     };
     
@@ -3705,23 +3707,31 @@ exports.getGstReport = async (request, reply) => {
         itemsGross += parseFloat(item.price || 0) * item.quantity;
       });
       
-      const orderGst = itemsGross - (itemsGross / (1 + defaultGstRate / 100));
+      // Net amount (product price EXCLUDING GST)
+      const itemsNetExclusive = itemsGross / (1 + defaultGstRate / 100);
+      const orderGst = itemsGross - itemsNetExclusive;
       const orderNet = orderGross - orderGst;
+      
+      // Platform commission = 10% of net product price (excluding GST)
+      const platformCommission = itemsNetExclusive * 0.10;
+      platformCommissionTotal += platformCommission;
 
       const rateKey = defaultGstRate.toFixed(1);
       rateBreakdowns[rateKey].transactions += 1;
       rateBreakdowns[rateKey].netAmount += orderNet;
       rateBreakdowns[rateKey].gstAmount += orderGst;
       rateBreakdowns[rateKey].grossAmount += orderGross;
+      rateBreakdowns[rateKey].platformCommission += platformCommission;
 
       const pMethod = order.paymentMethod || 'Unknown';
       if (!paymentMethods[pMethod]) {
-        paymentMethods[pMethod] = { count: 0, netAmount: 0, gstAmount: 0, grossAmount: 0, fees: 0 };
+        paymentMethods[pMethod] = { count: 0, netAmount: 0, gstAmount: 0, grossAmount: 0, fees: 0, platformCommission: 0 };
       }
       paymentMethods[pMethod].count += 1;
       paymentMethods[pMethod].grossAmount += orderGross;
       paymentMethods[pMethod].netAmount += orderNet;
       paymentMethods[pMethod].gstAmount += orderGst;
+      paymentMethods[pMethod].platformCommission += platformCommission;
       
       // Estimate gateway fee (e.g. 1.75% + $0.30 for Stripe)
       const estFee = pMethod.toLowerCase().includes('stripe') || pMethod.toLowerCase().includes('card') 
@@ -3734,13 +3744,15 @@ exports.getGstReport = async (request, reply) => {
         const sid = item.product.sellerId || 'Unknown';
         if (!sellersData[sid]) {
           const sellerName = item.product.seller?.sellerProfile?.storeName || item.product.seller?.sellerProfile?.businessName || item.product.seller?.name || `Seller ${sid}`;
-          sellersData[sid] = { sellerName, orderIds: new Set(), netSales: 0, gstCollected: 0 };
+          sellersData[sid] = { sellerName, orderIds: new Set(), netSales: 0, gstCollected: 0, platformCommission: 0 };
         }
         sellersData[sid].orderIds.add(order.id);
         const itemGross = parseFloat(item.price) * item.quantity;
         const itemNet = itemGross / (1 + defaultGstRate / 100);
+        const itemCommission = itemNet * 0.10;
         sellersData[sid].netSales += itemNet;
         sellersData[sid].gstCollected += (itemGross - itemNet);
+        sellersData[sid].platformCommission += itemCommission;
       });
 
       transactions.push({
@@ -3751,6 +3763,8 @@ exports.getGstReport = async (request, reply) => {
         netAmount: orderNet,
         gstRate: defaultGstRate,
         gstAmount: orderGst,
+        platformCommission: parseFloat(platformCommission.toFixed(2)),
+        platformCommissionRate: 10,
         totalAmount: orderGross,
         status: order.overallStatus,
         ref: order.stripePaymentIntentId || order.paypalOrderId || 'N/A'
@@ -3775,7 +3789,8 @@ exports.getGstReport = async (request, reply) => {
       sellerName: s.sellerName,
       orders: s.orderIds.size,
       netSales: s.netSales,
-      gstCollected: s.gstCollected
+      gstCollected: s.gstCollected,
+      platformCommission: parseFloat(s.platformCommission.toFixed(2))
     })).sort((a,b) => b.netSales - a.netSales);
 
     reply.send({
@@ -3791,7 +3806,9 @@ exports.getGstReport = async (request, reply) => {
           totalOrders: currentOrders.length,
           grossRevenue: grossTotal,
           netRevenue: netTotal,
-          gstCollected: gstTotal
+          gstCollected: gstTotal,
+          platformCommission: parseFloat(platformCommissionTotal.toFixed(2)),
+          platformCommissionRate: 10
         },
         trend: {
           prevOrders: prevOrdersCount,
@@ -3805,6 +3822,7 @@ exports.getGstReport = async (request, reply) => {
           transactions: stats.count,
           netAmount: stats.netAmount,
           gstAmount: stats.gstAmount,
+          platformCommission: parseFloat(stats.platformCommission.toFixed(2)),
           grossAmount: stats.grossAmount,
           fees: stats.fees,
           netReceived: stats.grossAmount - stats.fees

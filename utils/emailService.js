@@ -900,10 +900,10 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
       <td style="padding:0 40px 28px;">
         <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
           <p style="margin:0 0 8px;color:#5A1E12;font-weight:700;font-size:14px;">What happens next?</p>
-          <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">? Your order is being processed by our seller</p>
-          <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">? You'll receive a shipping confirmation when dispatched</p>
-          <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">? Track your order anytime from your account</p>
-          <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">? If you have any issues with the orders, please <a href="https://madeinarnhemland.com.au/contact-us" style="color:#C4603A;text-decoration:underline;">contact</a> us</p>
+          <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Your order is being processed by our seller</p>
+          <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> You'll receive a shipping confirmation when dispatched</p>
+          <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Track your order anytime from your account</p>
+          <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> If you have any issues with the orders, please <a href="https://madeinarnhemland.com.au/contact-us" style="color:#C4603A;text-decoration:underline;">contact</a> us</p>
         </div>
       </td>
     </tr>

@@ -5816,10 +5816,10 @@ exports.updateRefundRequestStatus = async (request, reply) => {
         where: { id: ticket.orderId },
         include: {
           user:      { select: { id: true, name: true, email: true, isDeleted: true } },
-          items:     { include: { product: { select: { id: true, sellerId: true } } } },
+          items:     { include: { product: { select: { id: true, sellerId: true, title: true, price: true } } } },
           subOrders: {
             include: {
-              items: { include: { product: { select: { id: true, sellerId: true } } } }
+              items: { include: { product: { select: { id: true, sellerId: true, title: true, price: true } } } }
             }
           }
         }
@@ -5934,6 +5934,40 @@ exports.updateRefundRequestStatus = async (request, reply) => {
 
     if (notifRows.length) await prisma.notification.createMany({ data: notifRows });
 
+    // ── Generate invoice PDF for email attachment ──────────────────────────
+    let invoicePDFBuffer = null;
+    try {
+      if (order) {
+        const { generateInvoiceBuffer } = require('./orders');
+        const invoiceShape = {
+          id: order.id,
+          displayId: order.displayId,
+          createdAt: order.createdAt,
+          status: order.status || 'DELIVERED',
+          customerName: (order.user?.isDeleted ? 'Deleted User' : order.user?.name) || order.customerName,
+          customerEmail: order.user?.email || order.customerEmail,
+          customerPhone: order.user?.phone || order.customerPhone,
+          shippingPhone: order.shippingPhone,
+          shippingAddressLine: order.shippingAddressLine,
+          shippingCity: order.shippingCity,
+          shippingState: order.shippingState,
+          shippingZipCode: order.shippingZipCode,
+          shippingCountry: order.shippingCountry,
+          shippingAddress: order.shippingAddress || null,
+          totalAmount: order.totalAmount,
+          paymentMethod: order.paymentMethod,
+          discountAmount: order.discountAmount || null,
+          couponCode: order.couponCode || null,
+          items: order.items,
+          subOrders: order.subOrders
+        };
+        invoicePDFBuffer = await generateInvoiceBuffer(invoiceShape);
+      }
+    } catch (pdfError) {
+      console.error("Invoice PDF generation error (non-blocking):", pdfError.message);
+      // Continue with email sending even if PDF generation fails
+    }
+
     // ── Emails (non-blocking) ─────────────────────────────────────────────────
     // ticketRequestedItems already parsed above (before Stripe call)
     const refundEmailPayload = {
@@ -5948,7 +5982,7 @@ exports.updateRefundRequestStatus = async (request, reply) => {
     };
 
     if (customerEmail) {
-      sendRefundStatusUpdateEmail(customerEmail, customerName, refundEmailPayload)
+      sendRefundStatusUpdateEmail(customerEmail, customerName, refundEmailPayload, invoicePDFBuffer)
         .catch(err => console.error('Refund status customer email error (non-blocking):', err.message));
     }
 

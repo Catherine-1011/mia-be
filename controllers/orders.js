@@ -1415,7 +1415,8 @@ exports.cancelOrder = async (request, reply) => {
             product: { select: { id: true, title: true, price: true, sellerId: true } }
           }
         },
-        subOrders: true // Include sub-orders for multi-seller orders
+        subOrders: true, // Include sub-orders for multi-seller orders
+        user: { select: { id: true, name: true, email: true, isDeleted: true } } // Include user for invoice generation
       }
     });
 
@@ -1585,6 +1586,37 @@ exports.cancelOrder = async (request, reply) => {
       }).catch(err => console.error("Admin lookup error for cancel email (non-blocking):", err.message));
     // ─────────────────────────────────────────────────────────────────────────
 
+    // ── Generate invoice PDF for email attachment ──────────────────────────
+    let invoicePDFBuffer = null;
+    try {
+      const invoiceShape = {
+        id: order.id,
+        displayId: order.displayId,
+        createdAt: order.createdAt,
+        status: 'CANCELLED',
+        customerName: (order.user?.isDeleted ? 'Deleted User' : order.user?.name) || order.customerName,
+        customerEmail: order.user?.email || order.customerEmail,
+        customerPhone: order.user?.phone || order.customerPhone,
+        shippingPhone: order.shippingPhone,
+        shippingAddressLine: order.shippingAddressLine,
+        shippingCity: order.shippingCity,
+        shippingState: order.shippingState,
+        shippingZipCode: order.shippingZipCode,
+        shippingCountry: order.shippingCountry,
+        shippingAddress: order.shippingAddress || null,
+        totalAmount: order.totalAmount,
+        paymentMethod: order.paymentMethod,
+        discountAmount: order.discountAmount || null,
+        couponCode: order.couponCode || null,
+        items: order.items,
+        subOrders: order.subOrders
+      };
+      invoicePDFBuffer = await generateInvoiceBuffer({ ...invoiceShape, _resolvedStatus: 'CANCELLED' });
+    } catch (pdfError) {
+      console.error("Invoice PDF generation error (non-blocking):", pdfError.message);
+      // Continue with email sending even if PDF generation fails
+    }
+
     // ── Email (only when email address is available) ──────────────────────
     if (user && user.email) {
       console.log(`📧 Sending cancellation email to customer: ${user.email}`);
@@ -1604,6 +1636,7 @@ exports.cancelOrder = async (request, reply) => {
         shippingCountry: order.shippingCountry,
         shippingPhone: order.shippingPhone,
         isGuest: false,
+        invoicePDFBuffer: invoicePDFBuffer, // Add invoice PDF to email
         products: order.items?.map(item => ({
           title: item.product?.title || 'Product',
           quantity: item.quantity,
@@ -1648,7 +1681,8 @@ exports.cancelGuestOrder = async (request, reply) => {
             product: { select: { id: true, title: true, price: true, sellerId: true } }
           }
         },
-        subOrders: true // Include sub-orders for multi-seller orders
+        subOrders: true, // Include sub-orders for multi-seller orders
+        user: { select: { id: true, name: true, email: true, isDeleted: true } } // Include user (for guest, this will be null)
       }
     });
 
@@ -1809,6 +1843,37 @@ exports.cancelGuestOrder = async (request, reply) => {
       }).catch(err => console.error("Admin lookup error for cancel email (non-blocking):", err.message));
     // ─────────────────────────────────────────────────────────────────────────
 
+    // ── Generate invoice PDF for email attachment ──────────────────────────
+    let invoicePDFBuffer = null;
+    try {
+      const invoiceShape = {
+        id: order.id,
+        displayId: order.displayId,
+        createdAt: order.createdAt,
+        status: 'CANCELLED',
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        customerPhone: order.customerPhone,
+        shippingPhone: order.shippingPhone,
+        shippingAddressLine: order.shippingAddressLine,
+        shippingCity: order.shippingCity,
+        shippingState: order.shippingState,
+        shippingZipCode: order.shippingZipCode,
+        shippingCountry: order.shippingCountry,
+        shippingAddress: order.shippingAddress || null,
+        totalAmount: order.totalAmount,
+        paymentMethod: order.paymentMethod,
+        discountAmount: order.discountAmount || null,
+        couponCode: order.couponCode || null,
+        items: order.items,
+        subOrders: order.subOrders
+      };
+      invoicePDFBuffer = await generateInvoiceBuffer({ ...invoiceShape, _resolvedStatus: 'CANCELLED' });
+    } catch (pdfError) {
+      console.error("Invoice PDF generation error (non-blocking):", pdfError.message);
+      // Continue with email sending even if PDF generation fails
+    }
+
     // ── Email notification to guest ──────────────────────────────────────────
     if (order.customerEmail) {
       console.log(`📧 Sending cancellation email to guest: ${order.customerEmail}`);
@@ -1828,6 +1893,7 @@ exports.cancelGuestOrder = async (request, reply) => {
         shippingCountry: order.shippingCountry,
         shippingPhone: order.shippingPhone,
         isGuest: true,
+        invoicePDFBuffer: invoicePDFBuffer, // Add invoice PDF to email
         products: order.items?.map(item => ({
           title: item.product?.title || 'Product',
           quantity: item.quantity,
@@ -2089,6 +2155,37 @@ exports.requestRefund = async (request, reply) => {
     const customerEmail = order.user?.email;
     const customerName  = (order.user?.isDeleted ? 'Deleted User' : order.user?.name) || order.customerName || 'Customer';
 
+    // ── Generate invoice PDF for email attachment ──────────────────────────
+    let invoicePDFBuffer = null;
+    try {
+      const invoiceShape = {
+        id: order.id,
+        displayId: order.displayId,
+        createdAt: order.createdAt,
+        status: order.status || 'CONFIRMED',
+        customerName: (order.user?.isDeleted ? 'Deleted User' : order.user?.name) || order.customerName,
+        customerEmail: order.user?.email || order.customerEmail,
+        customerPhone: order.user?.phone || order.customerPhone,
+        shippingPhone: order.shippingPhone,
+        shippingAddressLine: order.shippingAddressLine,
+        shippingCity: order.shippingCity,
+        shippingState: order.shippingState,
+        shippingZipCode: order.shippingZipCode,
+        shippingCountry: order.shippingCountry,
+        shippingAddress: order.shippingAddress || null,
+        totalAmount: order.totalAmount,
+        paymentMethod: order.paymentMethod,
+        discountAmount: order.discountAmount || null,
+        couponCode: order.couponCode || null,
+        items: order.items,
+        subOrders: order.subOrders
+      };
+      invoicePDFBuffer = await generateInvoiceBuffer(invoiceShape);
+    } catch (pdfError) {
+      console.error("Invoice PDF generation error (non-blocking):", pdfError.message);
+      // Continue with email sending even if PDF generation fails
+    }
+
     if (customerEmail) {
       sendRefundRequestConfirmationEmail(customerEmail, customerName, {
         displayId: order.displayId,
@@ -2098,7 +2195,7 @@ exports.requestRefund = async (request, reply) => {
         totalAmount: order.totalAmount,
         isGuest: false,
         items: itemsBlob
-      }).catch(err => console.error('Refund confirmation email error (non-blocking):', err.message));
+      }, invoicePDFBuffer).catch(err => console.error('Refund confirmation email error (non-blocking):', err.message));
     }
 
     prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } })
@@ -2698,6 +2795,37 @@ exports.requestGuestRefund = async (request, reply) => {
     // ── Emails (non-blocking) ─────────────────────────────────────────────────
     const customerName = order.customerName || (order.user?.isDeleted ? 'Guest' : order.user?.name) || 'Guest';
 
+    // ── Generate invoice PDF for email attachment ──────────────────────────
+    let invoicePDFBuffer = null;
+    try {
+      const invoiceShape = {
+        id: order.id,
+        displayId: order.displayId,
+        createdAt: order.createdAt,
+        status: order.status || 'DELIVERED',
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        customerPhone: order.customerPhone,
+        shippingPhone: order.shippingPhone,
+        shippingAddressLine: order.shippingAddressLine,
+        shippingCity: order.shippingCity,
+        shippingState: order.shippingState,
+        shippingZipCode: order.shippingZipCode,
+        shippingCountry: order.shippingCountry,
+        shippingAddress: order.shippingAddress || null,
+        totalAmount: order.totalAmount,
+        paymentMethod: order.paymentMethod,
+        discountAmount: order.discountAmount || null,
+        couponCode: order.couponCode || null,
+        items: order.items,
+        subOrders: order.subOrders
+      };
+      invoicePDFBuffer = await generateInvoiceBuffer(invoiceShape);
+    } catch (pdfError) {
+      console.error("Invoice PDF generation error (non-blocking):", pdfError.message);
+      // Continue with email sending even if PDF generation fails
+    }
+
     sendRefundRequestConfirmationEmail(normalizedEmail, customerName, {
       displayId:   order.displayId,
       ticketId:    supportTicket.id,
@@ -2706,7 +2834,7 @@ exports.requestGuestRefund = async (request, reply) => {
       totalAmount: order.totalAmount,
       isGuest:     true,
       items:       itemsBlob
-    }).catch(err => console.error('Guest refund confirmation email error (non-blocking):', err.message));
+    }, invoicePDFBuffer).catch(err => console.error('Guest refund confirmation email error (non-blocking):', err.message));
 
     prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } })
       .then(superAdmins => {

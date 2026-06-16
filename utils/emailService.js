@@ -911,11 +911,8 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
     <tr>
       <td style="padding:0 40px 36px;text-align:center;" class="email-body">
         <table width="100%" cellpadding="0" cellspacing="0" class="btn-table"><tr>
-          <td style="padding-right:8px;text-align:right;" class="btn-cell">
+          <td style="text-align:center;" class="btn-cell">
             <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;letter-spacing:0.5px;margin:5px;" class="mobile-btn">Track Order</a>
-          </td>
-          <td style="padding-left:8px;text-align:left;" class="btn-cell">
-            <a href="${invoiceUrl}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;letter-spacing:0.5px;margin:5px;" class="mobile-btn">Download Invoice</a>
           </td>
         </tr></table>
       </td>
@@ -1197,7 +1194,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                     <!-- Delivered: Download Invoice + Issue with order (guests only) -->
                     <table width="100%" cellpadding="0" cellspacing="0"><tr>
                       <td style="text-align:center;padding-bottom:12px;" colspan="2">
-                        <a href="${invoiceUrl}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Download Invoice</a>
+                        <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Track Order</a>
                       </td>
                     </tr>${orderDetails.isGuest ? `
                     <tr>
@@ -1206,15 +1203,8 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                       </td>
                     </tr>` : ''}</table>
                   ` : `
-                    <!-- Other statuses: Show both buttons -->
-                    <table width="100%" cellpadding="0" cellspacing="0"><tr>
-                      <td style="padding-right:8px;text-align:right;">
-                        <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Track Order</a>
-                      </td>
-                      <td style="padding-left:8px;text-align:left;">
-                        <a href="${invoiceUrl}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Download Invoice</a>
-                      </td>
-                    </tr></table>
+                    <!-- Other statuses: Show track order button -->
+                    <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Track Order</a>
                   `}
                 </td>
               </tr>
@@ -1364,11 +1354,8 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
                   <table width="100%" cellpadding="0" cellspacing="0"><tr>
-                    <td style="padding-right:8px;text-align:right;">
+                    <td style="text-align:center;">
                       <a href="${process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">View in Dashboard</a>
-                    </td>
-                    <td style="padding-left:8px;text-align:left;">
-                      <a href="${process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Download Invoice</a>
                     </td>
                   </tr></table>
                 </td>
@@ -2984,11 +2971,8 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
                   <table width="100%" cellpadding="0" cellspacing="0"><tr>
-                    <td style="padding-right:8px;text-align:right;">
-                      <a href="${process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;"> View in Admin Panel</a>
-                    </td>
-                    <td style="padding-left:8px;text-align:left;">
-                      <a href="${process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#C4603A;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Download Invoice</a>
+                    <td style="text-align:center;">
+                      <a href="${process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">View in Admin Panel</a>
                     </td>
                   </tr></table>
                 </td>
@@ -4105,7 +4089,7 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
 };
 
 // --- Refund Request Confirmation Email ---------------------------------------
-const sendRefundRequestConfirmationEmail = async (email, customerName, refundDetails) => {
+const sendRefundRequestConfirmationEmail = async (email, customerName, refundDetails, invoicePDFBuffer) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
     console.log("DEVELOPMENT MODE - Refund Request Confirmation");
@@ -4314,6 +4298,15 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
   };
 
   try {
+    // Attach invoice PDF if provided
+    if (invoicePDFBuffer) {
+      msg.attachments = [{
+        content: invoicePDFBuffer.toString('base64'),
+        filename: `invoice-${refundDetails.displayId}.pdf`,
+        type: 'application/pdf',
+        disposition: 'attachment'
+      }];
+    }
     await sgMail.send(buildMsg(msg));
     return { success: true };
   } catch (error) {
@@ -4325,7 +4318,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
 // -- Refund Status Update Email (Customer) ------------------------------------
 // Sent when admin changes refund request status to APPROVED, REJECTED, or COMPLETED.
 // refundDetails: { displayId, status, adminMessage?, requestType, totalAmount?, requestedItems?, isGuest? }
-const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails) => {
+const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, invoicePDFBuffer) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
     console.log("DEVELOPMENT MODE - Refund Status Update (Customer)");
@@ -4520,6 +4513,15 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails) =
   };
 
   try {
+    // Attach invoice PDF if provided
+    if (invoicePDFBuffer) {
+      msg.attachments = [{
+        content: invoicePDFBuffer.toString('base64'),
+        filename: `invoice-${refundDetails.displayId}.pdf`,
+        type: 'application/pdf',
+        disposition: 'attachment'
+      }];
+    }
     await sgMail.send(buildMsg(msg));
     return { success: true };
   } catch (error) {

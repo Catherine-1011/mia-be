@@ -694,7 +694,7 @@ const sendFinanceOrderInvoiceEmail = async (orderDetails, pdfBuffer) => {
 };
 
 // Send Order Confirmation Email
-const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => {
+const sendOrderConfirmationEmail = async (email, customerName, orderDetails, invoicePDFBuffer) => {
   if (isDevelopmentMode) {
     console.log("\n" + "=".repeat(50));
     console.log("DEVELOPMENT MODE - Order Confirmation Email");
@@ -943,9 +943,9 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails) => 
 
   try {
     // Attach invoice PDF if provided
-    if (orderDetails.invoicePDFBuffer) {
+    if (invoicePDFBuffer) {
       msg.attachments = [{
-        content: orderDetails.invoicePDFBuffer.toString('base64'),
+        content: invoicePDFBuffer.toString('base64'),
         filename: `invoice-${orderDetails.displayId}.pdf`,
         type: 'application/pdf',
         disposition: 'attachment'

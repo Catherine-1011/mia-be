@@ -920,8 +920,33 @@ async function handlePaymentSucceeded(paymentIntentId) {
     isGuest:         !order.userId, // guest orders use /guest/track-order?orderId=...&email=...
   };
 
+  // ── Generate invoice PDF for all confirmation emails ───────────────────
+  let invoicePDFBuffer = null;
+  try {
+    const invoiceOrderRecord = await prisma.order.findUnique({
+      where: { id: order.id },
+      include: {
+        items:     { include: { product: { select: { id: true, title: true, price: true, sellerId: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
+        subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
+        user:      { select: { name: true, email: true, phone: true } },
+      }
+    });
+
+    if (invoiceOrderRecord) {
+      const invoiceShape = {
+        ...invoiceOrderRecord,
+        customerName:  (invoiceOrderRecord.user?.isDeleted ? 'Deleted User' : invoiceOrderRecord.user?.name) || invoiceOrderRecord.customerName,
+        customerEmail: invoiceOrderRecord.user?.email || invoiceOrderRecord.customerEmail,
+        customerPhone: invoiceOrderRecord.user?.phone || invoiceOrderRecord.customerPhone,
+      };
+      invoicePDFBuffer = await generateInvoiceBuffer(invoiceShape);
+    }
+  } catch (pdfErr) {
+    console.error('Invoice PDF generation error (non-blocking):', pdfErr.message);
+  }
+
   if (toEmail) {
-    sendOrderConfirmationEmail(toEmail, toName, orderDetailsForEmail)
+    sendOrderConfirmationEmail(toEmail, toName, orderDetailsForEmail, invoicePDFBuffer)
       .catch((e) => console.error('Email error (non-blocking):', e.message));
   } else {
     console.warn(`⚠️  No customerEmail on order ${order.id} — confirmation email skipped`);
@@ -945,7 +970,7 @@ async function handlePaymentSucceeded(paymentIntentId) {
         customerEmail: invoiceOrderRecord.user?.email || invoiceOrderRecord.customerEmail,
         customerPhone: invoiceOrderRecord.user?.phone || invoiceOrderRecord.customerPhone,
       };
-      const financePdfBuffer = await generateInvoiceBuffer(invoiceShape);
+      const financePdfBuffer = invoicePDFBuffer || await generateInvoiceBuffer(invoiceShape);
       await sendFinanceOrderInvoiceEmail(invoiceShape, financePdfBuffer);
     }
   } catch (financeErr) {
@@ -978,7 +1003,7 @@ async function handlePaymentSucceeded(paymentIntentId) {
           sendOrderConfirmationEmail(admin.email, admin.name || 'Super Admin', {
             ...orderDetailsForEmail,
             isSuperAdminCopy: true
-          }).catch(e => console.error('Admin order email error (non-blocking):', e.message));
+          }, invoicePDFBuffer).catch(e => console.error('Admin order email error (non-blocking):', e.message));
         }
       }
     }).catch(e => console.error('Error fetching admins for order emails:', e.message));
@@ -1042,7 +1067,7 @@ async function handlePaymentSucceeded(paymentIntentId) {
               price: Number(i.price)
             })),
             totalAmount: itemTotal // Correct totally to just the seller's total
-          }).catch(e => console.error('Seller order email error:', e.message));
+          }, invoicePDFBuffer).catch(e => console.error('Seller order email error:', e.message));
         }
       }).catch(e => console.error('Error fetching seller for order email:', e.message));
 

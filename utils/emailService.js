@@ -341,6 +341,18 @@ const generateResponsiveEmailTemplate = (options) => {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="color-scheme" content="light dark">
       <style>
+        /* Outlook-specific CSS resets */
+        table { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+        td, th { mso-line-height-rule: exactly; }
+        img { border: 0; outline: none; text-decoration: none; -ms-interpolation-mode: nearest-neighbor; }
+        p { mso-margin-top-alt: 0; mso-margin-bottom-alt: 0; }
+        
+        /* Button fixes for Outlook */
+        .email-button { mso-padding-alt: 14px 36px; mso-text-raise: 2px; }
+        
+        /* Table spacing fixes */
+        table.email-container { border-spacing: 0; border-collapse: collapse; }
+        
         @media screen and (max-width: 640px) {
           .email-container { width: 100% !important; margin: 0 10px !important; max-width: calc(100% - 20px) !important; }
           .email-header { padding: 24px 20px !important; }
@@ -383,10 +395,10 @@ const generateResponsiveEmailTemplate = (options) => {
         ${getPrintSafeCSS().replace(/^@media screen[\s\S]*?}\s*/, '').replace(/^@media print \{/, '@media print {')}
       </style>
     </head>
-    <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;" class="dark-bg">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;" class="dark-bg">
-        <tr><td align="center">
-          <table width="${maxWidth}" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:95%;" class="email-container dark-card">
+    <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;min-width:320px;" class="dark-bg">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:20px 0;mso-padding-alt:20px 0;">
+        <tr><td align="center" style="padding:0;">
+          <table width="${maxWidth}" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:${maxWidth}px;width:100%;mso-padding-alt:0;" class="email-container dark-card">
             ${content}
           </table>
         </td></tr>
@@ -715,15 +727,15 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
     const gstAmt = lineTotal - (lineTotal / (1 + gstPerc / 100));
     const pPriceExGST = pPrice / (1 + gstPerc / 100); // unit price ex GST
     return `
-    <tr style="border-bottom: 1px solid #eee;">
-      <td style="padding: 12px 8px;">
+    <tr style="border-bottom:1px solid #eee;">
+      <td style="padding:12px 8px;mso-padding-alt:12px 8px;vertical-align:top;">
         <span style="display:block;font-size:14px;color:#1a1a1a;font-weight:500;">${product.title || 'Product'}</span>
         ${product.variantInfo ? `<span style="display:block;font-size:12px;color:#888;margin-top:3px;">${product.variantInfo}</span>` : ''}
       </td>
-      <td style="padding: 12px 8px; text-align: center;">${product.quantity}</td>
-      <td style="padding: 12px 8px; text-align: right;">$${pPriceExGST.toFixed(2)}</td>
-      <td style="padding: 12px 8px; text-align: right; color: #888;">$${gstAmt.toFixed(2)} (${gstPerc}%)</td>
-      <td style="padding: 12px 8px; text-align: right; font-weight: bold;">$${lineTotal.toFixed(2)}</td>
+      <td style="padding:12px 8px;mso-padding-alt:12px 8px;text-align:center;vertical-align:top;">${product.quantity}</td>
+      <td style="padding:12px 8px;mso-padding-alt:12px 8px;text-align:right;vertical-align:top;">$${pPriceExGST.toFixed(2)}</td>
+      <td style="padding:12px 8px;mso-padding-alt:12px 8px;text-align:right;color:#888;vertical-align:top;">$${gstAmt.toFixed(2)} (${gstPerc}%)</td>
+      <td style="padding:12px 8px;mso-padding-alt:12px 8px;text-align:right;font-weight:bold;vertical-align:top;">$${lineTotal.toFixed(2)}</td>
     </tr>
   `}).join('');
 
@@ -824,16 +836,16 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
     </tr>
     <!-- Items Table -->
     <tr>
-      <td style="padding:10px 40px 28px;" class="email-body">
+      <td style="padding:10px 40px 28px;mso-padding-alt:10px 40px 28px;" class="email-body">
         <p style="color:#5A1E12;font-size:16px;font-weight:700;margin:0 0 12px;" class="dark-text">Order Items</p>
         <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(90,30,18,0.1);" class="responsive-table dark-table-bg">
           <thead>
             <tr bgcolor="#5A1E12" style="background-color:#5A1E12;">
-              <th bgcolor="#5A1E12" style="padding:13px 12px;text-align:left;color:#fff;font-size:13px;background-color:#5A1E12;">Product</th>
-              <th bgcolor="#5A1E12" style="padding:13px 12px;text-align:center;color:#fff;font-size:13px;background-color:#5A1E12;">Qty</th>
-              <th bgcolor="#5A1E12" style="padding:13px 12px;text-align:right;color:#fff;font-size:13px;background-color:#5A1E12;">Unit Price</th>
-              <th bgcolor="#5A1E12" style="padding:13px 12px;text-align:right;color:#fff;font-size:13px;background-color:#5A1E12;">GST</th>
-              <th bgcolor="#5A1E12" style="padding:13px 12px;text-align:right;color:#fff;font-size:13px;background-color:#5A1E12;">Total</th>
+              <th bgcolor="#5A1E12" style="padding:13px 12px;mso-padding-alt:13px 12px;text-align:left;color:#fff;font-size:13px;background-color:#5A1E12;font-weight:700;">Product</th>
+              <th bgcolor="#5A1E12" style="padding:13px 12px;mso-padding-alt:13px 12px;text-align:center;color:#fff;font-size:13px;background-color:#5A1E12;font-weight:700;">Qty</th>
+              <th bgcolor="#5A1E12" style="padding:13px 12px;mso-padding-alt:13px 12px;text-align:right;color:#fff;font-size:13px;background-color:#5A1E12;font-weight:700;">Unit Price</th>
+              <th bgcolor="#5A1E12" style="padding:13px 12px;mso-padding-alt:13px 12px;text-align:right;color:#fff;font-size:13px;background-color:#5A1E12;font-weight:700;">GST</th>
+              <th bgcolor="#5A1E12" style="padding:13px 12px;mso-padding-alt:13px 12px;text-align:right;color:#fff;font-size:13px;background-color:#5A1E12;font-weight:700;">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -842,8 +854,8 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
           <tfoot>
             <!-- Subtotal row -->
             <tr bgcolor="#fdf5f3" style="background-color:#fdf5f3;">
-              <td colspan="4" bgcolor="#fdf5f3" style="padding:10px 12px;text-align:right;color:#555;font-size:14px;background-color:#fdf5f3;">Subtotal (inc. GST)</td>
-              <td bgcolor="#fdf5f3" style="padding:10px 12px;text-align:right;color:#333;font-size:14px;background-color:#fdf5f3;">$${
+              <td colspan="4" bgcolor="#fdf5f3" style="padding:10px 12px;mso-padding-alt:10px 12px;text-align:right;color:#555;font-size:14px;background-color:#fdf5f3;">Subtotal (inc. GST)</td>
+              <td bgcolor="#fdf5f3" style="padding:10px 12px;mso-padding-alt:10px 12px;text-align:right;color:#333;font-size:14px;background-color:#fdf5f3;">$${
                 orderDetails.orderSummary
                   ? parseFloat(orderDetails.orderSummary.subtotal || 0).toFixed(2)
                   : orderDetails.totalAmount.toFixed(2)
@@ -851,10 +863,10 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
             </tr>
             <!-- Shipping row -->
             <tr bgcolor="#fdf5f3" style="background-color:#fdf5f3;">
-              <td colspan="4" bgcolor="#fdf5f3" style="padding:6px 12px;text-align:right;color:#555;font-size:14px;background-color:#fdf5f3;">
+              <td colspan="4" bgcolor="#fdf5f3" style="padding:6px 12px;mso-padding-alt:6px 12px;text-align:right;color:#555;font-size:14px;background-color:#fdf5f3;">
                 Shipping${orderDetails.orderSummary?.shippingMethod?.name ? ` &mdash; ${orderDetails.orderSummary.shippingMethod.name}` : ''}${orderDetails.orderSummary?.shippingMethod?.estimatedDays ? ` (${orderDetails.orderSummary.shippingMethod.estimatedDays})` : ''}
               </td>
-              <td bgcolor="#fdf5f3" style="padding:6px 12px;text-align:right;color:#333;font-size:14px;background-color:#fdf5f3;">${
+              <td bgcolor="#fdf5f3" style="padding:6px 12px;mso-padding-alt:6px 12px;text-align:right;color:#333;font-size:14px;background-color:#fdf5f3;">${
                 orderDetails.orderSummary && parseFloat(orderDetails.orderSummary.shippingCost || 0) > 0
                   ? `$${parseFloat(orderDetails.orderSummary.shippingCost).toFixed(2)}`
                   : '<span style="color:#2e7d32;font-weight:600;">FREE</span>'
@@ -863,15 +875,15 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
             <!-- Coupon Discount row (only shown when a coupon was applied) -->
             ${orderDetails.orderSummary?.discountAmount && parseFloat(orderDetails.orderSummary.discountAmount) > 0 ? `
             <tr bgcolor="#fdf5f3" style="background-color:#fdf5f3;">
-              <td colspan="4" bgcolor="#fdf5f3" style="padding:6px 12px;text-align:right;color:#2e7d32;font-size:14px;background-color:#fdf5f3;">Coupon Discount${orderDetails.orderSummary.couponCode ? ` (${orderDetails.orderSummary.couponCode})` : ''}</td>
-              <td bgcolor="#fdf5f3" style="padding:6px 12px;text-align:right;color:#2e7d32;font-size:14px;font-weight:600;background-color:#fdf5f3;">-$${parseFloat(orderDetails.orderSummary.discountAmount).toFixed(2)}</td>
+              <td colspan="4" bgcolor="#fdf5f3" style="padding:6px 12px;mso-padding-alt:6px 12px;text-align:right;color:#2e7d32;font-size:14px;background-color:#fdf5f3;">Coupon Discount${orderDetails.orderSummary.couponCode ? ` (${orderDetails.orderSummary.couponCode})` : ''}</td>
+              <td bgcolor="#fdf5f3" style="padding:6px 12px;mso-padding-alt:6px 12px;text-align:right;color:#2e7d32;font-size:14px;font-weight:600;background-color:#fdf5f3;">-$${parseFloat(orderDetails.orderSummary.discountAmount).toFixed(2)}</td>
             </tr>` : ''}
             <!-- GST extracted row -->
             <tr bgcolor="#fdf5f3" style="background-color:#fdf5f3;">
-              <td colspan="4" bgcolor="#fdf5f3" style="border-top:1px dashed #ddd;padding:6px 12px;text-align:right;font-size:13px;color:#555;background-color:#fdf5f3">
+              <td colspan="4" bgcolor="#fdf5f3" style="border-top:1px dashed #ddd;padding:6px 12px;mso-padding-alt:6px 12px;text-align:right;font-size:13px;color:#555;background-color:#fdf5f3">
                 GST included${orderDetails.orderSummary?.gstPercentage ? ` (${parseFloat(orderDetails.orderSummary.gstPercentage).toFixed(0)}%)` : ''}
               </td>
-              <td bgcolor="#fdf5f3" style="border-top:1px dashed #ddd;padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;background-color:#fdf5f3;">$${
+              <td bgcolor="#fdf5f3" style="border-top:1px dashed #ddd;padding:6px 12px;mso-padding-alt:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;background-color:#fdf5f3;">$${
                 orderDetails.orderSummary
                   ? parseFloat(orderDetails.orderSummary.gstAmount || 0).toFixed(2)
                   : '0.00'
@@ -879,8 +891,8 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
             </tr>
             <!-- Net ex-GST row -->
             <tr bgcolor="#fdf5f3" style="background-color:#fdf5f3;">
-              <td colspan="4" bgcolor="#fdf5f3" style="padding:6px 12px;text-align:right;font-size:13px;color:#555;background-color:#fdf5f3">Net amount (ex. GST)</td>
-              <td bgcolor="#fdf5f3" style="padding:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;background-color:#fdf5f3;">$${
+              <td colspan="4" bgcolor="#fdf5f3" style="padding:6px 12px;mso-padding-alt:6px 12px;text-align:right;font-size:13px;color:#555;background-color:#fdf5f3">Net amount (ex. GST)</td>
+              <td bgcolor="#fdf5f3" style="padding:6px 12px;mso-padding-alt:6px 12px;text-align:right;color:#888;font-size:13px;font-style:italic;background-color:#fdf5f3;">$${
                 orderDetails.orderSummary
                   ? parseFloat(orderDetails.orderSummary.subtotalExGST || 0).toFixed(2)
                   : '0.00'
@@ -888,8 +900,8 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
             </tr>
             <!-- Grand Total row -->
             <tr bgcolor="#F9EDE9" style="background-color:#F9EDE9;">
-              <td colspan="4" bgcolor="#F9EDE9" style="border-top:2px solid #C4603A;padding:16px 12px;text-align:right;color:#5A1E12;font-size:16px;font-weight:700;background-color:#F9EDE9;">Grand Total</td>
-              <td bgcolor="#F9EDE9" style="border-top:2px solid #C4603A;padding:16px 12px;text-align:right;color:#5A1E12;font-size:20px;font-weight:800;background-color:#F9EDE9;">$${orderDetails.totalAmount.toFixed(2)}</td>
+              <td colspan="4" bgcolor="#F9EDE9" style="border-top:2px solid #C4603A;padding:16px 12px;mso-padding-alt:16px 12px;text-align:right;color:#5A1E12;font-size:16px;font-weight:700;background-color:#F9EDE9;">Grand Total</td>
+              <td bgcolor="#F9EDE9" style="border-top:2px solid #C4603A;padding:16px 12px;mso-padding-alt:16px 12px;text-align:right;color:#5A1E12;font-size:20px;font-weight:800;background-color:#F9EDE9;">$${orderDetails.totalAmount.toFixed(2)}</td>
             </tr>
           </tfoot>
         </table>
@@ -897,24 +909,37 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
     </tr>
     <!-- Next Steps -->
     <tr>
-      <td style="padding:0 40px 28px;">
-        <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
-          <p style="margin:0 0 8px;color:#5A1E12;font-weight:700;font-size:14px;">What happens next?</p>
-          <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Your order is being processed by our seller</p>
-          <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> You'll receive a shipping confirmation when dispatched</p>
-          <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Track your order anytime from your account</p>
-          <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> If you have any issues with the orders, please <a href="https://madeinarnhemland.com.au/contact-us" style="color:#C4603A;text-decoration:underline;">contact</a> us</p>
-        </div>
+      <td style="padding:28px 40px;mso-padding-alt:28px 40px;">
+        <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-radius:6px;overflow:hidden;">
+          <tr>
+            <td width="6" bgcolor="#C4603A" style="background-color:#C4603A;font-size:0;line-height:0;width:6px;mso-width-alt:6px;">&nbsp;</td>
+            <td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:20px 24px;mso-padding-alt:20px 24px;vertical-align:top;">
+              <p style="margin:0 0 12px 0;color:#5A1E12;font-weight:700;font-size:15px;font-family:Arial,sans-serif;line-height:1.4;">What happens next?</p>
+              <p style="margin:8px 0;color:#7D2E1E;font-size:13px;font-family:Arial,sans-serif;line-height:1.6;">Your order is being processed by our seller</p>
+              <p style="margin:8px 0;color:#7D2E1E;font-size:13px;font-family:Arial,sans-serif;line-height:1.6;">You'll receive a shipping confirmation when dispatched</p>
+              <p style="margin:8px 0;color:#7D2E1E;font-size:13px;font-family:Arial,sans-serif;line-height:1.6;">Track your order anytime from your account</p>
+              <p style="margin:8px 0;color:#7D2E1E;font-size:13px;font-family:Arial,sans-serif;line-height:1.6;">If you have any issues with the orders, please <a href="https://madeinarnhemland.com.au/contact-us" style="color:#C4603A;text-decoration:underline;">contact</a> us</p>
+            </td>
+          </tr>
+        </table>
       </td>
     </tr>
     <!-- CTA -->
     <tr>
-      <td style="padding:0 40px 36px;text-align:center;" class="email-body">
-        <table width="100%" cellpadding="0" cellspacing="0" class="btn-table"><tr>
-          <td style="text-align:center;" class="btn-cell">
-            <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;letter-spacing:0.5px;margin:5px;" class="mobile-btn">Track Order</a>
-          </td>
-        </tr></table>
+      <td align="center" style="padding:28px 40px 40px;mso-padding-alt:28px 40px 40px;text-align:center;" class="email-body">
+        <!--[if mso]>
+          <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${trackingUrl}" style="height:48px;v-text-anchor:middle;width:180px;" arcsize="6%" stroke="f" fillcolor="#5A1E12">
+            <w:anchorlock/>
+            <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:700;">Track Order</center>
+          </v:roundrect>
+        <![endif]-->
+        <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;border-radius:6px;overflow:hidden;">
+          <tr>
+            <td align="center" bgcolor="#5A1E12" style="background-color:#5A1E12;padding:14px 36px;mso-padding-alt:14px 36px;border-radius:6px;display:inline-block;">
+              <a href="${trackingUrl}" style="display:inline-block;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;font-family:Arial,sans-serif;letter-spacing:0.5px;line-height:1.4;mso-line-height-rule:exactly;">Track Order</a>
+            </td>
+          </tr>
+        </table>
       </td>
     </tr>
     <!-- Footer -->

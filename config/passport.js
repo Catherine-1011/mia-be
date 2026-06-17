@@ -43,7 +43,7 @@ module.exports = function (app) {
     {
       callbackUrl: process.env.SAML_CALLBACK_URL || "https://alpa-be.onrender.com/api/auth/saml/login",
       entryPoint: entryPoint || "PLACEHOLDER_ENTRY_POINT_FROM_METADATA_XML",
-      issuer: "https://alpa-be.onrender.com", // EntityID
+      issuer: process.env.SAML_ISSUER || process.env.BACKEND_URL || "https://alpa-be.onrender.com", // EntityID
       idpCert: idpCert, // IDP Public Key
       // decryptionPvk: decryptionPvk, // If encryption is enabled
       identifierFormat: "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",

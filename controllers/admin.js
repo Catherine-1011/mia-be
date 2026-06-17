@@ -2630,7 +2630,7 @@ exports.syncSellerStripeStatus = async (request, reply) => {
       stripePayoutsEnabled: account.payouts_enabled,
       stripeOnboardingComplete: account.details_submitted,
       stripeBankConnected: (account.external_accounts?.total_count || 0) > 0,
-      platformStatus: shouldApprove ? "APPROVED" : seller.status,
+      platformStatus: seller.status,
       requirements: account.requirements?.currently_due || [],
       errors: account.requirements?.errors || [],
     });

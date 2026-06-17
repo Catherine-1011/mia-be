@@ -1056,7 +1056,13 @@ async function handlePaymentSucceeded(paymentIntentId) {
         if (seller && seller.email) {
           const sellerSubOrder = order.subOrders && order.subOrders.find(sub => sub.sellerId === sid || sub.seller?.id === sid);
           const sName = seller.name || seller.sellerProfile?.storeName || seller.sellerProfile?.businessName || 'Seller';
-          
+
+          // Per-seller shipping is stored as shippingCost (not totalShippingCost) on the parent orderSummary
+          const sellerShipping = parseFloat(order.shippingAddress?.orderSummary?.shippingCost || 0);
+          const gstPct = parseFloat(order.shippingAddress?.orderSummary?.gstPercentage || 10);
+          const sellerGstAmount = itemTotal * (gstPct / (100 + gstPct));
+          const sellerSubtotalExGST = itemTotal - sellerGstAmount;
+
           sendOrderConfirmationEmail(seller.email, sName, {
             ...orderDetailsForEmail,
             isSellerCopy: true,
@@ -1066,7 +1072,14 @@ async function handlePaymentSucceeded(paymentIntentId) {
               quantity: i.quantity,
               price: Number(i.price)
             })),
-            totalAmount: itemTotal // Correct totally to just the seller's total
+            totalAmount: itemTotal + sellerShipping,
+            orderSummary: {
+              ...order.shippingAddress?.orderSummary,
+              subtotal: itemTotal,
+              subtotalExGST: sellerSubtotalExGST,
+              gstAmount: sellerGstAmount,
+              shippingCost: sellerShipping,
+            },
           }, invoicePDFBuffer).catch(e => console.error('Seller order email error:', e.message));
         }
       }).catch(e => console.error('Error fetching seller for order email:', e.message));

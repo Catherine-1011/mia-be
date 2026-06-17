@@ -4087,7 +4087,7 @@ const generateInvoiceBuffer = (order) => {
       return d.length === 11 ? `${d.slice(0,2)} ${d.slice(2,5)} ${d.slice(5,8)} ${d.slice(8)}` : abn;
     };
 
-    const drawPage = (sellerName, sellerAbn, items, showOrderDiscount = true) => {
+    const drawPage = (sellerName, sellerAbn, sellerAddress, items, showOrderDiscount = true) => {
       // Border — stays within the page
       doc.rect(18, 18, R - L + 64, PAGE_H - 36).lineWidth(1.5).stroke(BRAND);
 
@@ -4131,9 +4131,24 @@ const generateInvoiceBuffer = (order) => {
       metaLabel('Date:',    new Date(order.createdAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }), y + 15);
       metaLabel('Payment:', order.paymentMethod || 'Credit/Debit Card', y + 30);
       if (sellerName) {
-        metaLabel('Seller:', sanitizeForPDF(sellerName), y + 45);
-        if (sellerAbn) { metaLabel('ABN:', sanitizeForPDF(formatABN(sellerAbn)), y + 60); y += 75; }
-        else { y += 60; }
+        let metaY = y + 45;
+        metaLabel('Seller:', sanitizeForPDF(sellerName), metaY);
+        metaY += 15;
+        if (sellerAbn) { metaLabel('ABN:', sanitizeForPDF(formatABN(sellerAbn)), metaY); metaY += 15; }
+        // Parse seller business address
+        let addrObj = null;
+        if (sellerAddress) {
+          try { addrObj = typeof sellerAddress === 'string' ? JSON.parse(sellerAddress) : sellerAddress; } catch (_) {}
+        }
+        if (addrObj) {
+          const addrLine1 = sanitizeForPDF(addrObj.street || '');
+          const addrLine2 = sanitizeForPDF([addrObj.city, addrObj.state].filter(Boolean).join(', '));
+          const addrLine3 = sanitizeForPDF([addrObj.postcode, addrObj.country].filter(Boolean).join(' '));
+          if (addrLine1) { metaLabel('Address:', addrLine1, metaY); metaY += 15; }
+          if (addrLine2) { metaLabel('', addrLine2, metaY); metaY += 15; }
+          if (addrLine3) { metaLabel('', addrLine3, metaY); metaY += 15; }
+        }
+        y = metaY + 3;
       } else { y += 48; }
 
       // ── Bill To / Ship To boxes ──
@@ -4307,14 +4322,15 @@ const generateInvoiceBuffer = (order) => {
       // Coupon is order-level — show it only on the last seller page
       order.subOrders.forEach((sub, idx) => {
         if (idx > 0) doc.addPage({ size: 'A4', margin: 50 });
-        const sellerLabel = sub.seller?.name || sub.sellerName || 'Unknown Seller';
-        const sellerAbn   = sub.sellerProfile?.abn || sub.seller?.sellerProfile?.abn || sub.sellerAbn || null;
-        const isLastPage  = idx === order.subOrders.length - 1;
-        drawPage(sellerLabel, sellerAbn, sub.items || [], isLastPage);
+        const sellerLabel   = sub.seller?.name || sub.sellerName || 'Unknown Seller';
+        const sellerAbn     = sub.sellerProfile?.abn || sub.seller?.sellerProfile?.abn || sub.sellerAbn || null;
+        const sellerAddress = sub.sellerProfile?.businessAddress || sub.sellerAddress || null;
+        const isLastPage    = idx === order.subOrders.length - 1;
+        drawPage(sellerLabel, sellerAbn, sellerAddress, sub.items || [], isLastPage);
       });
     } else {
       // ── Single-seller / sub-order / legacy direct order ──
-      drawPage(order.sellerName || null, order.sellerAbn || null, order.items || [], true);
+      drawPage(order.sellerName || null, order.sellerAbn || null, order.sellerAddress || null, order.items || [], true);
     }
 
     doc.end();
@@ -4330,6 +4346,7 @@ const buildSubOrderShape = (sub) => ({
   status:             sub.status,
   sellerName:         sub.seller?.name || null,
   sellerAbn:          sub.sellerProfile?.abn || sub.seller?.sellerProfile?.abn || null,
+  sellerAddress:      sub.sellerProfile?.businessAddress || null,
   customerName:       sub.parentOrder.customerName,
   customerEmail:      sub.parentOrder.customerEmail,
   customerPhone:      sub.parentOrder.customerPhone,
@@ -4385,7 +4402,7 @@ exports.downloadInvoice = async (request, reply) => {
 
     const orderInclude = {
       items:     { include: { product: { select: { id: true, title: true, price: true, sellerId: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
-      subOrders: { include: { seller: { select: { name: true } }, sellerProfile: { select: { abn: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
+      subOrders: { include: { seller: { select: { name: true } }, sellerProfile: { select: { abn: true, businessAddress: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
       user:      { select: { name: true, email: true, phone: true } },
     };
 
@@ -4424,7 +4441,7 @@ exports.downloadInvoice = async (request, reply) => {
         parentOrder: { select: { displayId: true, userId: true, customerName: true, customerEmail: true, customerPhone: true, shippingPhone: true, shippingAddressLine: true, shippingCity: true, shippingState: true, shippingZipCode: true, shippingCountry: true, shippingAddress: true, paymentMethod: true, user: { select: { name: true, email: true, phone: true } } } },
         items:       { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
         seller:      { select: { name: true, email: true } },
-        sellerProfile: { select: { abn: true } },
+        sellerProfile: { select: { abn: true, businessAddress: true } },
       };
       let subRecord = await prisma.subOrder.findFirst({
         where: {
@@ -4512,6 +4529,7 @@ exports.downloadSubOrderInvoice = async (request, reply) => {
       },
       items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
       seller: { select: { name: true, email: true } },
+      sellerProfile: { select: { abn: true, businessAddress: true } },
     };
 
     let subRecord = await prisma.subOrder.findFirst({
@@ -4605,7 +4623,7 @@ exports.downloadGuestInvoice = async (request, reply) => {
     };
     const orderInclude = {
       items:     { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
-      subOrders: { include: { seller: { select: { name: true } }, sellerProfile: { select: { abn: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
+      subOrders: { include: { seller: { select: { name: true } }, sellerProfile: { select: { abn: true, businessAddress: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
     };
 
     // Try as parent order (email verified)
@@ -4625,6 +4643,7 @@ exports.downloadGuestInvoice = async (request, reply) => {
           parentOrder: parentOrderSelect,
           items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
           seller: { select: { name: true, email: true } },
+          sellerProfile: { select: { abn: true, businessAddress: true } },
         },
       });
       if (!subRecord || subRecord.parentOrder.customerEmail !== customerEmail) {
@@ -4663,7 +4682,7 @@ exports.downloadPublicInvoice = async (request, reply) => {
 
     const orderInclude = {
       items:     { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
-      subOrders: { include: { seller: { select: { name: true } }, sellerProfile: { select: { abn: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
+      subOrders: { include: { seller: { select: { name: true } }, sellerProfile: { select: { abn: true, businessAddress: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
       user:      { select: { name: true, email: true, phone: true } },
     };
 
@@ -4694,6 +4713,7 @@ exports.downloadPublicInvoice = async (request, reply) => {
           },
           items:  { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
           seller: { select: { name: true, email: true } },
+          sellerProfile: { select: { abn: true, businessAddress: true } },
         },
       });
       if (!subRecord) {

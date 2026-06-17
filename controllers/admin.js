@@ -2577,7 +2577,7 @@ exports.syncSellerStripeStatus = async (request, reply) => {
 
     const seller = await prisma.sellerProfile.findUnique({
       where: { userId: id },
-      include: { user: true },
+      select: { userId: true, stripeAccountId: true, status: true, abn: true, user: { select: { email: true, name: true } } },
     });
 
     if (!seller) {
@@ -2610,7 +2610,7 @@ exports.syncSellerStripeStatus = async (request, reply) => {
       stripeChargesEnabled: account.charges_enabled,
       stripePayoutsEnabled: account.payouts_enabled,
       stripeKycStatus,
-      stripeAbnProvided: account.company?.tax_id_provided || false,
+      stripeAbnProvided: !!(seller.abn) || account.company?.tax_id_provided || account.individual?.id_number_provided || false,
       stripeBankConnected: (account.external_accounts?.total_count || 0) > 0,
     };
 
@@ -2840,6 +2840,7 @@ exports.bulkSyncSellerStripeStatus = async (request, reply) => {
         userId: true,
         stripeAccountId: true,
         stripeChargesEnabled: true,
+        abn: true,
         user: { select: { email: true, name: true } },
       },
     });
@@ -2870,7 +2871,7 @@ exports.bulkSyncSellerStripeStatus = async (request, reply) => {
             stripeChargesEnabled: account.charges_enabled,
             stripePayoutsEnabled: account.payouts_enabled,
             stripeKycStatus,
-            stripeAbnProvided: account.company?.tax_id_provided || false,
+            stripeAbnProvided: !!(seller.abn) || account.company?.tax_id_provided || account.individual?.id_number_provided || false,
             stripeBankConnected: (account.external_accounts?.total_count || 0) > 0,
           },
         });

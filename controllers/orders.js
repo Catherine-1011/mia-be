@@ -4005,6 +4005,18 @@ exports.trackGuestOrder = async (request, reply) => {
   }
 };
 
+// Strip / replace characters outside Latin-1 that PDFKit built-in fonts cannot render.
+const sanitizeForPDF = (str) => {
+  if (!str) return '';
+  return String(str)
+    .replace(/[‘’‚‛]/g, "'")  // smart single quotes
+    .replace(/[“”„‟]/g, '"')  // smart double quotes
+    .replace(/[–—]/g, '-')               // en-dash / em-dash
+    .replace(/…/g, '...')                     // ellipsis
+    .replace(/ /g, ' ')                       // non-breaking space
+    .replace(/[^\x00-\xFF]/g, '');                 // strip anything above Latin-1
+};
+
 // ─── Invoice PDF Helper ────────────────────────────────────────────
 // Accepts a unified order shape. Handles MULTI_SELLER (order.subOrders[]),
 // sub-order specific (order.sellerName set, flat order.items), and legacy/direct.
@@ -4113,7 +4125,7 @@ const generateInvoiceBuffer = (order) => {
       metaLabel('Invoice No:', displayRef, y);
       metaLabel('Date:',    new Date(order.createdAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }), y + 15);
       metaLabel('Payment:', order.paymentMethod || 'Credit/Debit Card', y + 30);
-      if (sellerName) { metaLabel('Seller:', sellerName, y + 45); y += 60; }
+      if (sellerName) { metaLabel('Seller:', sanitizeForPDF(sellerName), y + 45); y += 60; }
       else { y += 48; }
 
       // ── Bill To / Ship To boxes ──
@@ -4130,14 +4142,14 @@ const generateInvoiceBuffer = (order) => {
          .text('SHIP TO', box2X + 7, y + 5, { width: boxW - 14 });
 
       doc.fillColor('#333').font('Helvetica').fontSize(9);
-      doc.text(order.customerName  || '', L + 7,     y + 22, { width: boxW - 14, ellipsis: true, lineBreak: false });
-      doc.text(order.customerEmail || '', L + 7,     y + 34, { width: boxW - 14, ellipsis: true, lineBreak: false });
-      doc.text(order.shippingPhone || order.customerPhone || '', L + 7, y + 46, { width: boxW - 14, lineBreak: false });
+      doc.text(sanitizeForPDF(order.customerName  || ''), L + 7,     y + 22, { width: boxW - 14, ellipsis: true, lineBreak: false });
+      doc.text(sanitizeForPDF(order.customerEmail || ''), L + 7,     y + 34, { width: boxW - 14, ellipsis: true, lineBreak: false });
+      doc.text(sanitizeForPDF(order.shippingPhone || order.customerPhone || ''), L + 7, y + 46, { width: boxW - 14, lineBreak: false });
 
       if (order.shippingAddressLine || order.shippingCity) {
-        doc.text(order.shippingAddressLine || '', box2X + 7, y + 22, { width: boxW - 14, ellipsis: true, lineBreak: false });
-        doc.text([order.shippingCity, order.shippingState].filter(Boolean).join(', '), box2X + 7, y + 34, { width: boxW - 14, ellipsis: true, lineBreak: false });
-        doc.text([order.shippingZipCode, order.shippingCountry].filter(Boolean).join(' '), box2X + 7, y + 46, { width: boxW - 14, lineBreak: false });
+        doc.text(sanitizeForPDF(order.shippingAddressLine || ''), box2X + 7, y + 22, { width: boxW - 14, ellipsis: true, lineBreak: false });
+        doc.text(sanitizeForPDF([order.shippingCity, order.shippingState].filter(Boolean).join(', ')), box2X + 7, y + 34, { width: boxW - 14, ellipsis: true, lineBreak: false });
+        doc.text(sanitizeForPDF([order.shippingZipCode, order.shippingCountry].filter(Boolean).join(' ')), box2X + 7, y + 46, { width: boxW - 14, lineBreak: false });
       }
       y += boxH + 16;
 
@@ -4177,14 +4189,14 @@ const generateInvoiceBuffer = (order) => {
         let pPriceExGST = pPrice / (1 + (gstPercentage / 100));
         let gstAmt = (pPrice - pPriceExGST) * item.quantity;
 
-        doc.text(item.product?.title
+        doc.text(sanitizeForPDF(item.product?.title
           ? (() => {
               const attrs = item.productVariant?.variantAttributeValues
                 ?.map(av => `${av.attributeValue?.attribute?.name}: ${av.attributeValue?.value}`)
                 .filter(Boolean).join(', ');
               return attrs ? `${item.product.title} (${attrs})` : item.product.title;
             })()
-          : 'Product',              L + 6,   y + 5, { width: C_QTY - L - 14, ellipsis: true });
+          : 'Product'),              L + 6,   y + 5, { width: C_QTY - L - 14, ellipsis: true });
         doc.text(String(item.quantity),             C_QTY,  y + 5, { width: C_UNIT - C_QTY,  align: 'center' });
         doc.text(`$${pPriceExGST.toFixed(2)}`, C_UNIT,  y + 5, { width: C_GST - C_UNIT, align: 'right' });
         doc.text(`$${gstAmt.toFixed(2)} (${gstPercentage}%)`, C_GST,  y + 5, { width: C_TOTAL - C_GST, align: 'right' });
@@ -4201,20 +4213,11 @@ const generateInvoiceBuffer = (order) => {
       y += 14;
 
       // ── Summary block ──────────────────────────────────────────────────
-      // On the last page of an authenticated multi-seller order, replace per-seller
-      // figures with stored order-level totals so the Grand Total is accurate.
-      const isMultiSubOrder = Array.isArray(order.subOrders) && order.subOrders.length > 1;
-      const useOrderTotals  = showOrderDiscount && isMultiSubOrder;
-
-      const displaySubtotal = useOrderTotals
-        ? parseFloat(storedSummary?.subtotal || subtotal)
-        : subtotal;
-      const displayShipping = useOrderTotals
-        ? parseFloat(storedSummary?.totalShippingCost || perSellerShipping)
-        : perSellerShipping;
-      const displayGstAmt   = useOrderTotals
-        ? parseFloat(storedSummary?.gstAmount || 0)
-        : displaySubtotal * gstRate / (100 + gstRate);
+      // Each seller page always shows its own items + its own shipping.
+      // Coupon (order-level) is shown only on the last seller page.
+      const displaySubtotal = subtotal;
+      const displayShipping = perSellerShipping;
+      const displayGstAmt   = displaySubtotal * gstRate / (100 + gstRate);
       const displayNetExGst = displaySubtotal - displayGstAmt;
 
       // Ensure summary block fits before the footer
@@ -4233,7 +4236,7 @@ const generateInvoiceBuffer = (order) => {
       let sy = summaryY;
 
       // 1. Products subtotal (inc. GST)
-      const subtotalLabel = useOrderTotals ? 'Order Subtotal (inc. GST):' : 'Products Subtotal (inc. GST):';
+      const subtotalLabel = 'Products Subtotal (inc. GST):';
       sumRow(subtotalLabel, `$${displaySubtotal.toFixed(2)}`, sy);
       sy += 17;
 
@@ -4275,11 +4278,8 @@ const generateInvoiceBuffer = (order) => {
       // 5. Total line
       doc.moveTo(330, sy).lineTo(R, sy).lineWidth(1.5).stroke(BRAND);
       sy += 8;
-      const pageTotal = useOrderTotals
-        ? parseFloat(order.totalAmount || (displaySubtotal + displayShipping - discAmt))
-        : (displaySubtotal + displayShipping - discAmt);
-      const totalLabel = useOrderTotals ? 'Grand Total:' : 'Total:';
-      sumRow(totalLabel, `$${pageTotal.toFixed(2)}`, sy, { bold: true, size: 12, color: BRAND, valueColor: BRAND });
+      const pageTotal = displaySubtotal + displayShipping - discAmt;
+      sumRow('Grand Total:', `$${pageTotal.toFixed(2)}`, sy, { bold: true, size: 12, color: BRAND, valueColor: BRAND });
       sy += 16;
       doc.fillColor('#999999').font('Helvetica-Oblique').fontSize(7.5)
          .text('All applicable taxes are included in the total.', 330, sy, { width: R - 330, align: 'right', lineBreak: false });

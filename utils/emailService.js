@@ -715,8 +715,11 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
     const gstAmt = lineTotal - (lineTotal / (1 + gstPerc / 100));
     const pPriceExGST = pPrice / (1 + gstPerc / 100); // unit price ex GST
     return `
-    <tr style="border-bottom: 1px solid #ddd;">
-      <td style="padding: 12px 8px;">${product.title || 'Product'}</td>
+    <tr style="border-bottom: 1px solid #eee;">
+      <td style="padding: 12px 8px;">
+        <span style="display:block;font-size:14px;color:#1a1a1a;font-weight:500;">${product.title || 'Product'}</span>
+        ${product.variantInfo ? `<span style="display:block;font-size:12px;color:#888;margin-top:3px;">${product.variantInfo}</span>` : ''}
+      </td>
       <td style="padding: 12px 8px; text-align: center;">${product.quantity}</td>
       <td style="padding: 12px 8px; text-align: right;">$${pPriceExGST.toFixed(2)}</td>
       <td style="padding: 12px 8px; text-align: right; color: #888;">$${gstAmt.toFixed(2)} (${gstPerc}%)</td>
@@ -1021,7 +1024,10 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
     const pPriceExGST = pPrice / (1 + gstPerc / 100);
     return `
     <tr style="border-bottom:1px solid #EDD8CC;">
-      <td style="padding:10px 12px;color:#333;font-size:14px;">${p.title || 'Product'}</td>
+      <td style="padding:10px 12px;">
+        <span style="display:block;color:#333;font-size:14px;font-weight:500;">${p.title || 'Product'}</span>
+        ${p.variantInfo ? `<span style="display:block;color:#999;font-size:12px;margin-top:3px;">${p.variantInfo}</span>` : ''}
+      </td>
       <td style="padding:10px 12px;text-align:center;color:#555;font-size:14px;">${p.quantity}</td>
       <td style="padding:10px 12px;text-align:right;color:#555;font-size:14px;">$${pPriceExGST.toFixed(2)}</td>
       <td style="padding:10px 12px;text-align:right;color:#888;font-size:14px;">$${gstAmt.toFixed(2)} (${gstPerc}%)</td>
@@ -1256,7 +1262,10 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
 
   const productRows = orderDetails.products ? orderDetails.products.map(product => `
     <tr style="border-bottom: 1px solid #ddd;">
-      <td style="padding: 12px 8px;">${product.title || 'Product'}</td>
+      <td style="padding: 12px 8px;">
+        <span style="display:block;font-size:14px;color:#1a1a1a;font-weight:500;">${product.title || 'Product'}</span>
+        ${product.variantInfo ? `<span style="display:block;font-size:12px;color:#999;margin-top:3px;">${product.variantInfo}</span>` : ''}
+      </td>
       <td style="padding: 12px 8px; text-align: center;">${product.quantity}</td>
       <td style="padding: 12px 8px; text-align: right;">$${(product.price || 0).toFixed(2)}</td>
     </tr>

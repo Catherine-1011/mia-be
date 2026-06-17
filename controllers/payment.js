@@ -891,15 +891,15 @@ async function handlePaymentSucceeded(paymentIntentId) {
     products:      allItems.map((item) => {
       const base = item.product?.title || 'Product';
       const variant = item.productVariant;
-      let title = base;
+      let variantInfo = null;
       if (variant?.variantAttributeValues?.length) {
         const attrs = variant.variantAttributeValues
           .map(av => `${av.attributeValue?.attribute?.name}: ${av.attributeValue?.value}`)
           .filter(Boolean).join(', ');
-        if (attrs) title = `${base} (${attrs})`;
+        if (attrs) variantInfo = attrs;
       }
       const price = variant ? Number(variant.price) : Number(item.price);
-      return { title, quantity: item.quantity, price };
+      return { title: base, variantInfo, quantity: item.quantity, price };
     }),
     // Pass structured address so the email template can render city/state/zip
     shippingAddress: {
@@ -1067,11 +1067,17 @@ async function handlePaymentSucceeded(paymentIntentId) {
             ...orderDetailsForEmail,
             isSellerCopy: true,
             subOrderId: sellerSubOrder ? sellerSubOrder.id : undefined,
-            products: sellerItems.map(i => ({
-              title: i.product?.title,
-              quantity: i.quantity,
-              price: Number(i.price)
-            })),
+            products: sellerItems.map(i => {
+              const sv = i.productVariant;
+              let variantInfo = null;
+              if (sv?.variantAttributeValues?.length) {
+                const attrs = sv.variantAttributeValues
+                  .map(av => `${av.attributeValue?.attribute?.name}: ${av.attributeValue?.value}`)
+                  .filter(Boolean).join(', ');
+                if (attrs) variantInfo = attrs;
+              }
+              return { title: i.product?.title, variantInfo, quantity: i.quantity, price: Number(i.price) };
+            }),
             totalAmount: itemTotal + sellerShipping,
             orderSummary: {
               ...order.shippingAddress?.orderSummary,

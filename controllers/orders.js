@@ -4204,27 +4204,37 @@ const generateInvoiceBuffer = (order) => {
         if (y + ROW_H > MAX_CONTENT_Y - 100) return;
         const lineTotal = Number(item.price) * item.quantity;
         subtotal += lineTotal;
-        doc.rect(L, y, tableW, ROW_H).fill(idx % 2 === 0 ? '#ffffff' : BRAND_LIGHT);
+
+        // Build variant info string separately
+        const variantAttrs = item.productVariant?.variantAttributeValues
+          ?.map(av => `${av.attributeValue?.attribute?.name}: ${av.attributeValue?.value}`)
+          .filter(Boolean).join(', ') || null;
+        const rowH = variantAttrs ? ROW_H + 11 : ROW_H;
+
+        doc.rect(L, y, tableW, rowH).fill(idx % 2 === 0 ? '#ffffff' : BRAND_LIGHT);
         doc.fillColor('#333');
-        
+
         let gstPercentage = gstRate || 0;
         let pPrice = Number(item.price) || 0;
         let pPriceExGST = pPrice / (1 + (gstPercentage / 100));
         let gstAmt = (pPrice - pPriceExGST) * item.quantity;
 
-        doc.text(sanitizeForPDF(item.product?.title
-          ? (() => {
-              const attrs = item.productVariant?.variantAttributeValues
-                ?.map(av => `${av.attributeValue?.attribute?.name}: ${av.attributeValue?.value}`)
-                .filter(Boolean).join(', ');
-              return attrs ? `${item.product.title} (${attrs})` : item.product.title;
-            })()
-          : 'Product'),              L + 6,   y + 5, { width: C_QTY - L - 14, ellipsis: true });
-        doc.text(String(item.quantity),             C_QTY,  y + 5, { width: C_UNIT - C_QTY,  align: 'center' });
-        doc.text(`$${pPriceExGST.toFixed(2)}`, C_UNIT,  y + 5, { width: C_GST - C_UNIT, align: 'right' });
-        doc.text(`$${gstAmt.toFixed(2)} (${gstPercentage}%)`, C_GST,  y + 5, { width: C_TOTAL - C_GST, align: 'right' });
-        doc.text(`$${lineTotal.toFixed(2)}`,           C_TOTAL, y + 5, { width: R - C_TOTAL - 6,  align: 'right' });
-        y += ROW_H;
+        // Product title
+        doc.font('Helvetica').fontSize(9).fillColor('#333')
+           .text(sanitizeForPDF(item.product?.title || 'Product'), L + 6, y + 5, { width: C_QTY - L - 14, ellipsis: true });
+        // Variant info on a separate smaller grey line
+        if (variantAttrs) {
+          doc.font('Helvetica').fontSize(7.5).fillColor('#888')
+             .text(sanitizeForPDF(variantAttrs), L + 6, y + 16, { width: C_QTY - L - 14, ellipsis: true });
+        }
+        // Other columns vertically centred in the row
+        const midY = y + (rowH / 2) - 4;
+        doc.font('Helvetica').fontSize(9).fillColor('#333');
+        doc.text(String(item.quantity),                            C_QTY,   midY, { width: C_UNIT - C_QTY,      align: 'center' });
+        doc.text(`$${pPriceExGST.toFixed(2)}`,                    C_UNIT,  midY, { width: C_GST  - C_UNIT,     align: 'right'  });
+        doc.text(`$${gstAmt.toFixed(2)} (${gstPercentage}%)`,     C_GST,   midY, { width: C_TOTAL - C_GST,     align: 'right'  });
+        doc.text(`$${lineTotal.toFixed(2)}`,                       C_TOTAL, midY, { width: R - C_TOTAL - 6,     align: 'right'  });
+        y += rowH;
       });
 
       // Recalculate subtotal from all items (guard above may have skipped some rows display-only)

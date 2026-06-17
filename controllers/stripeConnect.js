@@ -35,14 +35,28 @@ exports.getOAuthUrl = async (request, reply) => {
   try {
     const userId = request.user.userId;
 
+    // Accept optional ABN via query param (?abn=XXXXXXXXXXX) or request body
+    const submittedAbn = (request.query?.abn || request.body?.abn || '').toString().replace(/\s/g, '').trim();
+
     const profile = await prisma.sellerProfile.findUnique({
       where: { userId },
-      select: { stripeAccountId: true },
+      select: { stripeAccountId: true, abn: true },
     });
 
     if (!profile) {
       return reply.status(404).send({ success: false, message: 'Seller profile not found' });
     }
+
+    // If seller provided ABN and it's not yet in DB, save it now
+    if (submittedAbn && !profile.abn) {
+      await prisma.sellerProfile.update({
+        where: { userId },
+        data: { abn: submittedAbn },
+      });
+    }
+
+    // Resolve the ABN to pre-fill in Stripe (prefer newly submitted, fall back to DB value)
+    const abnForStripe = submittedAbn || profile.abn || '';
 
     // Already connected — skip OAuth, go straight to stripe.com
     if (profile.stripeAccountId) {
@@ -61,25 +75,26 @@ exports.getOAuthUrl = async (request, reply) => {
       });
     }
 
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
     const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
     const redirectUri  = `${frontendBase}/seller/stripe/callback`;
 
-    // Build the OAuth authorisation URL
-    // state = userId so the callback can look up the seller
+    // Build the OAuth authorisation URL — pre-fill seller details so they don't re-enter them
     const params = new URLSearchParams({
       response_type: 'code',
       client_id:     clientId,
       scope:         'read_write',
       redirect_uri:  redirectUri,
       state:         userId,
-      // Pre-fill the seller's email on the Stripe signup/login page
-      'stripe_user[email]': (await prisma.user.findUnique({
-        where: { id: userId },
-        select: { email: true }
-      }))?.email || '',
+      'stripe_user[email]':   user?.email || '',
       'stripe_user[country]': 'AU',
       'stripe_user[currency]': 'aud',
     });
+
+    // Pre-fill ABN in Stripe's onboarding form if we have it
+    if (abnForStripe) {
+      params.set('stripe_user[business_tax_id]', abnForStripe);
+    }
 
     const oauthUrl = `https://connect.stripe.com/oauth/authorize?${params.toString()}`;
 

@@ -4082,7 +4082,12 @@ const generateInvoiceBuffer = (order) => {
 
     // ── Helper: draw a complete invoice page for one seller ───────────────
     // showOrderDiscount: true only on the last page (or single-seller) — coupon is order-level
-    const drawPage = (sellerName, items, showOrderDiscount = true) => {
+    const formatABN = (abn) => {
+      const d = String(abn).replace(/\D/g, '');
+      return d.length === 11 ? `${d.slice(0,2)} ${d.slice(2,5)} ${d.slice(5,8)} ${d.slice(8)}` : abn;
+    };
+
+    const drawPage = (sellerName, sellerAbn, items, showOrderDiscount = true) => {
       // Border — stays within the page
       doc.rect(18, 18, R - L + 64, PAGE_H - 36).lineWidth(1.5).stroke(BRAND);
 
@@ -4125,8 +4130,11 @@ const generateInvoiceBuffer = (order) => {
       metaLabel('Invoice No:', displayRef, y);
       metaLabel('Date:',    new Date(order.createdAt).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }), y + 15);
       metaLabel('Payment:', order.paymentMethod || 'Credit/Debit Card', y + 30);
-      if (sellerName) { metaLabel('Seller:', sanitizeForPDF(sellerName), y + 45); y += 60; }
-      else { y += 48; }
+      if (sellerName) {
+        metaLabel('Seller:', sanitizeForPDF(sellerName), y + 45);
+        if (sellerAbn) { metaLabel('ABN:', sanitizeForPDF(formatABN(sellerAbn)), y + 60); y += 75; }
+        else { y += 60; }
+      } else { y += 48; }
 
       // ── Bill To / Ship To boxes ──
       const boxW  = Math.floor((R - L - 8) / 2);
@@ -4300,12 +4308,13 @@ const generateInvoiceBuffer = (order) => {
       order.subOrders.forEach((sub, idx) => {
         if (idx > 0) doc.addPage({ size: 'A4', margin: 50 });
         const sellerLabel = sub.seller?.name || sub.sellerName || 'Unknown Seller';
-        const isLastPage = idx === order.subOrders.length - 1;
-        drawPage(sellerLabel, sub.items || [], isLastPage);
+        const sellerAbn   = sub.sellerProfile?.abn || sub.seller?.sellerProfile?.abn || sub.sellerAbn || null;
+        const isLastPage  = idx === order.subOrders.length - 1;
+        drawPage(sellerLabel, sellerAbn, sub.items || [], isLastPage);
       });
     } else {
       // ── Single-seller / sub-order / legacy direct order ──
-      drawPage(order.sellerName || null, order.items || [], true);
+      drawPage(order.sellerName || null, order.sellerAbn || null, order.items || [], true);
     }
 
     doc.end();
@@ -4320,6 +4329,7 @@ const buildSubOrderShape = (sub) => ({
   createdAt:          sub.createdAt,
   status:             sub.status,
   sellerName:         sub.seller?.name || null,
+  sellerAbn:          sub.sellerProfile?.abn || sub.seller?.sellerProfile?.abn || null,
   customerName:       sub.parentOrder.customerName,
   customerEmail:      sub.parentOrder.customerEmail,
   customerPhone:      sub.parentOrder.customerPhone,
@@ -4375,7 +4385,7 @@ exports.downloadInvoice = async (request, reply) => {
 
     const orderInclude = {
       items:     { include: { product: { select: { id: true, title: true, price: true, sellerId: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
-      subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
+      subOrders: { include: { seller: { select: { name: true } }, sellerProfile: { select: { abn: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
       user:      { select: { name: true, email: true, phone: true } },
     };
 
@@ -4414,6 +4424,7 @@ exports.downloadInvoice = async (request, reply) => {
         parentOrder: { select: { displayId: true, userId: true, customerName: true, customerEmail: true, customerPhone: true, shippingPhone: true, shippingAddressLine: true, shippingCity: true, shippingState: true, shippingZipCode: true, shippingCountry: true, shippingAddress: true, paymentMethod: true, user: { select: { name: true, email: true, phone: true } } } },
         items:       { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
         seller:      { select: { name: true, email: true } },
+        sellerProfile: { select: { abn: true } },
       };
       let subRecord = await prisma.subOrder.findFirst({
         where: {
@@ -4594,7 +4605,7 @@ exports.downloadGuestInvoice = async (request, reply) => {
     };
     const orderInclude = {
       items:     { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
-      subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
+      subOrders: { include: { seller: { select: { name: true } }, sellerProfile: { select: { abn: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
     };
 
     // Try as parent order (email verified)
@@ -4652,7 +4663,7 @@ exports.downloadPublicInvoice = async (request, reply) => {
 
     const orderInclude = {
       items:     { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
-      subOrders: { include: { seller: { select: { name: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
+      subOrders: { include: { seller: { select: { name: true } }, sellerProfile: { select: { abn: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
       user:      { select: { name: true, email: true, phone: true } },
     };
 

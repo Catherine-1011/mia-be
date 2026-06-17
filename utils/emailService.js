@@ -765,10 +765,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
         <p style="margin:0 0 8px 0;font-size:13px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
         <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">Order Confirmed!</h1>
         <p style="margin:10px 0 0;color:#F0D0C8;font-size:15px;">
-          ${orderDetails.isSellerCopy 
-            ? `Seller Copy - Order placed by ${orderDetails.customerName || customerName}`
-            : `Thank you for your purchase, ${customerName}!`
-          }
+          ${(!orderDetails.isSellerCopy && !orderDetails.isSuperAdminCopy) ? `Thank you for your purchase!` : ``}
         </p>
       </td>
     </tr>

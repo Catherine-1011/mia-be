@@ -4317,6 +4317,19 @@ const generateInvoiceBuffer = (order) => {
 
     const hasSubOrders = Array.isArray(order.subOrders) && order.subOrders.length > 0;
 
+    // For single-seller orders: derive seller info from items if not already set
+    let singleSellerName    = order.sellerName || null;
+    let singleSellerAbn     = order.sellerAbn || null;
+    let singleSellerAddress = order.sellerAddress || null;
+    if (!hasSubOrders && !singleSellerName) {
+      const firstProductSeller = order.items?.[0]?.product?.seller;
+      if (firstProductSeller) {
+        singleSellerName    = firstProductSeller.name || null;
+        singleSellerAbn     = firstProductSeller.sellerProfile?.abn || null;
+        singleSellerAddress = firstProductSeller.sellerProfile?.businessAddress || null;
+      }
+    }
+
     if (hasSubOrders) {
       // ── MULTI_SELLER: one A4 page per seller, all in one PDF ──
       // Coupon is order-level — show it only on the last seller page
@@ -4330,7 +4343,7 @@ const generateInvoiceBuffer = (order) => {
       });
     } else {
       // ── Single-seller / sub-order / legacy direct order ──
-      drawPage(order.sellerName || null, order.sellerAbn || null, order.sellerAddress || null, order.items || [], true);
+      drawPage(singleSellerName, singleSellerAbn, singleSellerAddress, order.items || [], true);
     }
 
     doc.end();
@@ -4401,7 +4414,7 @@ exports.downloadInvoice = async (request, reply) => {
     const { orderId } = request.params;
 
     const orderInclude = {
-      items:     { include: { product: { select: { id: true, title: true, price: true, sellerId: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
+      items:     { include: { product: { select: { id: true, title: true, price: true, sellerId: true, seller: { select: { name: true, sellerProfile: { select: { abn: true, businessAddress: true } } } } } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
       subOrders: { include: { seller: { select: { name: true } }, sellerProfile: { select: { abn: true, businessAddress: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
       user:      { select: { name: true, email: true, phone: true } },
     };
@@ -4622,7 +4635,7 @@ exports.downloadGuestInvoice = async (request, reply) => {
       }
     };
     const orderInclude = {
-      items:     { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
+      items:     { include: { product: { select: { id: true, title: true, price: true, seller: { select: { name: true, sellerProfile: { select: { abn: true, businessAddress: true } } } } } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
       subOrders: { include: { seller: { select: { name: true } }, sellerProfile: { select: { abn: true, businessAddress: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
     };
 
@@ -4681,7 +4694,7 @@ exports.downloadPublicInvoice = async (request, reply) => {
     const { orderId } = request.params;
 
     const orderInclude = {
-      items:     { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
+      items:     { include: { product: { select: { id: true, title: true, price: true, seller: { select: { name: true, sellerProfile: { select: { abn: true, businessAddress: true } } } } } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
       subOrders: { include: { seller: { select: { name: true } }, sellerProfile: { select: { abn: true, businessAddress: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
       user:      { select: { name: true, email: true, phone: true } },
     };

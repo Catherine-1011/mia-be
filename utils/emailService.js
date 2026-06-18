@@ -928,11 +928,12 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
     <tr>
       <td align="center" style="padding:28px 40px 40px;mso-padding-alt:28px 40px 40px;text-align:center;" class="email-body">
         <!--[if mso]>
-          <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${trackingUrl}" style="height:48px;v-text-anchor:middle;width:180px;" arcsize="6%" stroke="f" fillcolor="#5A1E12">
+          <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${trackingUrl}" style="height:48px;v-text-anchor:middle;width:180px;" arcsize="8%" stroke="f" fillcolor="#5A1E12">
             <w:anchorlock/>
-            <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:700;">Track Order</center>
+            <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:700;padding:14px 36px;">Track Order</center>
           </v:roundrect>
         <![endif]-->
+        <!--[if !mso]><!---->
         <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;border-radius:6px;overflow:hidden;">
           <tr>
             <td align="center" bgcolor="#5A1E12" style="background-color:#5A1E12;padding:14px 36px;mso-padding-alt:14px 36px;border-radius:6px;display:inline-block;">
@@ -940,6 +941,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
             </td>
           </tr>
         </table>
+        <!--<![endif]-->
       </td>
     </tr>
     <!-- Footer -->
@@ -2202,7 +2204,7 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);background-color:#5A1E12;padding:36px 40px;mso-padding-alt:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land - Admin</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;"> Product Pending Review</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A seller has updated a product that requires your approval</p>
@@ -2210,22 +2212,22 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
               </tr>
               <!-- Status banner -->
               <tr>
-                <td style="background-color:#E65100;padding:14px 40px;text-align:center;">
+                <td bgcolor="#E65100" style="background-color:#E65100;padding:14px 40px;mso-padding-alt:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Awaiting Admin Approval</p>
                 </td>
               </tr>
               <!-- Body -->
               <tr>
-                <td style="padding:36px 40px 28px;">
+                <td style="padding:36px 40px 28px;mso-padding-alt:36px 40px 28px;">
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">A seller has submitted an updated product that is now <strong style="color:#5A1E12;">pending your review</strong>. Please log in to the admin dashboard to approve or reject the listing.</p>
 
                   <!-- Product details box -->
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
+                  <div bgcolor="#F9EDE9" style="background:#F9EDE9;border-radius:8px;padding:22px;mso-padding-alt:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
                     <p style="margin:0 0 16px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Product Details</p>
-                    <table cellpadding="0" cellspacing="0" width="100%">
+                    <table cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;">
                       <tr>
-                        <td style="padding:8px 0;border-bottom:1px solid #ECD5CF;">
+                        <td style="padding:8px 0;mso-padding-alt:8px 0;border-bottom:1px solid #ECD5CF;">
                           <span style="color:#7D2E1E;font-size:13px;font-weight:700;display:inline-block;width:120px;">Product Title</span>
                           <span style="color:#333;font-size:14px;">${productTitle || 'Untitled'}</span>
                         </td>
@@ -2248,8 +2250,22 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
               </tr>
               <!-- CTA -->
               <tr>
-                <td style="padding:0 40px 36px;text-align:center;">
-                  <a href="${dashboardUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Review Product</a>
+                <td style="padding:28px 40px 40px;mso-padding-alt:28px 40px 40px;text-align:center;">
+                  <!--[if mso]>
+                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${dashboardUrl}" style="height:48px;v-text-anchor:middle;width:200px;" arcsize="8%" stroke="f" fillcolor="#5A1E12">
+                      <w:anchorlock/>
+                      <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:700;padding:14px 40px;">Review Product</center>
+                    </v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!---->
+                  <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;border-radius:8px;overflow:hidden;">
+                    <tr>
+                      <td align="center" bgcolor="#5A1E12" style="background-color:#5A1E12;padding:14px 40px;mso-padding-alt:14px 40px;border-radius:8px;display:inline-block;">
+                        <a href="${dashboardUrl}" style="display:inline-block;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;font-family:Arial,sans-serif;mso-line-height-rule:exactly;">Review Product</a>
+                      </td>
+                    </tr>
+                  </table>
+                  <!--<![endif]-->
                 </td>
               </tr>
               <!-- Footer -->
@@ -2892,9 +2908,9 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
 
   const productRows = (orderDetails.items || []).map(item => `
     <tr style="border-bottom:1px solid #EDD8CC;">
-      <td style="padding:10px 12px;color:#333;font-size:14px;">${item.title || item.product?.title || 'Product'}</td>
-      <td style="padding:10px 12px;text-align:center;color:#555;font-size:14px;">${item.quantity}</td>
-      <td style="padding:10px 12px;text-align:right;color:#5A1E12;font-size:14px;font-weight:700;">$${(parseFloat(item.price || 0) * (item.quantity || 0)).toFixed(2)}</td>
+      <td style="padding:10px 12px;mso-padding-alt:10px 12px;color:#333;font-size:14px;vertical-align:top;">${item.title || item.product?.title || 'Product'}</td>
+      <td style="padding:10px 12px;mso-padding-alt:10px 12px;text-align:center;color:#555;font-size:14px;vertical-align:top;">${item.quantity}</td>
+      <td style="padding:10px 12px;mso-padding-alt:10px 12px;text-align:right;color:#5A1E12;font-size:14px;font-weight:700;vertical-align:top;">$${(parseFloat(item.price || 0) * (item.quantity || 0)).toFixed(2)}</td>
     </tr>
   `).join('');
 
@@ -2912,7 +2928,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
             <table width="650" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);background-color:#5A1E12;padding:36px 40px;mso-padding-alt:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Admin Dashboard</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;"> New Order Received</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A customer has just placed an order</p>
@@ -2920,32 +2936,32 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
               </tr>
               <!-- Greeting -->
               <tr>
-                <td style="padding:28px 40px 16px;">
+                <td style="padding:28px 40px 16px;mso-padding-alt:28px 40px 16px;">
                   <p style="color:#3D1009;font-size:16px;margin:0 0 6px;">Hi <strong>${adminName}</strong>,</p>
                   <p style="color:#555;font-size:14px;line-height:1.7;margin:0;">A new order has been placed on the marketplace. Here are the full details.</p>
                 </td>
               </tr>
               <!-- Order meta -->
               <tr>
-                <td style="padding:0 40px 20px;">
-                  <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #5A1E12;">
+                <td style="padding:0 40px 20px;mso-padding-alt:0 40px 20px;">
+                  <div style="background:#F9EDE9;border-radius:8px;padding:20px;mso-padding-alt:20px;border-top:3px solid #5A1E12;">
                     <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Order Details</p>
-                    <table width="100%" cellpadding="0" cellspacing="0">
+                    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                       <tr>
-                        <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayId}</td>
+                        <td style="padding:6px 0;mso-padding-alt:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
+                        <td style="padding:6px 0;mso-padding-alt:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">#${orderDetails.displayId}</td>
                       </tr>
                       <tr>
-                        <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Date</strong></td>
-                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date().toLocaleDateString('en-AU', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Australia/Sydney' })}</td>
+                        <td style="padding:6px 0;mso-padding-alt:6px 0;color:#7D2E1E;font-size:14px;"><strong>Date</strong></td>
+                        <td style="padding:6px 0;mso-padding-alt:6px 0;color:#3D1009;font-size:14px;text-align:right;">${new Date().toLocaleDateString('en-AU', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Australia/Sydney' })}</td>
                       </tr>
                       <tr>
-                        <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Payment</strong></td>
-                        <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.paymentMethod || 'N/A'}</td>
+                        <td style="padding:6px 0;mso-padding-alt:6px 0;color:#7D2E1E;font-size:14px;"><strong>Payment</strong></td>
+                        <td style="padding:6px 0;mso-padding-alt:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.paymentMethod || 'N/A'}</td>
                       </tr>
                       <tr>
-                        <td style="padding:6px 0;color:#7D2E1E;font-size:16px;"><strong>Order Total</strong></td>
-                        <td style="padding:6px 0;color:#5A1E12;font-size:20px;font-weight:800;text-align:right;">$${parseFloat(orderDetails.totalAmount).toFixed(2)}</td>
+                        <td style="padding:6px 0;mso-padding-alt:6px 0;color:#7D2E1E;font-size:16px;"><strong>Order Total</strong></td>
+                        <td style="padding:6px 0;mso-padding-alt:6px 0;color:#5A1E12;font-size:20px;font-weight:800;text-align:right;">$${parseFloat(orderDetails.totalAmount).toFixed(2)}</td>
                       </tr>
                     </table>
                   </div>
@@ -2953,20 +2969,20 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
               </tr>
               <!-- Customer + Seller info -->
               <tr>
-                <td style="padding:0 40px 20px;">
-                  <table width="100%" cellpadding="0" cellspacing="0">
+                <td style="padding:0 40px 20px;mso-padding-alt:0 40px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                     <tr>
-                      <td width="48%" valign="top" style="padding-right:8px;">
-                        <div style="background:#F9EDE9;border-radius:8px;padding:16px;border-top:3px solid #C4603A;">
+                      <td width="48%" valign="top" style="padding-right:8px;mso-padding-alt:0 8px 0 0;">
+                        <div bgcolor="#F9EDE9" style="background:#F9EDE9;border-radius:8px;padding:16px;mso-padding-alt:16px;border-top:3px solid #C4603A;">
                           <p style="margin:0 0 10px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Customer</p>
                           <p style="margin:4px 0;color:#333;font-size:14px;"><strong>${orderDetails.customerName || 'N/A'}</strong></p>
                           <p style="margin:4px 0;color:#555;font-size:13px;">${orderDetails.customerEmail || 'N/A'}</p>
                           ${orderDetails.customerPhone ? `<p style="margin:4px 0;color:#555;font-size:13px;">${orderDetails.customerPhone}</p>` : ''}
                         </div>
                       </td>
-                      <td width="4%"></td>
-                      <td width="48%" valign="top" style="padding-left:8px;">
-                        <div style="background:#F9EDE9;border-radius:8px;padding:16px;border-top:3px solid #5A1E12;">
+                      <td width="4%">&nbsp;</td>
+                      <td width="48%" valign="top" style="padding-left:8px;mso-padding-alt:0 0 0 8px;">
+                        <div bgcolor="#F9EDE9" style="background:#F9EDE9;border-radius:8px;padding:16px;mso-padding-alt:16px;border-top:3px solid #5A1E12;">
                           <p style="margin:0 0 10px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Seller(s)</p>
                           <p style="margin:4px 0;color:#333;font-size:14px;"><strong>${orderDetails.sellerNames || 'N/A'}</strong></p>
                         </div>
@@ -2978,21 +2994,21 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
               <!-- Items -->
               ${productRows ? `
               <tr>
-                <td style="padding:0 40px 20px;">
+                <td style="padding:0 40px 20px;mso-padding-alt:0 40px 20px;">
                   <p style="color:#5A1E12;font-size:15px;font-weight:700;margin:0 0 10px;">Items Ordered</p>
                   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:8px;overflow:hidden;">
                     <thead>
-                      <tr style="background-color:#5A1E12;">
-                        <th style="padding:11px 12px;text-align:left;color:#fff;font-size:13px;">Product</th>
-                        <th style="padding:11px 12px;text-align:center;color:#fff;font-size:13px;">Qty</th>
-                        <th style="padding:11px 12px;text-align:right;color:#fff;font-size:13px;">Subtotal</th>
+                      <tr bgcolor="#5A1E12" style="background-color:#5A1E12;">
+                        <th bgcolor="#5A1E12" style="padding:11px 12px;mso-padding-alt:11px 12px;text-align:left;color:#fff;font-size:13px;font-weight:700;background-color:#5A1E12;">Product</th>
+                        <th bgcolor="#5A1E12" style="padding:11px 12px;mso-padding-alt:11px 12px;text-align:center;color:#fff;font-size:13px;font-weight:700;background-color:#5A1E12;">Qty</th>
+                        <th bgcolor="#5A1E12" style="padding:11px 12px;mso-padding-alt:11px 12px;text-align:right;color:#fff;font-size:13px;font-weight:700;background-color:#5A1E12;">Subtotal</th>
                       </tr>
                     </thead>
                     <tbody>${productRows}</tbody>
                     <tfoot>
-                      <tr style="background:#F9EDE9;">
-                        <td colspan="2" style="padding:12px;text-align:right;color:#5A1E12;font-size:15px;font-weight:700;">Total:</td>
-                        <td style="padding:12px;text-align:right;color:#5A1E12;font-size:18px;font-weight:800;">$${parseFloat(orderDetails.totalAmount).toFixed(2)}</td>
+                      <tr bgcolor="#F9EDE9" style="background-color:#F9EDE9;">
+                        <td colspan="2" bgcolor="#F9EDE9" style="padding:12px;mso-padding-alt:12px;text-align:right;color:#5A1E12;font-size:15px;font-weight:700;background-color:#F9EDE9;">Total:</td>
+                        <td bgcolor="#F9EDE9" style="padding:12px;mso-padding-alt:12px;text-align:right;color:#5A1E12;font-size:18px;font-weight:800;background-color:#F9EDE9;">$${parseFloat(orderDetails.totalAmount).toFixed(2)}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -3000,19 +3016,29 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
               </tr>` : ''}
               <!-- CTA -->
               <tr>
-                <td style="padding:0 40px 36px;text-align:center;">
-                  <table width="100%" cellpadding="0" cellspacing="0"><tr>
-                    <td style="text-align:center;">
-                      <a href="${process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">View in Admin Panel</a>
-                    </td>
-                  </tr></table>
+                <td style="padding:28px 40px 40px;mso-padding-alt:28px 40px 40px;text-align:center;">
+                  <!--[if mso]>
+                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/admin/orders/${orderDetails.displayId}" style="height:48px;v-text-anchor:middle;width:200px;" arcsize="8%" stroke="f" fillcolor="#5A1E12">
+                      <w:anchorlock/>
+                      <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:700;padding:13px 28px;">View in Admin Panel</center>
+                    </v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!---->
+                  <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;border-radius:8px;overflow:hidden;">
+                    <tr>
+                      <td align="center" bgcolor="#5A1E12" style="background-color:#5A1E12;padding:13px 28px;mso-padding-alt:13px 28px;border-radius:8px;display:inline-block;">
+                        <a href="${process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;font-family:Arial,sans-serif;mso-line-height-rule:exactly;">View in Admin Panel</a>
+                      </td>
+                    </tr>
+                  </table>
+                  <!--<![endif]-->
                 </td>
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Admin Notification</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;mso-padding-alt:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land • Admin Notification</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 </td>
               </tr>
             </table>

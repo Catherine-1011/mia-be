@@ -396,11 +396,13 @@ const generateResponsiveEmailTemplate = (options) => {
       </style>
     </head>
     <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;min-width:320px;" class="dark-bg">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:20px 0;mso-padding-alt:20px 0;">
-        <tr><td align="center" style="padding:0;">
+      <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;mso-padding-alt:20px 0;">
+        <tr><td align="center" style="padding:20px 0;">
+          <!--[if mso]><table align="center" border="0" cellspacing="0" cellpadding="0" width="${maxWidth}"><tr><td align="center" valign="top" width="${maxWidth}"><![endif]-->
           <table width="${maxWidth}" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:${maxWidth}px;width:100%;mso-padding-alt:0;" class="email-container dark-card">
             ${content}
           </table>
+          <!--[if mso]></td></tr></table><![endif]-->
         </td></tr>
       </table>
     </body>
@@ -561,8 +563,8 @@ const sendOTPEmail = async (email, otp, name) => {
         </style>
       </head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;" bgcolor="#FDF5F3" class="dark-bg">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;" bgcolor="#FDF5F3" class="dark-bg">
-          <tr><td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;" bgcolor="#FDF5F3" class="dark-bg">
+          <tr><td align="center" style="padding:30px 0;">
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:95%;" bgcolor="#ffffff" class="email-container dark-card">
               <!-- Header -->
               <tr>
@@ -579,7 +581,7 @@ const sendOTPEmail = async (email, otp, name) => {
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 30px;">Thank you for registering! Use the One-Time Password below to verify your email address.</p>
 
                   <!-- OTP Box -->
-                  <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#F9EDE9 0%,#FDF5F3 100%);background-color:#F9EDE9;border:2px dashed #C4603A;border-radius:10px;padding:28px;text-align:center;margin:0 0 30px;">
+                  <table bgcolor="#F9EDE9" width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#F9EDE9 0%,#FDF5F3 100%);background-color:#F9EDE9;border:2px dashed #C4603A;border-radius:10px;padding:28px;text-align:center;margin:0 0 30px;">
                     <tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:28px;text-align:center;">
                       <p style="margin:0 0 6px;color:#7D2E1E;font-size:13px;letter-spacing:2px;text-transform:uppercase;">Your OTP Code</p>
                       <div style="font-size:40px;font-weight:800;letter-spacing:12px;color:#5A1E12;">${otp}</div>
@@ -587,7 +589,7 @@ const sendOTPEmail = async (email, otp, name) => {
                     </td></tr>
                   </table>
 
-                  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9EDE9;background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 6px 6px 0;padding:14px 18px;">
+                  <table bgcolor="#F9EDE9" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F9EDE9;background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 6px 6px 0;padding:14px 18px;">
                     <tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-left:4px solid #C4603A;padding:14px 18px;">
                       <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">If you did not request this OTP, please ignore this email. Your account remains secure.</p>
                     </td></tr>
@@ -598,8 +600,9 @@ const sendOTPEmail = async (email, otp, name) => {
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;" class="email-footer footer-dark">
                   <p style="margin:0;color:#F0D0C8;font-size:12px;">This is an automated email &mdash; please do not reply.</p>
-                  <p style="margin:6px 0 0;color:#8B5C54;font-size:11px;">&copy;? 2026 Made in Arnhem Land. All rights reserved.</p>
+                  <p style="margin:6px 0 0;color:#8B5C54;font-size:11px;">&copy; 2026 Made in Arnhem Land. All rights reserved.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -637,15 +640,15 @@ const sendFinanceOrderInvoiceEmail = async (orderDetails, pdfBuffer) => {
         <p style="color: #666; font-size: 14px; margin-top: 0;">Invoice generated for Order #${orderDetails.displayId}</p>
       </div>
 
-      <div style="background: #fdf5f3; padding: 20px; border-radius: 8px; border-left: 4px solid #5A1E12; margin-bottom: 25px;">
+      <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#fdf5f3" style="background-color:#fdf5f3;margin-bottom:25px"><tr><td bgcolor="#fdf5f3" style="background-color:#fdf5f3;padding:20px;border-left:4px solid #5A1E12">
         <p style="margin: 0 0 10px 0;">Hello <strong>Finance Team</strong>,</p>
         <p style="margin: 0; line-height: 1.5;">
           A new order has been successfully placed by <strong>${orderDetails.customerName || 'a Customer'}</strong>. 
           Please find the attached PDF invoice for your financial records and reconciliation.
         </p>
-      </div>
+      </td></tr></table>
 
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+      <table bgcolor="#fff" style="width: 100%; border-collapse: collapse; margin-bottom: 30px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
         <thead>
           <tr>
             <th bgcolor="#5A1E12" style="background: #5A1E12; background-color: #5A1E12; color: #fff; text-align: left; padding: 12px 15px; border-radius: 6px 0 0 0;">Field</th>
@@ -675,6 +678,7 @@ const sendFinanceOrderInvoiceEmail = async (orderDetails, pdfBuffer) => {
       <p style="font-size: 13px; color: #777; text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee;">
         This is an automated system email for the Made in Arnhem Land finance team.
       </p>
+      <p style="font-size: 12px; text-align: center; margin-top: 8px;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">www.madeinarnhemland.com.au</a></p>
     </div>
   `;
 
@@ -815,20 +819,20 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
         <table width="100%" cellpadding="0" cellspacing="0" class="responsive-table">
           <tr>
             <td width="48%" valign="top" style="padding-right:10px;" class="two-col mobile-padding">
-              <div style="background:#F9EDE9;border-radius:8px;padding:16px;border-top:3px solid #5A1E12;" class="dark-table-bg">
+              <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px;border-top:3px solid #5A1E12">
                 <p style="margin:0 0 10px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;" class="dark-text">${orderDetails.isSuperAdminCopy || orderDetails.isSellerCopy ? 'Customer Details' : 'Your Details'}</p>
                 <p style="margin:4px 0;color:#333;font-size:14px;" class="dark-text"><strong>${orderDetails.customerName || customerName}</strong></p>
                 <p style="margin:4px 0;color:#555;font-size:13px;" class="dark-text-secondary">${orderDetails.customerEmail || email}</p>
                 ${orderDetails.customerPhone ? `<p style="margin:4px 0;color:#555;font-size:13px;" class="dark-text-secondary">${orderDetails.customerPhone}</p>` : ''}
-              </div>
+              </td></tr></table>
             </td>
             <td width="4%" class="two-col-spacing"></td>
             <td width="48%" valign="top" style="padding-left:10px;" class="two-col mobile-padding">
-              <div style="background:#F9EDE9;border-radius:8px;padding:16px;border-top:3px solid #C4603A;" class="dark-table-bg">
+              <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px;border-top:3px solid #C4603A">
                 <p style="margin:0 0 10px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;" class="dark-text">Shipping Address</p>
                 <p style="margin:4px 0;color:#333;font-size:14px;" class="dark-text"><strong>${shippingName}</strong></p>
                 <p style="margin:4px 0;color:#555;font-size:13px;line-height:1.6;" class="dark-text-secondary">${addressParts || 'Address not provided'}</p>
-              </div>
+              </td></tr></table>
             </td>
           </tr>
         </table>
@@ -950,7 +954,8 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
         <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for the order</p>
         <p style="margin:0 0 8px;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
         <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
-      </td>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
+                </td>
     </tr>
   `;
 
@@ -1122,9 +1127,9 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
         </style>
       </head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;" class="dark-bg">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;" class="dark-bg">
-          <tr><td align="center">
-            <table width="620" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:95%;" class="email-container dark-card">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;" class="dark-bg">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="620" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:95%;" class="email-container dark-card">
 
               <!-- Brand Header -->
               <tr>
@@ -1179,14 +1184,14 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
               ${shippingParts ? `
               <tr>
                 <td style="padding:0 40px 20px;">
-                  <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #C4603A;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:20px;border-top:3px solid #C4603A">
                     <p style="margin:0 0 10px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Shipping Address</p>
                     <p style="margin:0;color:#333;font-size:14px;line-height:1.8;">
                       <strong>${orderDetails.shippingName || customerName}</strong><br/>
                       ${shippingParts}
                       ${orderDetails.shippingPhone ? `<br/>${orderDetails.shippingPhone}` : ''}
                     </p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>` : ''}
 
@@ -1197,7 +1202,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                   <p style="color:#5A1E12;font-size:15px;font-weight:700;margin:0 0 10px;">Items Ordered</p>
                   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(90,30,18,0.08);">
                     <thead>
-                      <tr style="background-color:#5A1E12;">
+                      <tr bgcolor="#5A1E12" style="background-color:#5A1E12;">
                         <th style="padding:11px 12px;text-align:left;color:#fff;font-size:13px;">Product</th>
                         <th style="padding:11px 12px;text-align:center;color:#fff;font-size:13px;">Qty</th>
                         <th style="padding:11px 12px;text-align:right;color:#fff;font-size:13px;">Unit Price</th>
@@ -1208,7 +1213,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                     <tbody>${productRows}</tbody>
                     <tfoot>
                       <!-- Grand Total row -->
-                      <tr style="background-color:#F9EDE9;">
+                      <tr bgcolor="#F9EDE9" style="background-color:#F9EDE9;">
                         <td colspan="4" style="border-top:2px solid #C4603A;padding:16px 12px;text-align:right;color:#5A1E12;font-size:16px;font-weight:700;">Grand Total</td>
                         <td style="border-top:2px solid #C4603A;padding:16px 12px;text-align:right;color:#5A1E12;font-size:20px;font-weight:800;">$${parseFloat(orderDetails.totalAmount || 0).toFixed(2)}</td>
                       </tr>
@@ -1245,6 +1250,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for shopping with us!   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
 
@@ -1310,8 +1316,8 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;" bgcolor="#FDF5F3">
-          <tr><td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;" bgcolor="#FDF5F3">
+          <tr><td align="center" style="padding:30px 0;">
             <table width="650" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);" bgcolor="#ffffff">
               <!-- Header -->
               <tr>
@@ -1399,6 +1405,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued Made in Arnhem Land seller!</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -1442,8 +1449,8 @@ const sendContactFormEmail = async (email, name, subject, message) => {
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
             <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);" bgcolor="#ffffff">
               <!-- Header -->
               <tr>
@@ -1481,6 +1488,7 @@ const sendContactFormEmail = async (email, name, subject, message) => {
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Customer Support</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated confirmation &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -1533,18 +1541,18 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
         <html lang="en">
         <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
         <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-            <tr><td align="center">
-              <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.15);">
+          <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+            <tr><td align="center" style="padding:30px 0;">
+              <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.15);">
                 <!-- Brand Header -->
                 <tr>
-                  <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:20px 40px;text-align:center;">
+                  <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:20px 40px;text-align:center;">
                     <p style="margin:0;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   </td>
                 </tr>
                 <!-- Urgency Banner -->
                 <tr>
-                  <td style="background-color:${urgencyColor};padding:28px 40px;text-align:center;">
+                  <td bgcolor="${urgencyColor}" style="background-color:${urgencyColor};padding:28px 40px;text-align:center;">
                     <h1 style="margin:0 0 6px;color:#ffffff;font-size:26px;font-weight:800;">SLA ${slaStatus.status === 'BREACHED' ? 'BREACHED' : 'WARNING'}</h1>
                     <p style="margin:0;color:rgba(255,255,255,0.9);font-size:14px;">Immediate action required</p>
                   </td>
@@ -1557,7 +1565,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
                     </p>
 
                     <!-- Order Details -->
-                    <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #5A1E12;margin-bottom:20px;">
+                    <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:20px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:20px;border-top:3px solid #5A1E12">
                       <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Order Details</p>
                       <table width="100%" cellpadding="0" cellspacing="0">
                         <tr>
@@ -1577,16 +1585,16 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
                           <td style="padding:6px 0;color:${urgencyColor};font-size:14px;font-weight:700;text-align:right;">${slaStatus.isOverdue ? `OVERDUE by ${Math.abs(slaStatus.timeRemaining).toFixed(1)} hrs` : `${slaStatus.timeRemaining.toFixed(1)} hrs remaining`}</td>
                         </tr>
                       </table>
-                    </div>
+                    </td></tr></table>
 
                     <!-- Steps -->
-                    <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;margin-bottom:28px;">
+                    <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:28px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #C4603A">
                       <p style="margin:0 0 8px;color:#5A1E12;font-weight:700;font-size:14px;">Next Steps</p>
                       <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Log into your seller dashboard immediately</p>
                       <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Update the order status</p>
                       <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Add tracking information if shipping</p>
                       <p style="margin:4px 0;color:#7D2E1E;font-size:13px;"> Contact the customer if required</p>
-                    </div>
+                    </td></tr></table>
 
                     <!-- CTA -->
                     <div style="text-align:center;">
@@ -1596,11 +1604,12 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
                 </tr>
                 <!-- Footer -->
                 <tr>
-                  <td style="background-color:#3D1009;padding:20px 40px;text-align:center;">
+                  <td bgcolor="#3D1009" style="background-color:#3D1009;padding:20px 40px;text-align:center;">
                     <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Automated SLA Monitor</p>
                     <p style="margin:0;color:#8B5C54;font-size:11px;">Please do not reply to this email. &copy; 2026 Made in Arnhem Land.</p>
                     <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
-                  </td>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
+                </td>
                 </tr>
               </table>
             </td></tr>
@@ -1733,12 +1742,12 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
         </style>
       </head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;" class="dark-bg">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;" class="dark-bg">>
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;" class="dark-bg">
           <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Application Submitted!</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">We've received your seller application</p>
@@ -1751,7 +1760,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Thank you for completing your seller application on Made in Arnhem Land! Your application has been received and is now under review by our team.</p>
 
                   <!-- Status box -->
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #5A1E12">
                     <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">What Happens Next?</p>
                     <table cellpadding="0" cellspacing="0">
                       <tr>
@@ -1773,29 +1782,30 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
                         <td style="padding:8px 0;color:#555;font-size:14px;line-height:1.6;">Once approved, you can start listing your Aboriginal artworks and selling to customers across Australia.</td>
                       </tr>
                     </table>
-                  </div>
+                  </td></tr></table>
 
                   <!-- Application Reference Number -->
                   ${applicationId ? `
-                  <div style="background:#F9EDE9;border-radius:8px;padding:18px 22px;border-top:3px solid #C4603A;margin-bottom:24px;text-align:center;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:18px 22px;border-top:3px solid #C4603A">
                     <p style="margin:0 0 6px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Your Application Reference Number</p>
                     <p style="margin:0;font-size:22px;font-weight:800;color:#5A1E12;font-family:monospace;letter-spacing:2px;">${applicationId}</p>
                     <p style="margin:8px 0 0;color:#7D2E1E;font-size:12px;">Please quote this number when contacting our support team about your application.</p>
-                  </div>` : ''}
+                  </td></tr></table>` : ''}
 
                   <!-- Review time note -->
-                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #C4603A">
                     <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">Review Timeline</p>
                     <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Applications are typically reviewed within <strong>2?3 business days</strong>. If you have any questions in the meantime, please contact our support team.</p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining Made in Arnhem Land!   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -1838,12 +1848,12 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;"> Account Created!</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your seller account is ready ? let's get started</p>
@@ -1856,14 +1866,14 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Welcome to Made in Arnhem Land! Your email has been verified and your seller account has been successfully created. Please keep your application number safe ? you'll need it when contacting our support team.</p>
 
                   <!-- Application Number Box -->
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;text-align:center;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #5A1E12">
                     <p style="margin:0 0 6px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Your Application Number</p>
                     <p style="margin:0;font-size:22px;font-weight:800;color:#5A1E12;font-family:monospace;letter-spacing:2px;">${applicationNumber}</p>
                     <p style="margin:8px 0 0;color:#7D2E1E;font-size:12px;">Please save this number. Quote it when contacting support about your application.</p>
-                  </div>
+                  </td></tr></table>
 
                   <!-- Next steps -->
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #C4603A;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #C4603A">
                     <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Complete Your Application</p>
                     <table cellpadding="0" cellspacing="0">
                       <tr>
@@ -1885,12 +1895,12 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
                         <td style="padding:8px 0;color:#555;font-size:14px;line-height:1.6;">Upload your <strong>KYC documents</strong> and submit for review.</td>
                       </tr>
                     </table>
-                  </div>
+                  </td></tr></table>
 
-                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #C4603A">
                     <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;"> Tip</p>
                     <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Applications are typically reviewed within <strong>2?3 business days</strong> after submission. Make sure all your details are complete before submitting.</p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
               <!-- CTA -->
@@ -1901,10 +1911,11 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining Made in Arnhem Land!   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -1947,12 +1958,12 @@ const sendSellerApprovedEmail = async (email, name) => {
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;"> You're Approved!</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Welcome to the Made in Arnhem Land seller community</p>
@@ -1960,7 +1971,7 @@ const sendSellerApprovedEmail = async (email, name) => {
               </tr>
               <!-- Approved banner -->
               <tr>
-                <td style="background-color:#4CAF50;padding:14px 40px;text-align:center;">
+                <td bgcolor="#4CAF50" style="background-color:#4CAF50;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Seller Account Approved &amp; Active</p>
                 </td>
               </tr>
@@ -1971,7 +1982,7 @@ const sendSellerApprovedEmail = async (email, name) => {
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">We're thrilled to let you know that your seller application has been <strong style="color:#5A1E12;">approved</strong>! You can now log in to your seller dashboard, upload your artworks, and start selling to customers across Australia.</p>
 
                   <!-- What you can do -->
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #5A1E12">
                     <p style="margin:0 0 16px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Get Started</p>
                     <table cellpadding="0" cellspacing="0" width="100%">
                       <tr>
@@ -1999,13 +2010,13 @@ const sendSellerApprovedEmail = async (email, name) => {
                         </td>
                       </tr>
                     </table>
-                  </div>
+                  </td></tr></table>
 
                   <!-- Important note -->
-                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #C4603A">
                     <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;"> Important</p>
                     <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Your products will be reviewed by our team before going live to customers. Upload your artworks and our admin will activate your store once everything is in order.</p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
               <!-- CTA -->
@@ -2016,10 +2027,11 @@ const sendSellerApprovedEmail = async (email, name) => {
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Welcome to the Made in Arnhem Land family!   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -2072,12 +2084,12 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Stock Alert</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action Required ?for one of your products</p>
@@ -2085,7 +2097,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
               </tr>
               <!-- Alert banner -->
               <tr>
-                <td style="background-color:${stockColor};padding:14px 40px;text-align:center;">
+                <td bgcolor="${stockColor}" style="background-color:${stockColor};padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:700;letter-spacing:1px;">${stockLabel}</p>
                 </td>
               </tr>
@@ -2096,7 +2108,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">${urgencyText}</p>
 
                   <!-- Product Box -->
-                  <div style="background:#FFF3E0;border-radius:8px;padding:22px;border-top:3px solid ${stockColor};margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFF3E0" style="background-color:#FFF3E0;margin-bottom:24px"><tr><td bgcolor="#FFF3E0" style="background-color:#FFF3E0;padding:22px;border-top:3px solid ${stockColor}">
                     <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Product Details</p>
                     <table cellpadding="0" cellspacing="0" width="100%">
                       <tr>
@@ -2112,10 +2124,10 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
                         <td style="padding:6px 0;font-size:14px;font-weight:700;color:#D32F2F;">Inactive (hidden from marketplace)</td>
                       </tr>
                     </table>
-                  </div>
+                  </td></tr></table>
 
                   <!-- What to do -->
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #5A1E12">
                     <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">What to do next</p>
                     <table cellpadding="0" cellspacing="0">
                       <tr>
@@ -2137,12 +2149,12 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
                         <td style="padding:8px 0;color:#555;font-size:14px;line-height:1.6;">Your product will be submitted for <strong>admin review</strong> and re-listed once approved.</td>
                       </tr>
                     </table>
-                  </div>
+                  </td></tr></table>
 
-                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #C4603A">
                     <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">Tip</p>
                     <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">We recommend keeping a stock level of <strong>10 or more units</strong> to avoid interruptions to your sales.</p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
               <!-- CTA -->
@@ -2153,10 +2165,11 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -2199,9 +2212,9 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <!-- Header -->
               <tr>
                 <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);background-color:#5A1E12;padding:36px 40px;mso-padding-alt:36px 40px;text-align:center;">
@@ -2223,7 +2236,7 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">A seller has submitted an updated product that is now <strong style="color:#5A1E12;">pending your review</strong>. Please log in to the admin dashboard to approve or reject the listing.</p>
 
                   <!-- Product details box -->
-                  <div bgcolor="#F9EDE9" style="background:#F9EDE9;border-radius:8px;padding:22px;mso-padding-alt:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #5A1E12">
                     <p style="margin:0 0 16px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Product Details</p>
                     <table cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;">
                       <tr>
@@ -2239,13 +2252,13 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
                         </td>
                       </tr>
                     </table>
-                  </div>
+                  </td></tr></table>
 
                   <!-- Action note -->
-                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #C4603A">
                     <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;"> Action Required</p>
                     <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Visit the admin dashboard to review the product images, description, and details ? then approve or reject the listing.</p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
               <!-- CTA -->
@@ -2270,9 +2283,10 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -2315,12 +2329,12 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;"> Product Approved!</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your artwork is now live on the marketplace</p>
@@ -2328,7 +2342,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
               </tr>
               <!-- Approved banner -->
               <tr>
-                <td style="background-color:#4CAF50;padding:14px 40px;text-align:center;">
+                <td bgcolor="#4CAF50" style="background-color:#4CAF50;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Product Approved &amp; Active</p>
                 </td>
               </tr>
@@ -2339,13 +2353,13 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Great news! Your product has been reviewed and <strong style="color:#4CAF50;">approved</strong> by our team. It is now visible to customers on the Made in Arnhem Land.</p>
 
                   <!-- Product box -->
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #4CAF50;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #4CAF50">
                     <p style="margin:0 0 12px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Approved Product</p>
                     <p style="margin:0;color:#333;font-size:16px;font-weight:600;">  ${productTitle || 'Your Product'}</p>
-                  </div>
+                  </td></tr></table>
 
                   <!-- What's next -->
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #5A1E12">
                     <p style="margin:0 0 16px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">What's Next?</p>
                     <table cellpadding="0" cellspacing="0" width="100%">
                       <tr>
@@ -2367,11 +2381,11 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
                         </td>
                       </tr>
                     </table>
-                  </div>
+                  </td></tr></table>
 
-                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #C4603A">
                     <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Keep your stock levels updated so the listing stays active. Products with zero stock are automatically hidden from the marketplace.</p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
               <!-- CTA -->
@@ -2382,10 +2396,11 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land - Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -2429,12 +2444,12 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Review Update</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your product listing requires some changes</p>
@@ -2442,7 +2457,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
               </tr>
               <!-- Rejected banner -->
               <tr>
-                <td style="background-color:#C62828;padding:14px 40px;text-align:center;">
+                <td bgcolor="#C62828" style="background-color:#C62828;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Product Not Approved - Action Required</p>
                 </td>
               </tr>
@@ -2453,19 +2468,19 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Thank you for submitting your product. After reviewing your listing, our team has requested some changes before it can go live on the marketplace. Please review the feedback below and update your listing accordingly.</p>
 
                   <!-- Product box -->
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #C62828;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #C62828">
                     <p style="margin:0 0 12px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Product Under Review</p>
                     <p style="margin:0;color:#333;font-size:16px;font-weight:600;">  ${productTitle || 'Your Product'}</p>
-                  </div>
+                  </td></tr></table>
 
                   <!-- Reason box -->
-                  <div style="background:#FFF3F0;border-radius:8px;padding:22px;border-left:4px solid #C62828;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFF3F0" style="background-color:#FFF3F0;margin-bottom:24px"><tr><td bgcolor="#FFF3F0" style="background-color:#FFF3F0;padding:22px;border-left:4px solid #C62828">
                     <p style="margin:0 0 10px;color:#C62828;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;"> Feedback from Admin</p>
                     <p style="margin:0;color:#333;font-size:15px;line-height:1.7;">${reason || 'No specific reason was provided. Please contact support if you need clarification.'}</p>
-                  </div>
+                  </td></tr></table>
 
                   <!-- What to do next -->
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #5A1E12">
                     <p style="margin:0 0 16px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">How to Resubmit</p>
                     <table cellpadding="0" cellspacing="0" width="100%">
                       <tr>
@@ -2487,12 +2502,12 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
                         </td>
                       </tr>
                     </table>
-                  </div>
+                  </td></tr></table>
 
-                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #C4603A">
                     <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;"> Need Help?</p>
                     <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">If you have any questions about the feedback or need assistance, please contact our support team. We're here to help you get your artwork listed successfully.</p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
               <!-- CTA -->
@@ -2503,10 +2518,11 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -2549,12 +2565,12 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;"> Category Approved!</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your category request has been approved</p>
@@ -2562,7 +2578,7 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
               </tr>
               <!-- Approved banner -->
               <tr>
-                <td style="background-color:#4CAF50;padding:14px 40px;text-align:center;">
+                <td bgcolor="#4CAF50" style="background-color:#4CAF50;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Category Approved &amp; Available</p>
                 </td>
               </tr>
@@ -2573,17 +2589,17 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Great news! Your category request has been reviewed and <strong style="color:#4CAF50;">approved</strong> by our team. You can now use this category when listing your products.</p>
 
                   <!-- Category box -->
-                  <div style="background:#E8F5E8;border-radius:8px;padding:22px;border-top:3px solid #4CAF50;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#E8F5E8" style="background-color:#E8F5E8;margin-bottom:24px"><tr><td bgcolor="#E8F5E8" style="background-color:#E8F5E8;padding:22px;border-top:3px solid #4CAF50">
                     <p style="margin:0 0 12px;color:#2E7D32;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Approved Category</p>
                     <p style="margin:0;color:#333;font-size:16px;font-weight:600;">${categoryName || 'Your Category'}</p>
-                  </div>
+                  </td></tr></table>
 
                   ${approvalMessage ? `
                   <!-- Admin message -->
-                  <div style="background:#F0F7FF;border-radius:8px;padding:22px;border-left:4px solid #1976D2;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F0F7FF" style="background-color:#F0F7FF;margin-bottom:24px"><tr><td bgcolor="#F0F7FF" style="background-color:#F0F7FF;padding:22px;border-left:4px solid #1976D2">
                     <p style="margin:0 0 10px;color:#1565C0;font-size:13px;font-weight:600;">Admin Message:</p>
                     <p style="margin:0;color:#333;font-size:15px;line-height:1.6;">${approvalMessage}</p>
-                  </div>` : ''}
+                  </td></tr></table>` : ''}
 
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">You can now start creating products in this new category. Visit your dashboard to begin listing your items.</p>
 
@@ -2596,10 +2612,11 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Supporting Aboriginal Artists</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -2642,12 +2659,12 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Category Request Update</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your category request requires review</p>
@@ -2655,7 +2672,7 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
               </tr>
               <!-- Rejected banner -->
               <tr>
-                <td style="background-color:#C62828;padding:14px 40px;text-align:center;">
+                <td bgcolor="#C62828" style="background-color:#C62828;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Category Request Not Approved</p>
                 </td>
               </tr>
@@ -2666,16 +2683,16 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Thank you for submitting your category request. After reviewing your submission, our team has provided feedback that needs to be addressed before this category can be approved.</p>
 
                   <!-- Category box -->
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #C62828;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #C62828">
                     <p style="margin:0 0 12px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Category Under Review</p>
                     <p style="margin:0;color:#333;font-size:16px;font-weight:600;">${categoryName || 'Your Category'}</p>
-                  </div>
+                  </td></tr></table>
 
                   <!-- Reason box -->
-                  <div style="background:#FFF3F0;border-radius:8px;padding:22px;border-left:4px solid #C62828;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFF3F0" style="background-color:#FFF3F0;margin-bottom:24px"><tr><td bgcolor="#FFF3F0" style="background-color:#FFF3F0;padding:22px;border-left:4px solid #C62828">
                     <p style="margin:0 0 10px;color:#C62828;font-size:13px;font-weight:600;">Feedback from Admin Team:</p>
                     <p style="margin:0;color:#333;font-size:15px;line-height:1.6;">${rejectionMessage || 'Please review the category requirements and resubmit.'}</p>
-                  </div>
+                  </td></tr></table>
 
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Based on the feedback above, please review and consider resubmitting your category request with the necessary adjustments. Our goal is to maintain quality and consistency across all categories.</p>
 
@@ -2688,10 +2705,11 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Supporting Aboriginal Artists</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -2734,12 +2752,12 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land Admin</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">New Category Request</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action required: Review category request</p>
@@ -2747,7 +2765,7 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
               </tr>
               <!-- Alert banner -->
               <tr>
-                <td style="background-color:#FF9800;padding:14px 40px;text-align:center;">
+                <td bgcolor="#FF9800" style="background-color:#FF9800;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Category Approval Required</p>
                 </td>
               </tr>
@@ -2758,12 +2776,12 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">A seller has submitted a new category request that requires your review and approval.</p>
 
                   <!-- Request details box -->
-                  <div style="background:#F0F7FF;border-radius:8px;padding:22px;border-left:4px solid #1976D2;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F0F7FF" style="background-color:#F0F7FF;margin-bottom:24px"><tr><td bgcolor="#F0F7FF" style="background-color:#F0F7FF;padding:22px;border-left:4px solid #1976D2">
                     <p style="margin:0 0 16px;color:#1565C0;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Request Details</p>
                     <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Category Name:</strong> ${categoryName || 'Not specified'}</p>
                     <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Requested by:</strong> ${sellerName || 'Unknown Seller'}</p>
                     ${description ? `<p style="margin:0;color:#333;font-size:15px;"><strong>Description:</strong> ${description}</p>` : ''}
-                  </div>
+                  </td></tr></table>
 
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Please review this request and determine whether to approve or reject it. You can provide feedback to help the seller improve future submissions.</p>
 
@@ -2776,9 +2794,10 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel ? Administrative Notifications</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -2822,12 +2841,12 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land Admin</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">New Seller Application</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action required: Review seller application</p>
@@ -2835,7 +2854,7 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
               </tr>
               <!-- Alert banner -->
               <tr>
-                <td style="background-color:#FF9800;padding:14px 40px;text-align:center;">
+                <td bgcolor="#FF9800" style="background-color:#FF9800;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Seller Application Approval Required</p>
                 </td>
               </tr>
@@ -2846,13 +2865,13 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">A new seller has completed their application and is ready for review and approval.</p>
 
                   <!-- Application details box -->
-                  <div style="background:#F0F7FF;border-radius:8px;padding:22px;border-left:4px solid #1976D2;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F0F7FF" style="background-color:#F0F7FF;margin-bottom:24px"><tr><td bgcolor="#F0F7FF" style="background-color:#F0F7FF;padding:22px;border-left:4px solid #1976D2">
                     <p style="margin:0 0 16px;color:#1565C0;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Application Details</p>
                     <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Applicant:</strong> ${sellerName || 'Not specified'}</p>
                     <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Email:</strong> ${email || 'Not specified'}</p>
                     <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Application ID:</strong> ${applicationId || 'Not specified'}</p>
                     ${businessName ? `<p style="margin:0;color:#333;font-size:15px;"><strong>Business Name:</strong> ${businessName}</p>` : ''}
-                  </div>
+                  </td></tr></table>
 
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Please review the application details, including business information, KYC documents, and cultural background to determine approval status. You can provide feedback to help sellers improve future applications.</p>
 
@@ -2865,9 +2884,10 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel ? Administrative Notifications</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -2923,9 +2943,9 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="650" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="650" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <!-- Header -->
               <tr>
                 <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);background-color:#5A1E12;padding:36px 40px;mso-padding-alt:36px 40px;text-align:center;">
@@ -2944,7 +2964,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
               <!-- Order meta -->
               <tr>
                 <td style="padding:0 40px 20px;mso-padding-alt:0 40px 20px;">
-                  <div style="background:#F9EDE9;border-radius:8px;padding:20px;mso-padding-alt:20px;border-top:3px solid #5A1E12;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:20px;border-top:3px solid #5A1E12">
                     <p style="margin:0 0 14px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Order Details</p>
                     <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                       <tr>
@@ -2964,7 +2984,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
                         <td style="padding:6px 0;mso-padding-alt:6px 0;color:#5A1E12;font-size:20px;font-weight:800;text-align:right;">$${parseFloat(orderDetails.totalAmount).toFixed(2)}</td>
                       </tr>
                     </table>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
               <!-- Customer + Seller info -->
@@ -2973,19 +2993,19 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
                   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                     <tr>
                       <td width="48%" valign="top" style="padding-right:8px;mso-padding-alt:0 8px 0 0;">
-                        <div bgcolor="#F9EDE9" style="background:#F9EDE9;border-radius:8px;padding:16px;mso-padding-alt:16px;border-top:3px solid #C4603A;">
+                        <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px;border-top:3px solid #C4603A">
                           <p style="margin:0 0 10px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Customer</p>
                           <p style="margin:4px 0;color:#333;font-size:14px;"><strong>${orderDetails.customerName || 'N/A'}</strong></p>
                           <p style="margin:4px 0;color:#555;font-size:13px;">${orderDetails.customerEmail || 'N/A'}</p>
                           ${orderDetails.customerPhone ? `<p style="margin:4px 0;color:#555;font-size:13px;">${orderDetails.customerPhone}</p>` : ''}
-                        </div>
+                        </td></tr></table>
                       </td>
                       <td width="4%">&nbsp;</td>
                       <td width="48%" valign="top" style="padding-left:8px;mso-padding-alt:0 0 0 8px;">
-                        <div bgcolor="#F9EDE9" style="background:#F9EDE9;border-radius:8px;padding:16px;mso-padding-alt:16px;border-top:3px solid #5A1E12;">
+                        <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px;border-top:3px solid #5A1E12">
                           <p style="margin:0 0 10px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Seller(s)</p>
                           <p style="margin:4px 0;color:#333;font-size:14px;"><strong>${orderDetails.sellerNames || 'N/A'}</strong></p>
-                        </div>
+                        </td></tr></table>
                       </td>
                     </tr>
                   </table>
@@ -3039,6 +3059,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;mso-padding-alt:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land • Admin Notification</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -3102,10 +3123,10 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
         </style>
       </head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;" class="dark-bg">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="620" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
-              <tr><td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="620" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <tr><td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
                 <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Seller Dashboard</p>
                 <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Order Status Updated</h1>
               </td></tr>
@@ -3134,7 +3155,8 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
               <tr><td bgcolor="#3D1009" style="background-color:#3D1009;padding:20px 40px;text-align:center;">
                 <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
-              </td></tr>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
+                </td></tr>
             </table>
           </td></tr>
         </table>
@@ -3191,10 +3213,10 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
         </style>
       </head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;" class="dark-bg">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="620" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
-              <tr><td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="620" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <tr><td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
                 <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Admin Panel</p>
                 <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Order Status Updated</h1>
               </td></tr>
@@ -3223,7 +3245,8 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
               </td></tr>
               <tr><td bgcolor="#3D1009" style="background-color:#3D1009;padding:20px 40px;text-align:center;">
                 <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-              </td></tr>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
+                </td></tr>
             </table>
           </td></tr>
         </table>
@@ -3265,12 +3288,12 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#F3F8F5;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#F3F8F5;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(18,90,40,0.12);">
+        <table bgcolor="#F3F8F5" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F3F8F5;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(18,90,40,0.12);">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Activated</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your listing is now live on the marketplace</p>
@@ -3278,7 +3301,7 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
               </tr>
               <!-- Activated banner -->
               <tr>
-                <td style="background-color:#2E7D32;padding:14px 40px;text-align:center;">
+                <td bgcolor="#2E7D32" style="background-color:#2E7D32;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Product Activated ? Now Visible to Buyers</p>
                 </td>
               </tr>
@@ -3288,14 +3311,14 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName || 'Seller'}</strong>,</p>
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Great news! An admin has manually activated your product listing. It is now live and visible to buyers on the Made in Arnhem Land.</p>
                   <!-- Product box -->
-                  <div style="background:#F0FBF2;border-radius:8px;padding:22px;border-top:3px solid #2E7D32;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F0FBF2" style="background-color:#F0FBF2;margin-bottom:24px"><tr><td bgcolor="#F0FBF2" style="background-color:#F0FBF2;padding:22px;border-top:3px solid #2E7D32">
                     <p style="margin:0 0 12px;color:#1B5E20;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Activated Product</p>
                     <p style="margin:0;color:#333;font-size:16px;font-weight:600;">  ${productTitle || 'Your Product'}</p>
-                  </div>
-                  <div style="background:#F3F8F5;border-left:4px solid #2E7D32;border-radius:0 8px 8px 0;padding:16px 20px;">
+                  </td></tr></table>
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F3F8F5" style="background-color:#F3F8F5"><tr><td bgcolor="#F3F8F5" style="background-color:#F3F8F5;padding:16px 20px;border-left:4px solid #2E7D32">
                     <p style="margin:0 0 6px;color:#1B5E20;font-weight:700;font-size:14px;"> What Happens Now?</p>
                     <p style="margin:0;color:#555;font-size:13px;line-height:1.6;">Your product is now visible to all buyers. Keep your stock levels up to date to avoid automatic deactivation. You can manage your listing from your seller dashboard at any time.</p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
               <!-- CTA -->
@@ -3306,10 +3329,11 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -3354,12 +3378,12 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Deactivated</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your listing has been taken offline by an admin</p>
@@ -3367,7 +3391,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
               </tr>
               <!-- Deactivated banner -->
               <tr>
-                <td style="background-color:#B71C1C;padding:14px 40px;text-align:center;">
+                <td bgcolor="#B71C1C" style="background-color:#B71C1C;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">? Product Deactivated ? No Longer Visible to Buyers</p>
                 </td>
               </tr>
@@ -3377,21 +3401,21 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName || 'Seller'}</strong>,</p>
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">We're letting you know that an admin has deactivated your product listing. It is no longer visible to buyers on the marketplace. Please review the information below.</p>
                   <!-- Product box -->
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #B71C1C;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #B71C1C">
                     <p style="margin:0 0 12px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Deactivated Product</p>
                     <p style="margin:0;color:#333;font-size:16px;font-weight:600;">  ${productTitle || 'Your Product'}</p>
-                  </div>
+                  </td></tr></table>
                   ${reason ? `
                   <!-- Reason box -->
-                  <div style="background:#FFF3F0;border-radius:8px;padding:22px;border-left:4px solid #B71C1C;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFF3F0" style="background-color:#FFF3F0;margin-bottom:24px"><tr><td bgcolor="#FFF3F0" style="background-color:#FFF3F0;padding:22px;border-left:4px solid #B71C1C">
                     <p style="margin:0 0 10px;color:#B71C1C;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;"> Reason</p>
                     <p style="margin:0;color:#333;font-size:15px;line-height:1.7;">${reason}</p>
-                  </div>
+                  </td></tr></table>
                   ` : ''}
-                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #C4603A">
                     <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;"> What Can You Do?</p>
                     <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">If you believe this was done in error or would like further clarification, please contact our support team. To have your product reinstated, make any required changes and contact support or wait for admin review.</p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
               <!-- CTA -->
@@ -3402,10 +3426,11 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Supporting Aboriginal Artists   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -3450,12 +3475,12 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FFF8F0;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FFF8F0;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(180,80,0,0.12);">
+        <table bgcolor="#FFF8F0" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FFF8F0;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(180,80,0,0.12);">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land ? Admin Alert</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Low Stock Auto-Deactivation</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A product has been automatically taken offline</p>
@@ -3463,7 +3488,7 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
               </tr>
               <!-- Warning banner -->
               <tr>
-                <td style="background-color:#E65100;padding:14px 40px;text-align:center;">
+                <td bgcolor="#E65100" style="background-color:#E65100;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Auto-Deactivated Due to Low / Zero Stock</p>
                 </td>
               </tr>
@@ -3473,7 +3498,7 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">The automated stock scanner has deactivated a product because its stock has dropped to or below the low-stock threshold. Please review the details below.</p>
                   <!-- Product details box -->
-                  <div style="background:#FFF3E0;border-radius:8px;padding:22px;border-top:3px solid #E65100;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFF3E0" style="background-color:#FFF3E0;margin-bottom:24px"><tr><td bgcolor="#FFF3E0" style="background-color:#FFF3E0;padding:22px;border-top:3px solid #E65100">
                     <p style="margin:0 0 16px;color:#BF360C;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Product Details</p>
                     <table cellpadding="0" cellspacing="0" width="100%">
                       <tr>
@@ -3493,11 +3518,11 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
                         <td style="padding:6px 0;color:#B71C1C;font-size:14px;font-weight:600;">INACTIVE (auto-deactivated)</td>
                       </tr>
                     </table>
-                  </div>
-                  <div style="background:#FFF8F0;border-left:4px solid #E65100;border-radius:0 8px 8px 0;padding:16px 20px;">
+                  </td></tr></table>
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFF8F0" style="background-color:#FFF8F0"><tr><td bgcolor="#FFF8F0" style="background-color:#FFF8F0;padding:16px 20px;border-left:4px solid #E65100">
                     <p style="margin:0 0 6px;color:#BF360C;font-weight:700;font-size:14px;"> Recommended Action</p>
                     <p style="margin:0;color:#555;font-size:13px;line-height:1.6;">Contact the seller to request a stock top-up. Once restocked, you can manually reactivate the product from the admin dashboard, or it will be reactivated automatically when the seller updates their stock.</p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
               <!-- CTA -->
@@ -3508,9 +3533,10 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Admin Notifications   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -3555,18 +3581,18 @@ const sendAdminProductSellerDeactivatedEmail = async (adminEmail, adminName, { p
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land ? Admin</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Deactivated by Seller</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A seller has taken their product offline</p>
                 </td>
               </tr>
               <tr>
-                <td style="background-color:#B71C1C;padding:14px 40px;text-align:center;">
+                <td bgcolor="#B71C1C" style="background-color:#B71C1C;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Product Is Now Inactive ? No Longer Visible to Buyers</p>
                 </td>
               </tr>
@@ -3574,20 +3600,20 @@ const sendAdminProductSellerDeactivatedEmail = async (adminEmail, adminName, { p
                 <td style="padding:36px 40px 28px;">
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Seller <strong>${sellerName || 'Unknown'}</strong> has deactivated one of their product listings. The product is no longer visible to buyers on the marketplace.</p>
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #B71C1C;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #B71C1C">
                     <p style="margin:0 0 12px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Deactivated Product</p>
                     <p style="margin:0 0 6px;color:#333;font-size:16px;font-weight:600;"> ${productTitle || 'Untitled Product'}</p>
                     <p style="margin:0;color:#777;font-size:13px;">Seller: <strong>${sellerName || 'Unknown'}</strong></p>
-                  </div>
+                  </td></tr></table>
                   ${inactiveReason ? `
-                  <div style="background:#FFF3F0;border-radius:8px;padding:22px;border-left:4px solid #B71C1C;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFF3F0" style="background-color:#FFF3F0;margin-bottom:24px"><tr><td bgcolor="#FFF3F0" style="background-color:#FFF3F0;padding:22px;border-left:4px solid #B71C1C">
                     <p style="margin:0 0 10px;color:#B71C1C;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;"> Seller's Reason</p>
                     <p style="margin:0;color:#333;font-size:15px;line-height:1.7;">${inactiveReason}</p>
-                  </div>
+                  </td></tr></table>
                   ` : ''}
-                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #C4603A">
                     <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">No action is required from you. The seller may submit their product for review when they are ready to reactivate it. You will be notified when that happens.</p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
               <tr>
@@ -3596,8 +3622,9 @@ const sendAdminProductSellerDeactivatedEmail = async (adminEmail, adminName, { p
                 </td>
               </tr>
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 Made in Arnhem Land. All rights reserved.</p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -3642,18 +3669,18 @@ const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { produc
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land ? Admin</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Submitted for Review</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A seller has requested product re-activation</p>
                 </td>
               </tr>
               <tr>
-                <td style="background-color:#E65100;padding:14px 40px;text-align:center;">
+                <td bgcolor="#E65100" style="background-color:#E65100;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Action Required &mdash; Review &amp; Approve or Reject</p>
                 </td>
               </tr>
@@ -3661,20 +3688,20 @@ const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { produc
                 <td style="padding:36px 40px 28px;">
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Seller <strong>${sellerName || 'Unknown'}</strong> has submitted a product for admin review. It is currently in <strong>Pending</strong> state and awaiting your approval or rejection.</p>
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #E65100;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #E65100">
                     <p style="margin:0 0 12px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Product Details</p>
                     <p style="margin:0 0 6px;color:#333;font-size:16px;font-weight:600;"> ${productTitle || 'Untitled Product'}</p>
                     <p style="margin:0;color:#777;font-size:13px;">Seller: ${sellerName || 'Unknown'}</p>
-                  </div>
+                  </td></tr></table>
                   ${reviewNote ? `
-                  <div style="background:#FFF8F0;border-radius:8px;padding:22px;border-left:4px solid #E65100;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFF8F0" style="background-color:#FFF8F0;margin-bottom:24px"><tr><td bgcolor="#FFF8F0" style="background-color:#FFF8F0;padding:22px;border-left:4px solid #E65100">
                     <p style="margin:0 0 10px;color:#E65100;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;"> Seller's Note</p>
                     <p style="margin:0;color:#333;font-size:15px;line-height:1.7;">${reviewNote}</p>
-                  </div>
+                  </td></tr></table>
                   ` : ''}
-                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #C4603A">
                     <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Please review this product and either <strong>Approve</strong> it to make it live, or <strong>Reject</strong> it with a reason.</p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
               <tr>
@@ -3683,8 +3710,9 @@ const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { produc
                 </td>
               </tr>
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 Made in Arnhem Land. All rights reserved.</p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -3729,11 +3757,11 @@ const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { 
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Deactivated</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your product is no longer visible to buyers</p>
@@ -3743,20 +3771,20 @@ const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { 
                 <td style="padding:36px 40px 28px;">
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName || 'Seller'}</strong>,</p>
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Your product has been deactivated as requested. It is no longer visible to buyers on the marketplace.</p>
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #C4603A;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #C4603A">
                     <p style="margin:0 0 8px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Deactivated Product</p>
                     <p style="margin:0;color:#333;font-size:16px;font-weight:600;"> ${productTitle || 'Your Product'}</p>
-                  </div>
+                  </td></tr></table>
                   ${inactiveReason ? `
-                  <div style="background:#FFF8F0;border-radius:8px;padding:22px;border-left:4px solid #C4603A;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFF8F0" style="background-color:#FFF8F0;margin-bottom:24px"><tr><td bgcolor="#FFF8F0" style="background-color:#FFF8F0;padding:22px;border-left:4px solid #C4603A">
                     <p style="margin:0 0 8px;color:#C4603A;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Your Reason</p>
                     <p style="margin:0;color:#555;font-size:15px;line-height:1.7;">${inactiveReason}</p>
-                  </div>
+                  </td></tr></table>
                   ` : ''}
-                  <div style="background:#F9EDE9;border-left:4px solid #5A1E12;border-radius:0 8px 8px 0;padding:16px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #5A1E12">
                     <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;"> Want to reactivate?</p>
                     <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">When you're ready, go to your product dashboard and click <strong>"Submit for Review"</strong>. An admin will review and activate your product.</p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
               <tr>
@@ -3765,9 +3793,10 @@ const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { 
                 </td>
               </tr>
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 Made in Arnhem Land. All rights reserved.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -3812,18 +3841,18 @@ const sendSellerProductSubmitReviewConfirmEmail = async (sellerEmail, sellerName
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Submitted for Review</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your product is awaiting admin approval</p>
                 </td>
               </tr>
               <tr>
-                <td style="background-color:#2E7D32;padding:14px 40px;text-align:center;">
+                <td bgcolor="#2E7D32" style="background-color:#2E7D32;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Review Request Submitted Successfully</p>
                 </td>
               </tr>
@@ -3831,20 +3860,20 @@ const sendSellerProductSubmitReviewConfirmEmail = async (sellerEmail, sellerName
                 <td style="padding:36px 40px 28px;">
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName || 'Seller'}</strong>,</p>
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Your product has been submitted for admin review. Once approved, it will be live and visible to buyers.</p>
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #5A1E12;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #5A1E12">
                     <p style="margin:0 0 8px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Product Under Review</p>
                     <p style="margin:0;color:#333;font-size:16px;font-weight:600;"> ${productTitle || 'Untitled Product'}</p>
                     <p style="margin:6px 0 0;color:#777;font-size:13px;">Status: <strong>Pending Review</strong></p>
-                  </div>
+                  </td></tr></table>
                   ${reviewNote ? `
-                  <div style="background:#FFF8F0;border-radius:8px;padding:22px;border-left:4px solid #C4603A;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFF8F0" style="background-color:#FFF8F0;margin-bottom:24px"><tr><td bgcolor="#FFF8F0" style="background-color:#FFF8F0;padding:22px;border-left:4px solid #C4603A">
                     <p style="margin:0 0 8px;color:#C4603A;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Your Note to Admin</p>
                     <p style="margin:0;color:#555;font-size:15px;line-height:1.7;">${reviewNote}</p>
-                  </div>
+                  </td></tr></table>
                   ` : ''}
-                  <div style="background:#F9EDE9;border-left:4px solid #5A1E12;border-radius:0 8px 8px 0;padding:16px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #5A1E12">
                     <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">An admin will review your product shortly. You will receive another email once a decision is made.</p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
               <tr>
@@ -3853,9 +3882,10 @@ const sendSellerProductSubmitReviewConfirmEmail = async (sellerEmail, sellerName
                 </td>
               </tr>
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 Made in Arnhem Land. All rights reserved.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -3914,18 +3944,18 @@ const sendSuperAdminBankChangeRequestEmail = async (adminEmail, adminName, detai
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land Admin</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;"> Bank Details Change Request</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Action required: Review and approve or reject</p>
                 </td>
               </tr>
               <tr>
-                <td style="background-color:#FF9800;padding:14px 40px;text-align:center;">
+                <td bgcolor="#FF9800" style="background-color:#FF9800;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Seller Bank Details Change &mdash; Pending Your Review</p>
                 </td>
               </tr>
@@ -3933,19 +3963,19 @@ const sendSuperAdminBankChangeRequestEmail = async (adminEmail, adminName, detai
                 <td style="padding:36px 40px 28px;">
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">A seller has submitted a request to update their bank details. Please review and approve or reject this change.</p>
-                  <div style="background:#F0F7FF;border-radius:8px;padding:22px;border-left:4px solid #1976D2;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F0F7FF" style="background-color:#F0F7FF;margin-bottom:24px"><tr><td bgcolor="#F0F7FF" style="background-color:#F0F7FF;padding:22px;border-left:4px solid #1976D2">
                     <p style="margin:0 0 16px;color:#1565C0;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Request Details</p>
                     <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Seller:</strong> ${sellerName || 'Not specified'}</p>
                     ${storeName ? `<p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Store:</strong> ${storeName}</p>` : ''}
                     <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Request ID:</strong> ${requestId || 'N/A'}</p>
-                  </div>
-                  <div style="background:#FFF8E1;border-radius:8px;padding:22px;border-left:4px solid #F9A825;margin-bottom:28px;">
+                  </td></tr></table>
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFF8E1" style="background-color:#FFF8E1;margin-bottom:28px"><tr><td bgcolor="#FFF8E1" style="background-color:#FFF8E1;padding:22px;border-left:4px solid #F9A825">
                     <p style="margin:0 0 16px;color:#E65100;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Requested New Bank Details</p>
                     <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Bank Name:</strong> ${newBankDetails.bankName || 'N/A'}</p>
                     <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Account Name:</strong> ${newBankDetails.accountName || 'N/A'}</p>
                     <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>BSB:</strong> ${newBankDetails.bsb || 'N/A'}</p>
                     <p style="margin:0;color:#333;font-size:15px;"><strong>Account Number:</strong> ${newBankDetails.accountNumber || 'N/A'}</p>
-                  </div>
+                  </td></tr></table>
                   <p style="text-align:center;margin:32px 0;">
                     <a href="${adminDashboardUrl}" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;box-shadow:0 4px 15px rgba(90,30,18,0.3);">Review in Admin Dashboard</a>
                   </p>
@@ -3953,9 +3983,10 @@ const sendSuperAdminBankChangeRequestEmail = async (adminEmail, adminName, detai
                 </td>
               </tr>
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel ? Administrative Notifications</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -4001,18 +4032,18 @@ const sendSellerBankChangeApprovedEmail = async (sellerEmail, sellerName, detail
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;"> Bank Details Approved</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your bank details have been successfully updated</p>
                 </td>
               </tr>
               <tr>
-                <td style="background-color:#4CAF50;padding:14px 40px;text-align:center;">
+                <td bgcolor="#4CAF50" style="background-color:#4CAF50;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Change Request Approved &amp; Applied</p>
                 </td>
               </tr>
@@ -4020,27 +4051,28 @@ const sendSellerBankChangeApprovedEmail = async (sellerEmail, sellerName, detail
                 <td style="padding:36px 40px 28px;">
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName}</strong>,</p>
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Your bank details change request has been <strong style="color:#2E7D32;">approved</strong> by our admin team. Your account has been updated with the new bank details immediately.</p>
-                  <div style="background:#E8F5E9;border-radius:8px;padding:22px;border-left:4px solid #4CAF50;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#E8F5E9" style="background-color:#E8F5E9;margin-bottom:24px"><tr><td bgcolor="#E8F5E9" style="background-color:#E8F5E9;padding:22px;border-left:4px solid #4CAF50">
                     <p style="margin:0 0 16px;color:#1B5E20;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Updated Bank Details</p>
                     <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Bank Name:</strong> ${newBankDetails.bankName || 'N/A'}</p>
                     <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>Account Name:</strong> ${newBankDetails.accountName || 'N/A'}</p>
                     <p style="margin:0 0 8px;color:#333;font-size:15px;"><strong>BSB:</strong> ${newBankDetails.bsb || 'N/A'}</p>
                     <p style="margin:0;color:#333;font-size:15px;"><strong>Account Number:</strong> ${newBankDetails.accountNumber || 'N/A'}</p>
-                  </div>
-                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;margin-bottom:28px;">
+                  </td></tr></table>
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:28px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #C4603A">
                     <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;"> What this means</p>
                     <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">All future payouts will be made to your new bank account. If you did not request this change, please contact us immediately.</p>
-                  </div>
+                  </td></tr></table>
                   <p style="text-align:center;margin:32px 0;">
                     <a href="${dashboardUrl}" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;">View Bank Details</a>
                   </p>
                 </td>
               </tr>
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Seller Notifications</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -4087,18 +4119,18 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;"> Bank Details Request Not Approved</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your change request has been reviewed</p>
                 </td>
               </tr>
               <tr>
-                <td style="background-color:#D32F2F;padding:14px 40px;text-align:center;">
+                <td bgcolor="#D32F2F" style="background-color:#D32F2F;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Change Request Rejected ? Existing Details Unchanged</p>
                 </td>
               </tr>
@@ -4107,24 +4139,25 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${sellerName}</strong>,</p>
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Your bank details change request has been reviewed by our admin team and was <strong style="color:#C62828;">not approved</strong> at this time. Your existing bank details remain unchanged.</p>
                   ${reviewNote ? `
-                  <div style="background:#FFF3E0;border-radius:8px;padding:22px;border-left:4px solid #E65100;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFF3E0" style="background-color:#FFF3E0;margin-bottom:24px"><tr><td bgcolor="#FFF3E0" style="background-color:#FFF3E0;padding:22px;border-left:4px solid #E65100">
                     <p style="margin:0 0 10px;color:#BF360C;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Admin Note</p>
                     <p style="margin:0;color:#4E342E;font-size:15px;line-height:1.7;">${reviewNote}</p>
-                  </div>` : ''}
-                  <div style="background:#F9EDE9;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:16px 20px;margin-bottom:28px;">
+                  </td></tr></table>` : ''}
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:28px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #C4603A">
                     <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;"> What to do next</p>
                     <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Please review the feedback above, correct any issues, and resubmit your bank details change request from your seller dashboard.</p>
-                  </div>
+                  </td></tr></table>
                   <p style="text-align:center;margin:32px 0;">
                     <a href="${dashboardUrl}" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;">Go to Bank Details</a>
                   </p>
                 </td>
               </tr>
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land ? Seller Notifications</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -4197,13 +4230,13 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
         </style>
       </head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="620" cellpadding="0" cellspacing="0" class="email-container" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:95%;">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="620" cellpadding="0" cellspacing="0" class="email-container" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:95%;">
 
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
                   <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">${requestLabel} Request Received</h1>
                 </td>
@@ -4273,10 +4306,10 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
               <!-- Reason -->
               <tr>
                 <td style="padding:0 40px 24px;">
-                  <div style="background:#FFF8F6;border-left:4px solid ${accentColor};border-radius:0 8px 8px 0;padding:16px 20px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFF8F6" style="background-color:#FFF8F6"><tr><td bgcolor="#FFF8F6" style="background-color:#FFF8F6;padding:16px 20px;border-left:4px solid ${accentColor}">
                     <p style="margin:0 0 6px;color:#5A1E12;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Reason Provided</p>
                     <p style="margin:0;color:#444;font-size:14px;line-height:1.7;">${refundDetails.reason}</p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
 
@@ -4287,7 +4320,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
                   <p style="color:#5A1E12;font-size:15px;font-weight:700;margin:0 0 10px;">Items in Request</p>
                   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(90,30,18,0.08);">
                     <thead>
-                      <tr style="background-color:#5A1E12;">
+                      <tr bgcolor="#5A1E12" style="background-color:#5A1E12;">
                         <th style="padding:10px 12px;text-align:left;color:#fff;font-size:13px;">Product</th>
                         <th style="padding:10px 12px;text-align:center;color:#fff;font-size:13px;">Qty</th>
                       </tr>
@@ -4300,7 +4333,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
               <!-- What happens next -->
               <tr>
                 <td style="padding:0 40px 28px;">
-                  <div style="background:#F9EDE9;border-radius:8px;padding:20px;border-top:3px solid #C4603A;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:20px;border-top:3px solid #C4603A">
                     <p style="margin:0 0 12px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">What Happens Next?</p>
                     <table cellpadding="0" cellspacing="0" width="100%">
                       <tr>
@@ -4319,7 +4352,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
                         </td>
                       </tr>
                     </table>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>
 
@@ -4339,10 +4372,11 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
 
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">We appreciate your patience and will resolve this as quickly as possible.</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
 
@@ -4455,12 +4489,12 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
         </style>
       </head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="620" cellpadding="0" cellspacing="0" class="email-container" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:95%;">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="620" cellpadding="0" cellspacing="0" class="email-container" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:95%;">
 
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
                   <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">${config.icon} ${config.headline}</h1>
                 </td>
@@ -4510,10 +4544,10 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
                         <tr><td colspan="2" style="padding:10px 0 0;border-top:1px solid #EDD8CC;"></td></tr>
                         <tr>
                           <td colspan="2">
-                            <div style="background:#FFF8F6;border-left:4px solid ${config.color};border-radius:0 6px 6px 0;padding:12px 14px;margin-top:4px;">
+                            <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFF8F6" style="background-color:#FFF8F6;margin-top:4px"><tr><td bgcolor="#FFF8F6" style="background-color:#FFF8F6;padding:12px 14px;border-left:4px solid ${config.color}">
                               <p style="margin:0 0 4px;color:#5A1E12;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Message from our team</p>
                               <p style="margin:0;color:#444;font-size:14px;line-height:1.7;">${refundDetails.adminMessage}</p>
-                            </div>
+                            </td></tr></table>
                           </td>
                         </tr>` : ''}
                       </table>
@@ -4528,7 +4562,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
                   <p style="color:#5A1E12;font-size:15px;font-weight:700;margin:0 0 10px;">Items in This Refund</p>
                   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(90,30,18,0.08);">
                     <thead>
-                      <tr style="background-color:#5A1E12;">
+                      <tr bgcolor="#5A1E12" style="background-color:#5A1E12;">
                         <th style="padding:10px 12px;text-align:left;color:#fff;font-size:13px;">Product</th>
                         <th style="padding:10px 12px;text-align:center;color:#fff;font-size:13px;">Qty</th>
                       </tr>
@@ -4541,9 +4575,9 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
               ${config.note ? `
               <tr>
                 <td style="padding:0 40px 24px;">
-                  <div style="background:#FFF8F6;border-left:4px solid #C4603A;border-radius:0 8px 8px 0;padding:14px 16px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFF8F6" style="background-color:#FFF8F6"><tr><td bgcolor="#FFF8F6" style="background-color:#FFF8F6;padding:14px 16px;border-left:4px solid #C4603A">
                     <p style="margin:0;color:#555;font-size:14px;line-height:1.7;">${config.note}</p>
-                  </div>
+                  </td></tr></table>
                 </td>
               </tr>` : ''}
 
@@ -4556,8 +4590,9 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for shopping with Made in Arnhem Land.</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email ? please do not reply. ? 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
 
@@ -4656,12 +4691,12 @@ const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => 
         <style>${getPrintSafeCSS()}</style>
       </head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="620" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:95%;">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="620" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);max-width:95%;">
 
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:30px 40px;text-align:center;">
                   <p style="margin:0 0 6px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Seller Dashboard</p>
                   <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">${config.icon} Refund Request ${config.label}</h1>
                 </td>
@@ -4715,10 +4750,10 @@ const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => 
                         <tr><td colspan="2" style="padding:10px 0 0;"></td></tr>
                         <tr>
                           <td colspan="2">
-                            <div style="background:#FFF8F6;border-left:4px solid ${config.color};border-radius:0 6px 6px 0;padding:12px 14px;margin-top:4px;">
+                            <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#FFF8F6" style="background-color:#FFF8F6;margin-top:4px"><tr><td bgcolor="#FFF8F6" style="background-color:#FFF8F6;padding:12px 14px;border-left:4px solid ${config.color}">
                               <p style="margin:0 0 4px;color:#5A1E12;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">Admin Note</p>
                               <p style="margin:0;color:#444;font-size:14px;line-height:1.7;">${refundDetails.adminMessage}</p>
-                            </div>
+                            </td></tr></table>
                           </td>
                         </tr>` : ''}
                       </table>
@@ -4733,7 +4768,7 @@ const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => 
                   <p style="color:#5A1E12;font-size:15px;font-weight:700;margin:0 0 10px;">Products in This Refund</p>
                   <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(90,30,18,0.08);">
                     <thead>
-                      <tr style="background-color:#5A1E12;">
+                      <tr bgcolor="#5A1E12" style="background-color:#5A1E12;">
                         <th style="padding:10px 12px;text-align:left;color:#fff;font-size:13px;">Product</th>
                         <th style="padding:10px 12px;text-align:center;color:#fff;font-size:13px;">Qty</th>
                       </tr>
@@ -4751,8 +4786,9 @@ const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => 
 
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email ? please do not reply. ? 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
 
@@ -4784,7 +4820,7 @@ const sendMonthlyGstReportEmail = async (email, reportData, csvBase64String) => 
     <h2 style="color: #1a56db; text-align: center; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px;">Monthly GST Summary Report</h2>
     <p style="font-size: 16px;"><strong>Period:</strong> ${monthName} ${period.year}</p>
     
-    <div style="background-color: #f9fafb; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+    <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#f9fafb" style="background-color:#f9fafb;margin-bottom:20px"><tr><td bgcolor="#f9fafb" style="background-color:#f9fafb;padding:15px">
       <h3 style="margin-top: 0; color: #374151;">Executive Summary</h3>
       <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
         <tr>
@@ -4804,13 +4840,13 @@ const sendMonthlyGstReportEmail = async (email, reportData, csvBase64String) => 
           <td style="text-align: right; color: #d32f2f; font-weight: bold;">${formatCurrency(executiveSummary.gstCollected)}</td>
         </tr>
       </table>
-    </div>
+    </td></tr></table>
 
     <div style="margin-bottom: 20px;">
       <h3 style="color: #374151;">GST Breakdown</h3>
       <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
         <thead>
-          <tr style="background-color: #f3f4f6; border-bottom: 1px solid #e5e7eb;">
+          <tr bgcolor="#f3f4f6" style="background-color: #f3f4f6; border-bottom: 1px solid #e5e7eb;">
             <th style="padding: 8px; text-align: left;">Rate</th>
             <th style="padding: 8px; text-align: right;">Gross</th>
             <th style="padding: 8px; text-align: right;">Net</th>
@@ -4833,7 +4869,7 @@ const sendMonthlyGstReportEmail = async (email, reportData, csvBase64String) => 
       <h3 style="color: #374151;">Top 5 Sellers (By GST Collected)</h3>
       <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
         <thead>
-          <tr style="background-color: #f3f4f6; border-bottom: 1px solid #e5e7eb;">
+          <tr bgcolor="#f3f4f6" style="background-color: #f3f4f6; border-bottom: 1px solid #e5e7eb;">
             <th style="padding: 8px; text-align: left;">Seller</th>
             <th style="padding: 8px; text-align: center;">Orders</th>
             <th style="padding: 8px; text-align: right;">GST Collected</th>
@@ -4853,7 +4889,8 @@ const sendMonthlyGstReportEmail = async (email, reportData, csvBase64String) => 
     <p style="font-size: 12px; color: #6b7280; text-align: center; margin-top: 30px;">
       This is an automated report generated by the Alpa Marketplace system on the last day of the month.<br/>
       Please retain this for your GST reconciliation procedures.<br/>
-      <strong>Note: A detailed CSV containing all transactions has been attached to this email.</strong>
+      <strong>Note: A detailed CSV containing all transactions has been attached to this email.</strong><br/>
+      <a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">www.madeinarnhemland.com.au</a>
     </p>
   </div>`;
 
@@ -4910,7 +4947,8 @@ const sendNewsletterCampaignEmail = async ({ toEmail, subject, content, bannerIm
     <p style="font-size:12px;color:#999;text-align:center;margin-top:32px;">
       You are receiving this email because you subscribed to our newsletter.<br/>
       If you no longer wish to receive these emails, you can unsubscribe by contacting us.<br/>
-      Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;">support@madeinarnhemland.com.au</a>
+      Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;">support@madeinarnhemland.com.au</a><br/>
+      <a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">www.madeinarnhemland.com.au</a>
     </p>`;
 
   const html = `
@@ -4992,6 +5030,7 @@ const sendNewsletterSubscriptionAlertEmail = async ({ subscribedEmail, subscribe
         <p style="margin: 0 0 8px;">A user subscribed to the newsletter.</p>
         <p style="margin: 0;"><strong>Email:</strong> ${subscribedEmail}</p>
         <p style="margin: 4px 0 0;"><strong>Subscribed At:</strong> ${subscribedAtText}</p>
+        <p style="margin: 12px 0 0; font-size: 12px;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">www.madeinarnhemland.com.au</a></p>
       </div>
     `
   };
@@ -5028,18 +5067,18 @@ const sendSellerPayoutTransferEmail = async (sellerEmail, sellerName, { orderId,
             <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
               <!-- Header -->
               <tr>
-                <td style="background-color:#5A1E12;padding:28px 40px;border-radius:12px 12px 0 0;text-align:center;">
+                <td bgcolor="#5A1E12" style="background-color:#5A1E12;padding:28px 40px;border-radius:12px 12px 0 0;text-align:center;">
                   <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">Made in Arnhem Land</h1>
                   <p style="margin:6px 0 0;color:#F0D0C8;font-size:14px;">Payout Transfer Notification</p>
                 </td>
               </tr>
               <!-- Body -->
               <tr>
-                <td style="background-color:#ffffff;padding:36px 40px;">
+                <td bgcolor="#ffffff" style="background-color:#ffffff;padding:36px 40px;">
                   <p style="margin:0 0 16px;color:#3D1009;font-size:16px;font-weight:700;">Hi ${sellerName},</p>
                   <p style="margin:0 0 20px;color:#555;font-size:15px;line-height:1.7;">A payment has been transferred to your Stripe account for a completed order.</p>
 
-                  <div style="background:#F0FAF0;border-left:4px solid #2E7D32;border-radius:0 8px 8px 0;padding:20px 24px;margin-bottom:28px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F0FAF0" style="background-color:#F0FAF0;margin-bottom:28px"><tr><td bgcolor="#F0FAF0" style="background-color:#F0FAF0;padding:20px 24px;border-left:4px solid #2E7D32">
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
                         <td style="color:#555;font-size:14px;padding:6px 0;width:50%;">Order Reference</td>
@@ -5050,7 +5089,7 @@ const sendSellerPayoutTransferEmail = async (sellerEmail, sellerName, { orderId,
                         <td style="color:#2E7D32;font-size:18px;font-weight:700;text-align:right;">${amountFormatted}</td>
                       </tr>
                     </table>
-                  </div>
+                  </td></tr></table>
 
                   <p style="margin:0 0 20px;color:#555;font-size:13px;line-height:1.6;">The funds have been sent to your Stripe Express account. Depending on your payout schedule, they will arrive in your bank account accordingly. You can view full details in your Stripe dashboard.</p>
 
@@ -5063,10 +5102,11 @@ const sendSellerPayoutTransferEmail = async (sellerEmail, sellerName, { orderId,
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;border-radius:0 0 12px 12px;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;border-radius:0 0 12px 12px;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued Made in Arnhem Land seller!</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -5108,23 +5148,23 @@ const sendSellerStripeApprovedEmail = async (sellerEmail, sellerName) => {
             <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
               <!-- Header -->
               <tr>
-                <td style="background-color:#5A1E12;padding:28px 40px;border-radius:12px 12px 0 0;text-align:center;">
+                <td bgcolor="#5A1E12" style="background-color:#5A1E12;padding:28px 40px;border-radius:12px 12px 0 0;text-align:center;">
                   <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">Made in Arnhem Land</h1>
                   <p style="margin:6px 0 0;color:#F0D0C8;font-size:14px;">Seller Payment Account Approved</p>
                 </td>
               </tr>
               <!-- Body -->
               <tr>
-                <td style="background-color:#ffffff;padding:36px 40px;">
+                <td bgcolor="#ffffff" style="background-color:#ffffff;padding:36px 40px;">
                   <p style="margin:0 0 16px;color:#3D1009;font-size:16px;font-weight:700;">Hi ${sellerName},</p>
                   <p style="margin:0 0 20px;color:#555;font-size:15px;line-height:1.7;">Great news! Your Stripe payment account has been fully verified and approved. You are now set up to receive payouts directly to your bank account when customers purchase your products.</p>
 
-                  <div style="background:#F9EDE9;border-left:4px solid #5A1E12;border-radius:0 8px 8px 0;padding:20px 24px;margin-bottom:28px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:28px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:20px 24px;border-left:4px solid #5A1E12">
                     <p style="margin:0 0 10px;color:#5A1E12;font-weight:700;font-size:14px;">✅ What this means for you</p>
                     <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">• Payments from customers are automatically transferred to your Stripe account</p>
                     <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">• You can view your earnings and transaction history in your Stripe Express dashboard</p>
                     <p style="margin:4px 0;color:#7D2E1E;font-size:13px;">• Payouts to your bank account are managed by the platform</p>
-                  </div>
+                  </td></tr></table>
 
                   <div style="text-align:center;margin-bottom:28px;">
                     <a href="${dashboardUrl}/sellerdashboard/payouts" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View My Earnings Dashboard</a>
@@ -5135,10 +5175,11 @@ const sendSellerStripeApprovedEmail = async (sellerEmail, sellerName) => {
               </tr>
               <!-- Footer -->
               <tr>
-                <td style="background-color:#3D1009;padding:22px 40px;text-align:center;border-radius:0 0 12px 12px;">
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;border-radius:0 0 12px 12px;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Welcome to your new earnings journey! 🎨</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>
@@ -5177,6 +5218,7 @@ const sendDisputeAlertEmail = async ({ adminEmail, adminName, disputeId, amount,
         </table>
         <p>Please log in to the <a href="https://dashboard.stripe.com/disputes/${disputeId}">Stripe Dashboard</a> to respond to this dispute. You typically have 7 days to submit evidence.</p>
         <p style="color: #888; font-size: 12px;">Made in Arnhem Land — Automated Dispute Alert</p>
+        <p style="font-size: 12px; margin-top: 8px;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">www.madeinarnhemland.com.au</a></p>
       </div>
     `
   };
@@ -5206,12 +5248,12 @@ const sendSellerAccountDeactivatedEmail = async (email, sellerName, reason) => {
       <html lang="en">
       <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
       <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;padding:30px 0;">
-          <tr><td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <!-- Header -->
               <tr>
-                <td style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;">Account Status Update</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Important notification about your seller account</p>
@@ -5219,7 +5261,7 @@ const sendSellerAccountDeactivatedEmail = async (email, sellerName, reason) => {
               </tr>
               <!-- Warning banner -->
               <tr>
-                <td style="background-color:#FF9800;padding:14px 40px;text-align:center;">
+                <td bgcolor="#FF9800" style="background-color:#FF9800;padding:14px 40px;text-align:center;">
                   <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Account Deactivated</p>
                 </td>
               </tr>
@@ -5230,7 +5272,7 @@ const sendSellerAccountDeactivatedEmail = async (email, sellerName, reason) => {
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Your seller account on Made in Arnhem Land has been <strong style="color:#C4603A;">deactivated</strong> by our administration team, effective immediately.</p>
 
                   <!-- What this means -->
-                  <div style="background:#F9EDE9;border-radius:8px;padding:22px;border-top:3px solid #FF9800;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #FF9800">
                     <p style="margin:0 0 16px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">What This Means</p>
                     <p style="color:#555;font-size:14px;line-height:1.6;margin:0 0 12px;">
                       <strong>You can still:</strong>
@@ -5249,14 +5291,14 @@ const sendSellerAccountDeactivatedEmail = async (email, sellerName, reason) => {
                       <li>Request payouts or bank changes</li>
                       <li>Update order status or tracking information</li>
                     </ul>
-                  </div>
+                  </td></tr></table>
 
                   <!-- Reason -->
                   ${reason ? `
-                  <div style="background:#fff3cd;border-radius:8px;padding:16px;border-left:4px solid #FF9800;margin-bottom:24px;">
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#fff3cd" style="background-color:#fff3cd;margin-bottom:24px"><tr><td bgcolor="#fff3cd" style="background-color:#fff3cd;padding:16px;border-left:4px solid #FF9800">
                     <p style="margin:0 0 8px;color:#5A1E12;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Reason</p>
                     <p style="margin:0;color:#555;font-size:14px;line-height:1.6;">${reason}</p>
-                  </div>
+                  </td></tr></table>
                   ` : ''}
 
                   <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">If you believe this decision was made in error or have questions about your account status, please contact our support team for further assistance.</p>
@@ -5267,6 +5309,7 @@ const sendSellerAccountDeactivatedEmail = async (email, sellerName, reason) => {
                   </div>
 
                   <p style="color:#888;font-size:12px;margin:0;text-align:center;">Made in Arnhem Land — Seller Account Management</p>
+                  <p style="margin:8px 0 0;text-align:center;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
             </table>

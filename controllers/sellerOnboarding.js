@@ -131,6 +131,19 @@ exports.applyAsSeller = async (request, reply) => {
     if (existingUser) {
       // If user exists but hasn't verified email, allow resending OTP
       if (!existingUser.emailVerified && existingUser.role === 'SELLER') {
+        // Check if OTP was sent recently to prevent duplicate sends
+        const existingPending = await prisma.pendingRegistration.findUnique({
+          where: { email: normalizedEmail }
+        });
+        if (existingPending?.otp && existingPending.updatedAt &&
+            (Date.now() - existingPending.updatedAt.getTime()) / 1000 < 60) {
+          return reply.status(200).send({
+            success: true,
+            message: "OTP already sent to your email. Please check your inbox.",
+            userId: existingUser.id
+          });
+        }
+
         // Generate new OTP
         const otp = generateOTP();
         const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
@@ -165,6 +178,20 @@ exports.applyAsSeller = async (request, reply) => {
       return reply.status(400).send({
         success: false,
         message: "Email already registered"
+      });
+    }
+
+    // Check if OTP was sent recently to prevent duplicate sends
+    const recentPending = await prisma.pendingRegistration.findUnique({
+      where: { email: normalizedEmail }
+    });
+    if (recentPending?.otp && recentPending.updatedAt &&
+        (Date.now() - recentPending.updatedAt.getTime()) / 1000 < 60) {
+      return reply.status(200).send({
+        success: true,
+        message: "OTP already sent to your email. Please check your inbox.",
+        sellerId: recentPending.id,
+        email: normalizedEmail
       });
     }
 
@@ -1548,6 +1575,22 @@ exports.submitSellerOnboarding = async (request, reply) => {
         success: false,
         message: "Email already registered. Please login instead."
       });
+    }
+
+    // Prevent duplicate OTP sends (double-click, React re-render, etc.)
+    const recentPending = await prisma.pendingRegistration.findUnique({
+      where: { email: normalizedEmail }
+    });
+    if (recentPending?.otp && recentPending.updatedAt) {
+      const secondsSinceLastOtp = (Date.now() - recentPending.updatedAt.getTime()) / 1000;
+      if (secondsSinceLastOtp < 60) {
+        return reply.status(200).send({
+          success: true,
+          message: "OTP already sent to your email. Please check your inbox.",
+          email: normalizedEmail,
+          kycUploaded: 0
+        });
+      }
     }
 
     // KYC upload is optional — Stripe Connect handles identity verification.

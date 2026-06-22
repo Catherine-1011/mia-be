@@ -5011,6 +5011,35 @@ exports.getAllOrdersDetailed = async (request, reply) => {
       prisma.order.count({ where }),
     ]);
 
+    // ── Batch-fetch commission records ───────────────────────────────────────
+    const allOrderIds    = orders.map(o => o.id);
+    const allSubOrderIds = orders.flatMap(o => o.subOrders.map(s => s.id));
+
+    const commissionRows = (allOrderIds.length + allSubOrderIds.length) > 0
+      ? await prisma.commissionEarned.findMany({
+          where: {
+            OR: [
+              ...(allOrderIds.length    ? [{ orderId: { in: allOrderIds } }]       : []),
+              ...(allSubOrderIds.length ? [{ subOrderId: { in: allSubOrderIds } }] : [])
+            ]
+          },
+          select: {
+            orderId: true, subOrderId: true, sellerId: true,
+            commissionRate: true, commissionAmount: true,
+            netPayable: true, productValueExGST: true,
+            gstAmount: true, shippingAmount: true
+          }
+        })
+      : [];
+
+    const commByOrderId    = {};
+    const commBySubOrderId = {};
+    commissionRows.forEach(c => {
+      if (c.subOrderId) commBySubOrderId[c.subOrderId] = c;
+      else if (c.orderId) commByOrderId[c.orderId] = c;
+    });
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── Transform ────────────────────────────────────────────────────────────
     const transformed = orders.map(order => {
       const hasSubOrders    = order.subOrders.length > 0;
@@ -5136,6 +5165,14 @@ exports.getAllOrdersDetailed = async (request, reply) => {
             itemCount:  sub.items.length,
             createdAt:  sub.createdAt,
             updatedAt:  sub.updatedAt,
+            financialSummary: buildAdminFinancialSummary({
+              items: sub.items,
+              storedOrderSummary: rawSummary,
+              commissionRecord: commBySubOrderId[sub.id] || null,
+              couponCode: order.couponCode || null,
+              couponDiscount: order.discountAmount || null,
+              isSubOrder: true
+            }),
           })),
         };
       }
@@ -5162,6 +5199,14 @@ exports.getAllOrdersDetailed = async (request, reply) => {
           items: order.items.map(formatOrderItem),
           itemCount: order.items.length,
           subOrders: [],
+          financialSummary: buildAdminFinancialSummary({
+            items: order.items,
+            storedOrderSummary: rawSummary,
+            commissionRecord: commByOrderId[order.id] || null,
+            couponCode: order.couponCode || null,
+            couponDiscount: order.discountAmount || null,
+            isSubOrder: false
+          }),
         };
       }
 
@@ -5190,6 +5235,14 @@ exports.getAllOrdersDetailed = async (request, reply) => {
         items: order.items.map(formatOrderItem),
         itemCount: order.items.length,
         subOrders: [],
+        financialSummary: buildAdminFinancialSummary({
+          items: order.items,
+          storedOrderSummary: rawSummary,
+          commissionRecord: commByOrderId[order.id] || null,
+          couponCode: order.couponCode || null,
+          couponDiscount: order.discountAmount || null,
+          isSubOrder: false
+        }),
       };
     });
 

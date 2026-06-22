@@ -467,7 +467,9 @@ function buildAdminFinancialSummary({ items = [], storedOrderSummary = null, com
   const gstPercentage = storedOrderSummary?.gstPercentage ? parseFloat(storedOrderSummary.gstPercentage) : 10;
   const productsSubtotalExGST = _round2(productsSubtotal / (1 + gstPercentage / 100));
   const gstAmount = _round2(productsSubtotal - productsSubtotalExGST);
-  const shippingCost = storedOrderSummary?.shippingCost ? _round2(parseFloat(storedOrderSummary.shippingCost)) : 0;
+  const shippingCost = commissionRecord?.shippingAmount != null
+    ? _round2(parseFloat(commissionRecord.shippingAmount))
+    : storedOrderSummary?.shippingCost ? _round2(parseFloat(storedOrderSummary.shippingCost)) : 0;
 
   let platformCommissionRate, platformCommission, sellerProductEarning, sellerPayout;
   if (commissionRecord) {

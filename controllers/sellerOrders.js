@@ -98,8 +98,10 @@ function buildFinancialSummary({ items = [], storedOrderSummary = null, commissi
   const productsSubtotalExGST = round2(productsSubtotal / gstDivisor);
   const gstAmount = round2(productsSubtotal - productsSubtotalExGST);
 
-  // 4. Shipping — per-seller allocation stored as shippingCost (not totalShippingCost)
-  const shippingCost = storedOrderSummary?.shippingCost ? round2(parseFloat(storedOrderSummary.shippingCost)) : 0;
+  // 4. Shipping — prefer commission record (actual per-seller allocation), fall back to stored summary
+  const shippingCost = commissionRecord?.shippingAmount != null
+    ? round2(parseFloat(commissionRecord.shippingAmount))
+    : storedOrderSummary?.shippingCost ? round2(parseFloat(storedOrderSummary.shippingCost)) : 0;
 
   // 5. Commission — use recorded values if available, otherwise recompute
   let platformCommissionRate, platformCommission, sellerProductEarning, sellerPayout;

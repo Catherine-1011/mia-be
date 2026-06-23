@@ -7,8 +7,8 @@
 const cron = require('node-cron');
 
 // Configuration
-const SCHEDULER_INTERVAL = '*/5 * * * *'; // How often the cron job runs (currently: every 5 minutes)
-const CLEANUP_RETENTION_MINUTES = 15; // How many minutes a user stays in the recycle bin before being anonymized
+const SCHEDULER_INTERVAL = '0 0 * * *'; // How often the cron job runs (once daily at midnight)
+const CLEANUP_RETENTION_MINUTES = 60 * 24 * 60; // How many minutes a user stays in the recycle bin before being anonymized (60 days)
 
 // Global flag to prevent multiple schedulers
 let schedulerRunning = false;

@@ -928,7 +928,7 @@ async function handlePaymentSucceeded(paymentIntentId) {
       include: {
         items:     { include: { product: { select: { id: true, title: true, price: true, sellerId: true, seller: { select: { name: true, sellerProfile: { select: { abn: true, businessAddress: true } } } } } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
         subOrders: { include: { seller: { select: { name: true } }, sellerProfile: { select: { abn: true, businessAddress: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
-        user:      { select: { name: true, email: true, phone: true } },
+        user:      { select: { name: true, email: true, phone: true, isDeleted: true } },
       }
     });
 
@@ -959,7 +959,7 @@ async function handlePaymentSucceeded(paymentIntentId) {
       include: {
         items:     { include: { product: { select: { id: true, title: true, price: true, sellerId: true, seller: { select: { name: true, sellerProfile: { select: { abn: true, businessAddress: true } } } } } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
         subOrders: { include: { seller: { select: { name: true } }, sellerProfile: { select: { abn: true, businessAddress: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
-        user:      { select: { name: true, email: true, phone: true } },
+        user:      { select: { name: true, email: true, phone: true, isDeleted: true } },
       }
     });
 

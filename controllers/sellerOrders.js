@@ -15,6 +15,13 @@ const {
   generateSalesSummaryCSV 
 } = require("../utils/csvExport");
 
+// ── PII masking for deleted users ────────────────────────────────────────────
+const maskDeletedUser = (user) => {
+  if (!user) return null;
+  if (!user.isDeleted) return user;
+  return { ...user, name: 'Deleted User', email: null, phone: null };
+};
+
 // ── Order display-ID helpers ─────────────────────────────────────────────────
 // Accepts stored displayId Int (e.g. 1001) OR falls back to last-6-chars of CUID.
 const toDisplayId = (idOrN) => {
@@ -213,13 +220,14 @@ exports.getSellerOrders = async (request, reply) => {
               id: true,
               name: true,
               email: true,
-              phone: true
+              phone: true,
+              isDeleted: true
             }
           }
         },
         orderBy: { createdAt: 'desc' }
       }),
-      
+
       // Sub-orders (multi-seller orders)
       prisma.subOrder.findMany({
         where: {
@@ -245,7 +253,8 @@ exports.getSellerOrders = async (request, reply) => {
                   id: true,
                   name: true,
                   email: true,
-                  phone: true
+                  phone: true,
+                  isDeleted: true
                 }
               }
             }
@@ -292,7 +301,8 @@ exports.getSellerOrders = async (request, reply) => {
               id: true,
               name: true,
               email: true,
-              phone: true
+              phone: true,
+              isDeleted: true
             }
           }
         },
@@ -390,7 +400,7 @@ exports.getSellerOrders = async (request, reply) => {
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
         items: trimItems(items),
-        user: order.user,
+        user: maskDeletedUser(order.user),
         customerName: order.customerName,
         customerEmail: order.customerEmail,
         customerPhone: order.customerPhone,
@@ -434,7 +444,7 @@ exports.getSellerOrders = async (request, reply) => {
         paymentMethod: parent?.paymentMethod,
         paymentStatus: parent?.paymentStatus,
         items: trimItems(items),
-        user: parent?.user,
+        user: maskDeletedUser(parent?.user),
         customerName: parent?.customerName,
         customerEmail: parent?.customerEmail,
         customerPhone: parent?.customerPhone,
@@ -475,7 +485,7 @@ exports.getSellerOrders = async (request, reply) => {
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
         items: trimItems(items),
-        user: order.user,
+        user: maskDeletedUser(order.user),
         customerName: order.customerName,
         customerEmail: order.customerEmail,
         customerPhone: order.customerPhone,
@@ -1612,7 +1622,7 @@ exports.exportSalesReport = async (request, reply) => {
         include: {
           items: { include: { product: true } },
           parentOrder: {
-            include: { user: { select: { id: true, name: true, email: true, phone: true } } }
+            include: { user: { select: { id: true, name: true, email: true, phone: true, isDeleted: true } } }
           }
         },
         orderBy: { createdAt: 'desc' }
@@ -1623,7 +1633,7 @@ exports.exportSalesReport = async (request, reply) => {
         where: { sellerId, ...(hasDateFilter ? { createdAt: dateFilter } : {}) },
         include: {
           items: { include: { product: true } },
-          user: { select: { id: true, name: true, email: true, phone: true } }
+          user: { select: { id: true, name: true, email: true, phone: true, isDeleted: true } }
         },
         orderBy: { createdAt: 'desc' }
       }),
@@ -1638,7 +1648,7 @@ exports.exportSalesReport = async (request, reply) => {
         },
         include: {
           items: { include: { product: true } },
-          user: { select: { id: true, name: true, email: true, phone: true } }
+          user: { select: { id: true, name: true, email: true, phone: true, isDeleted: true } }
         },
         orderBy: { createdAt: 'desc' }
       })
@@ -1661,15 +1671,16 @@ exports.exportSalesReport = async (request, reply) => {
     // Sub-orders
     subOrders.forEach(sub => {
       const p = sub.parentOrder;
+      const maskedUser = maskDeletedUser(p.user);
       sellerOrders.push({
         id:                  sub.id,
         status:              sub.status || 'N/A',
         paymentMethod:       p.paymentMethod       || 'N/A',
         trackingNumber:      sub.trackingNumber     || null,
         estimatedDelivery:   sub.estimatedDelivery  || null,
-        customerName:        p.user?.name  || p.customerName  || 'N/A',
-        customerEmail:       p.user?.email || p.customerEmail || 'N/A',
-        customerPhone:       p.user?.phone || p.customerPhone || 'N/A',
+        customerName:        maskedUser?.name  || p.customerName  || 'N/A',
+        customerEmail:       maskedUser?.email || p.customerEmail || 'N/A',
+        customerPhone:       maskedUser?.phone || p.customerPhone || 'N/A',
         shippingAddressLine: p.shippingAddressLine  || null,
         shippingCity:        p.shippingCity         || null,
         shippingState:       p.shippingState        || null,
@@ -1692,15 +1703,16 @@ exports.exportSalesReport = async (request, reply) => {
     directOrders.forEach(order => {
       const products = toProducts(order.items);
       if (!products.length) return;
+      const maskedUser = maskDeletedUser(order.user);
       sellerOrders.push({
         id:                  order.id,
         status:              order.status || order.overallStatus || 'N/A', // ← fix: overallStatus fallback
         paymentMethod:       order.paymentMethod       || 'N/A',
         trackingNumber:      order.trackingNumber      || null,
         estimatedDelivery:   order.estimatedDelivery   || null,
-        customerName:        order.user?.name  || order.customerName  || 'N/A',
-        customerEmail:       order.user?.email || order.customerEmail || 'N/A',
-        customerPhone:       order.user?.phone || order.customerPhone || 'N/A',
+        customerName:        maskedUser?.name  || order.customerName  || 'N/A',
+        customerEmail:       maskedUser?.email || order.customerEmail || 'N/A',
+        customerPhone:       maskedUser?.phone || order.customerPhone || 'N/A',
         shippingAddressLine: order.shippingAddressLine || null,
         shippingCity:        order.shippingCity        || null,
         shippingState:       order.shippingState       || null,
@@ -1717,15 +1729,16 @@ exports.exportSalesReport = async (request, reply) => {
     legacyOrders.forEach(order => {
       const products = toProducts(order.items);
       if (!products.length) return;
+      const maskedUser = maskDeletedUser(order.user);
       sellerOrders.push({
         id:                  order.id,
         status:              order.status || order.overallStatus || 'N/A',
         paymentMethod:       order.paymentMethod       || 'N/A',
         trackingNumber:      order.trackingNumber      || null,
         estimatedDelivery:   order.estimatedDelivery   || null,
-        customerName:        order.user?.name  || order.customerName  || 'N/A',
-        customerEmail:       order.user?.email || order.customerEmail || 'N/A',
-        customerPhone:       order.user?.phone || order.customerPhone || 'N/A',
+        customerName:        maskedUser?.name  || order.customerName  || 'N/A',
+        customerEmail:       maskedUser?.email || order.customerEmail || 'N/A',
+        customerPhone:       maskedUser?.phone || order.customerPhone || 'N/A',
         shippingAddressLine: order.shippingAddressLine || null,
         shippingCity:        order.shippingCity        || null,
         shippingState:       order.shippingState       || null,
@@ -2010,7 +2023,7 @@ exports.getSellerRefundRequests = async (request, reply) => {
         customerName: true,
         customerEmail: true,
         createdAt: true,
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, isDeleted: true } },
         items: {
           include: {
             product: {
@@ -2041,8 +2054,9 @@ exports.getSellerRefundRequests = async (request, reply) => {
     const requests = tickets.map(ticket => {
       const order = ticket.orderId ? orderMap.get(ticket.orderId) : null;
       const sellerItems = order ? getSellerItemsForOrder(order, sellerId) : [];
-      const customerName = order?.user?.name || order?.customerName || null;
-      const customerEmail = order?.user?.email || order?.customerEmail || null;
+      const maskedOrderUser = maskDeletedUser(order?.user);
+      const customerName = maskedOrderUser?.name || order?.customerName || null;
+      const customerEmail = maskedOrderUser?.email || order?.customerEmail || null;
       const requestedItems = parseRequestedItems(ticket.message);
       const sellerSubOrder = order?.subOrders?.find(s => s.sellerId === sellerId);
       const subOrderDisplayId = sellerSubOrder?.subDisplayId
@@ -2135,7 +2149,7 @@ exports.getSellerRefundRequestById = async (request, reply) => {
         customerName: true,
         customerEmail: true,
         createdAt: true,
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, isDeleted: true } },
         items: {
           include: {
             product: {
@@ -2166,8 +2180,9 @@ exports.getSellerRefundRequestById = async (request, reply) => {
     }
 
     const sellerItems = getSellerItemsForOrder(order, sellerId);
-    const customerName  = order.user?.name  || order.customerName  || null;
-    const customerEmail = order.user?.email || order.customerEmail || null;
+    const maskedOrderUser = maskDeletedUser(order.user);
+    const customerName  = maskedOrderUser?.name  || order.customerName  || null;
+    const customerEmail = maskedOrderUser?.email || order.customerEmail || null;
     const requestedItems = parseRequestedItems(ticket.message);
     const sellerSubOrder = order.subOrders?.find(s => s.sellerId === sellerId);
     const subOrderDisplayId = sellerSubOrder?.subDisplayId

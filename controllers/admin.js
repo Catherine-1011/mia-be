@@ -139,6 +139,12 @@ const formatOrderItem = (item) => ({
 
 const trimItems = (items = []) => items.map(formatOrderItem);
 
+const maskDeletedUser = (user) => {
+  if (!user) return null;
+  if (!user.isDeleted) return user;
+  return { ...user, name: 'Deleted User', email: null, phone: null };
+};
+
 const {
   notifySellerApproved,
   notifySellerApprovalRejected,
@@ -555,7 +561,8 @@ exports.getOrdersBySellerId = async (request, reply) => {
                   email: true,
                   phone: true,
                   role: true,
-                  createdAt: true
+                  createdAt: true,
+                  isDeleted: true
                 }
               }
             }
@@ -599,7 +606,8 @@ exports.getOrdersBySellerId = async (request, reply) => {
               email: true,
               phone: true,
               role: true,
-              createdAt: true
+              createdAt: true,
+              isDeleted: true
             }
           }
         }
@@ -648,7 +656,8 @@ exports.getOrdersBySellerId = async (request, reply) => {
               email: true,
               phone: true,
               role: true,
-              createdAt: true
+              createdAt: true,
+              isDeleted: true
             }
           }
         }
@@ -750,10 +759,10 @@ exports.getOrdersBySellerId = async (request, reply) => {
         shippingZipCode: parent?.shippingZipCode,
         shippingCountry: parent?.shippingCountry,
         shippingPhone: parent?.shippingPhone,
-        customerName: parent?.customerName,
-        customerEmail: parent?.customerEmail,
-        customerPhone: parent?.customerPhone,
-        user: parent?.user,
+        customerName: parent?.user?.isDeleted ? 'Deleted User' : (parent?.customerName),
+        customerEmail: parent?.user?.isDeleted ? null : (parent?.customerEmail),
+        customerPhone: parent?.user?.isDeleted ? null : (parent?.customerPhone),
+        user: maskDeletedUser(parent?.user),
         items: trimItems(items),
         isSubOrder: true,
         sellerSpecific: true,
@@ -799,10 +808,10 @@ exports.getOrdersBySellerId = async (request, reply) => {
         shippingZipCode: order.shippingZipCode,
         shippingCountry: order.shippingCountry,
         shippingPhone: order.shippingPhone,
-        customerName: order.customerName,
-        customerEmail: order.customerEmail,
-        customerPhone: order.customerPhone,
-        user: order.user,
+        customerName: order.user?.isDeleted ? 'Deleted User' : order.customerName,
+        customerEmail: order.user?.isDeleted ? null : order.customerEmail,
+        customerPhone: order.user?.isDeleted ? null : order.customerPhone,
+        user: maskDeletedUser(order.user),
         items: trimItems(items),
         isSubOrder: false,
         sellerSpecific: true,
@@ -849,10 +858,10 @@ exports.getOrdersBySellerId = async (request, reply) => {
         shippingZipCode: order.shippingZipCode,
         shippingCountry: order.shippingCountry,
         shippingPhone: order.shippingPhone,
-        customerName: order.customerName,
-        customerEmail: order.customerEmail,
-        customerPhone: order.customerPhone,
-        user: order.user,
+        customerName: order.user?.isDeleted ? 'Deleted User' : order.customerName,
+        customerEmail: order.user?.isDeleted ? null : order.customerEmail,
+        customerPhone: order.user?.isDeleted ? null : order.customerPhone,
+        user: maskDeletedUser(order.user),
         items: trimItems(items),
         isSubOrder: true,
         sellerSpecific: true,
@@ -1009,6 +1018,18 @@ exports.softDeleteUser = async (request, reply) => {
       where: { customerId: userId },
       data: { customerName: 'Deleted User', customerEmail: 'hidden@privacy.local' }
     }).catch(err => immediateCleanupErrors.push(`commissionEarned: ${err.message}`));
+
+    // 3b. Support tickets — anonymize guestEmail for tickets created by this user
+    await prisma.supportTicket.updateMany({
+      where: { userId },
+      data: { guestEmail: null }
+    }).catch(err => immediateCleanupErrors.push(`supportTicket userId: ${err.message}`));
+    if (existingUser.email) {
+      await prisma.supportTicket.updateMany({
+        where: { guestEmail: existingUser.email },
+        data: { guestEmail: null }
+      }).catch(err => immediateCleanupErrors.push(`supportTicket guestEmail: ${err.message}`));
+    }
 
     // 4. Notifications — clear any message/title text containing the user's name or email
     try {
@@ -1398,9 +1419,18 @@ exports.cleanupExpiredUsers = async (request, reply) => {
             data: { customerName: 'Deleted User', customerEmail: 'hidden@privacy.local' }
           }).catch(err => console.warn('[Manual-Cleanup] CommissionEarned error:', err.message)),
 
-          // Support tickets (no content changes needed - only user identity removal)
-          // Support tickets will show as from deleted user through userId=null relationship
-          
+          // Support tickets — anonymize guestEmail
+          prisma.supportTicket.updateMany({
+            where: { userId: user.id },
+            data: { guestEmail: null }
+          }).catch(err => console.warn('[Manual-Cleanup] SupportTicket userId error:', err.message)),
+          user.email
+            ? prisma.supportTicket.updateMany({
+                where: { guestEmail: user.email },
+                data: { guestEmail: null }
+              }).catch(err => console.warn('[Manual-Cleanup] SupportTicket guestEmail error:', err.message))
+            : Promise.resolve(),
+
           // Product ratings/reviews (keep review content, identity removed through userId=null)
           // Ratings will show as anonymous through the deleted user relationship
           
@@ -1704,9 +1734,18 @@ exports.autoCleanupExpiredUsers = async (retentionMinutes = 15) => {
             data: { customerName: 'Deleted User', customerEmail: 'hidden@privacy.local' }
           }).catch(err => console.warn('[Auto-Cleanup] CommissionEarned error:', err.message)),
 
-          // Support tickets (no content changes needed - only user identity removal)
-          // Support tickets will show as from deleted user through userId=null relationship
-          
+          // Support tickets — anonymize guestEmail
+          prisma.supportTicket.updateMany({
+            where: { userId: user.id },
+            data: { guestEmail: null }
+          }).catch(err => console.warn('[Auto-Cleanup] SupportTicket userId error:', err.message)),
+          user.email
+            ? prisma.supportTicket.updateMany({
+                where: { guestEmail: user.email },
+                data: { guestEmail: null }
+              }).catch(err => console.warn('[Auto-Cleanup] SupportTicket guestEmail error:', err.message))
+            : Promise.resolve(),
+
           // Product ratings/reviews (keep review content, identity removed through userId=null)
           // Ratings will show as anonymous through the deleted user relationship
           
@@ -3579,7 +3618,7 @@ exports.exportSalesCSV = async (request, reply) => {
     const orders = await prisma.order.findMany({
       include: {
         items: { include: { product: { include: { seller: true } } } },
-        user: { select: { id: true, name: true, email: true, phone: true } }
+        user: { select: { id: true, name: true, email: true, phone: true, isDeleted: true } }
       }
     });
 
@@ -3591,9 +3630,9 @@ exports.exportSalesCSV = async (request, reply) => {
       paymentMethod: order.paymentMethod,
       trackingNumber: order.trackingNumber,
       estimatedDelivery: order.estimatedDelivery,
-      customerName: order.user?.name,
-      customerEmail: order.user?.email || order.customerEmail,
-      customerPhone: order.user?.phone || order.customerPhone,
+      customerName: order.user?.isDeleted ? 'Deleted User' : order.user?.name,
+      customerEmail: order.user?.isDeleted ? null : (order.user?.email || order.customerEmail),
+      customerPhone: order.user?.isDeleted ? null : (order.user?.phone || order.customerPhone),
       shippingAddress: order.shippingAddress,
       shippingAddressLine: order.shippingAddressLine,
       shippingCity: order.shippingCity,
@@ -3659,7 +3698,7 @@ exports.getGstReport = async (request, reply) => {
       include: {
         items: { include: { product: { include: { seller: { include: { sellerProfile: { select: { businessName: true, storeName: true } } } } } } } },
         subOrders: { include: { items: { include: { product: { include: { seller: { include: { sellerProfile: { select: { businessName: true, storeName: true } } } } } } } } } },
-        user: { select: { name: true } },
+        user: { select: { name: true, isDeleted: true } },
       }
     });
 
@@ -3761,7 +3800,7 @@ exports.getGstReport = async (request, reply) => {
       transactions.push({
         orderId: order.displayId || order.id,
         date: order.createdAt,
-        customerName: order.user?.name || order.customerName,
+        customerName: order.user?.isDeleted ? 'Deleted User' : (order.user?.name || order.customerName),
         paymentMethod: pMethod,
         netAmount: orderNet,
         gstRate: defaultGstRate,
@@ -4956,7 +4995,7 @@ exports.getAllOrdersDetailed = async (request, reply) => {
         orderBy: { createdAt: 'desc' },
         include: {
           user: {
-            select: { id: true, name: true, email: true, phone: true },
+            select: { id: true, name: true, email: true, phone: true, isDeleted: true },
           },
           seller: {
             select: { id: true, name: true, email: true },
@@ -5056,7 +5095,12 @@ exports.getAllOrdersDetailed = async (request, reply) => {
       // ── Customer ──
       const isGuest = !order.user && !order.userId;
       const customer = order.user
-        ? { id: order.user.id,  name: order.user.name,  email: order.user.email,  phone: order.user.phone  }
+        ? {
+            id: order.user.id,
+            name: order.user.isDeleted ? 'Deleted User' : order.user.name,
+            email: order.user.isDeleted ? null : order.user.email,
+            phone: order.user.isDeleted ? null : order.user.phone
+          }
         : { id: null,           name: order.customerName, email: order.customerEmail, phone: order.customerPhone };
 
       // ── Shipping address ──
@@ -5662,7 +5706,7 @@ exports.getAllRefundRequests = async (request, reply) => {
         skip,
         take: limit,
         include: {
-          user: { select: { id: true, name: true, email: true } }
+          user: { select: { id: true, name: true, email: true, isDeleted: true } }
         }
       }),
       prisma.supportTicket.count({ where: whereClause })
@@ -5681,7 +5725,7 @@ exports.getAllRefundRequests = async (request, reply) => {
           status: true,
           customerName: true,
           customerEmail: true,
-          user: { select: { id: true, name: true, email: true } },
+          user: { select: { id: true, name: true, email: true, isDeleted: true } },
           items: {
             select: {
               id: true,
@@ -5793,10 +5837,14 @@ exports.getAllRefundRequests = async (request, reply) => {
             image: imageByProductId[ri.productId] ?? null
           }))
         : null;
-      const customerName  = ticket.user?.name  || order?.user?.name  || order?.customerName  || null;
-      const customerEmail = ticket.user?.email || ticket.guestEmail  || order?.user?.email || order?.customerEmail || null;
+      const ticketUser = maskDeletedUser(ticket.user);
+      const orderUser  = maskDeletedUser(order?.user);
+      const customerName  = ticketUser?.name  || orderUser?.name  || order?.customerName  || null;
+      const customerEmail = ticketUser?.email || ticket.guestEmail  || orderUser?.email || order?.customerEmail || null;
       return {
         ...ticket,
+        user: ticketUser,
+        guestEmail: ticketUser?.isDeleted ? null : ticket.guestEmail,
         requestType: requestTypeDisplay,
         reason: parseRefundReason(ticket.message),
         orderStatus: order?.status || 'UNKNOWN',
@@ -5975,7 +6023,7 @@ exports.updateRefundRequestStatus = async (request, reply) => {
     const displayId     = order ? `${order.displayId}` : `${id.slice(-6).toUpperCase()}`;
     const statusLabel   = { APPROVED: 'Approved', REJECTED: 'Rejected', COMPLETED: 'Completed' }[status];
     const customerName  = (order?.user?.isDeleted ? 'Deleted User' : order?.user?.name) || order?.customerName || 'Customer';
-    const customerEmail = order?.user?.email || ticket.guestEmail;
+    const customerEmail = order?.user?.isDeleted ? null : (order?.user?.email || ticket.guestEmail);
     const customerId    = ticket.userId;
 
     // ── In-app notifications ──────────────────────────────────────────────────

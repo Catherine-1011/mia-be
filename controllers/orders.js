@@ -4426,7 +4426,7 @@ exports.downloadInvoice = async (request, reply) => {
     const orderInclude = {
       items:     { include: { product: { select: { id: true, title: true, price: true, sellerId: true, seller: { select: { name: true, sellerProfile: { select: { abn: true, businessAddress: true } } } } } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
       subOrders: { include: { seller: { select: { name: true } }, sellerProfile: { select: { abn: true, businessAddress: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
-      user:      { select: { name: true, email: true, phone: true } },
+      user:      { select: { name: true, email: true, phone: true, isDeleted: true } },
     };
 
     // ── Try as a parent / direct / legacy order first ──
@@ -4461,7 +4461,7 @@ exports.downloadInvoice = async (request, reply) => {
     } else {
       // ── Fall back: try as a SubOrder ID ──
       const subOrderInclude = {
-        parentOrder: { select: { displayId: true, userId: true, customerName: true, customerEmail: true, customerPhone: true, shippingPhone: true, shippingAddressLine: true, shippingCity: true, shippingState: true, shippingZipCode: true, shippingCountry: true, shippingAddress: true, paymentMethod: true, user: { select: { name: true, email: true, phone: true } } } },
+        parentOrder: { select: { displayId: true, userId: true, customerName: true, customerEmail: true, customerPhone: true, shippingPhone: true, shippingAddressLine: true, shippingCity: true, shippingState: true, shippingZipCode: true, shippingCountry: true, shippingAddress: true, paymentMethod: true, user: { select: { name: true, email: true, phone: true, isDeleted: true } } } },
         items:       { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
         seller:      { select: { name: true, email: true } },
         sellerProfile: { select: { abn: true, businessAddress: true } },
@@ -4548,7 +4548,7 @@ exports.downloadSubOrderInvoice = async (request, reply) => {
 
     const subOrderInclude = {
       parentOrder: {
-        select: { displayId: true, userId: true, customerName: true, customerEmail: true, customerPhone: true, shippingPhone: true, shippingAddressLine: true, shippingCity: true, shippingState: true, shippingZipCode: true, shippingCountry: true, shippingAddress: true, paymentMethod: true, user: { select: { name: true, email: true, phone: true } } }
+        select: { displayId: true, userId: true, customerName: true, customerEmail: true, customerPhone: true, shippingPhone: true, shippingAddressLine: true, shippingCity: true, shippingState: true, shippingZipCode: true, shippingCountry: true, shippingAddress: true, paymentMethod: true, user: { select: { name: true, email: true, phone: true, isDeleted: true } } }
       },
       items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
       seller: { select: { name: true, email: true } },
@@ -4706,7 +4706,7 @@ exports.downloadPublicInvoice = async (request, reply) => {
     const orderInclude = {
       items:     { include: { product: { select: { id: true, title: true, price: true, seller: { select: { name: true, sellerProfile: { select: { abn: true, businessAddress: true } } } } } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },
       subOrders: { include: { seller: { select: { name: true } }, sellerProfile: { select: { abn: true, businessAddress: true } }, items: { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } } } },
-      user:      { select: { name: true, email: true, phone: true } },
+      user:      { select: { name: true, email: true, phone: true, isDeleted: true } },
     };
 
     // Try parent / direct / legacy order first (by displayId)
@@ -4731,7 +4731,7 @@ exports.downloadPublicInvoice = async (request, reply) => {
               shippingPhone: true, shippingAddressLine: true, shippingCity: true,
               shippingState: true, shippingZipCode: true, shippingCountry: true,
               shippingAddress: true, paymentMethod: true,
-              user: { select: { name: true, email: true, phone: true } },
+              user: { select: { name: true, email: true, phone: true, isDeleted: true } },
             }
           },
           items:  { include: { product: { select: { id: true, title: true, price: true } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },

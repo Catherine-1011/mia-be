@@ -5972,7 +5972,7 @@ exports.updateRefundRequestStatus = async (request, reply) => {
       });
     }
 
-    const displayId     = order ? `#${order.displayId}` : `#${id.slice(-6).toUpperCase()}`;
+    const displayId     = order ? `${order.displayId}` : `${id.slice(-6).toUpperCase()}`;
     const statusLabel   = { APPROVED: 'Approved', REJECTED: 'Rejected', COMPLETED: 'Completed' }[status];
     const customerName  = (order?.user?.isDeleted ? 'Deleted User' : order?.user?.name) || order?.customerName || 'Customer';
     const customerEmail = order?.user?.email || ticket.guestEmail;

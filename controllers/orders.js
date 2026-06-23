@@ -59,7 +59,7 @@ async function triggerStripeRefund(paymentIntentId, reason, displayId) {
   if (!paymentIntentId) return;
   try {
     const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
-    const desc = `Order #${displayId} cancelled — ${reason}`.slice(0, 255);
+    const desc = `Order ${displayId} cancelled — ${reason}`.slice(0, 255);
 
     if (pi.status === 'succeeded') {
       await stripe.refunds.create({
@@ -1538,7 +1538,7 @@ exports.cancelOrder = async (request, reply) => {
         data: {
           userId: sellerId,
           title: 'Order Cancelled by Customer',
-          message: `Customer ${order.customerName || 'Customer'} cancelled order #${readableOrderId}. Items: ${sellerProducts.join(', ')}. Reason: ${finalReason}`,
+          message: `Customer ${order.customerName || 'Customer'} cancelled order ${readableOrderId}. Items: ${sellerProducts.join(', ')}. Reason: ${finalReason}`,
           type: 'ORDER_CANCELLED',
           relatedId: orderId,
           relatedType: 'order',
@@ -1787,7 +1787,7 @@ exports.cancelGuestOrder = async (request, reply) => {
         data: {
           userId: sellerId,
           title: 'Guest Order Cancelled',
-          message: `Guest customer cancelled order #${readableOrderId}. Items: ${sellerProducts.join(', ')}. Reason: ${finalReason}`,
+          message: `Guest customer cancelled order ${readableOrderId}. Items: ${sellerProducts.join(', ')}. Reason: ${finalReason}`,
           type: 'ORDER_CANCELLED',
           relatedId: orderId_internal,
           relatedType: 'order',
@@ -2120,7 +2120,7 @@ exports.requestRefund = async (request, reply) => {
         userId,
         orderId,
         requestType: normalizedRequestType,
-        subject: `${ticketTitle} for Order #${readableOrderId}`,
+        subject: `${ticketTitle} for Order ${readableOrderId}`,
         message: ticketMessage,
         category: 'REFUND_REQUEST',
         attachments: allAttachments
@@ -2135,7 +2135,7 @@ exports.requestRefund = async (request, reply) => {
     });
 
     const notifTitle   = `${ticketTitle} Submitted`;
-    const notifMessage = `${order.customerName || order.user?.name || 'Customer'} requested a ${normalizedRequestType.toLowerCase().replace('_', ' ')} for order #${readableOrderId}.`;
+    const notifMessage = `${order.customerName || order.user?.name || 'Customer'} requested a ${normalizedRequestType.toLowerCase().replace('_', ' ')} for order ${readableOrderId}.`;
     const metadata     = {
       orderId,
       requestType: normalizedRequestType,
@@ -2147,7 +2147,7 @@ exports.requestRefund = async (request, reply) => {
     const notifRows = [
       ...admins.map(a => ({ userId: a.id, title: notifTitle, message: notifMessage, type: 'GENERAL', relatedId: orderId, relatedType: 'order', metadata })),
       ...sellerIds.map(sid => ({ userId: sid, title: notifTitle, message: notifMessage, type: 'GENERAL', relatedId: orderId, relatedType: 'order', metadata })),
-      { userId, title: `${ticketTitle} Received`, message: `Your refund request for order #${readableOrderId} has been submitted and is under review.`, type: 'GENERAL', relatedId: orderId, relatedType: 'order', metadata }
+      { userId, title: `${ticketTitle} Received`, message: `Your refund request for order ${readableOrderId} has been submitted and is under review.`, type: 'GENERAL', relatedId: orderId, relatedType: 'order', metadata }
     ];
     await prisma.notification.createMany({ data: notifRows });
 
@@ -2220,7 +2220,7 @@ exports.requestRefund = async (request, reply) => {
       request: {
         id:              supportTicket.id,
         orderId,
-        orderDisplayId:  `#${order.displayId}`,
+        orderDisplayId:  `${order.displayId}`,
         requestType:     normalizedRequestType,
         reason:          headlineReason,
         requestedItems:  itemsBlob,
@@ -2768,7 +2768,7 @@ exports.requestGuestRefund = async (request, reply) => {
         orderId,
         guestEmail:  normalizedEmail,
         requestType: normalizedRequestType,
-        subject:     `${ticketTitle} for Order #${readableOrderId}`,
+        subject:     `${ticketTitle} for Order ${readableOrderId}`,
         message:     ticketMessage,
         category:    'REFUND_REQUEST',
         attachments: allAttachments
@@ -2783,7 +2783,7 @@ exports.requestGuestRefund = async (request, reply) => {
     });
 
     const notifTitle   = `${ticketTitle} Submitted`;
-    const notifMessage = `Guest ${order.customerName || normalizedEmail} requested a ${normalizedRequestType.toLowerCase().replace('_', ' ')} for order #${readableOrderId}.`;
+    const notifMessage = `Guest ${order.customerName || normalizedEmail} requested a ${normalizedRequestType.toLowerCase().replace('_', ' ')} for order ${readableOrderId}.`;
     const metadata     = { orderId, requestType: normalizedRequestType, reason: headlineReason, supportTicketId: supportTicket.id, guestEmail: normalizedEmail, totalAmount: order.totalAmount?.toString() };
 
     const notifRows = [
@@ -4046,7 +4046,7 @@ const generateInvoiceBuffer = (order) => {
     const logoPath = path.join(__dirname, '../assets/logo.png');
     const hasLogo  = fs.existsSync(logoPath);
 
-    const displayRef = order.displayId != null ? `#${order.displayId}` : (order.id || 'N/A');
+    const displayRef = order.displayId != null ? `${order.displayId}` : (order.id || 'N/A');
 
     // Per-seller shipping & GST rate from the orderSummary stored in shippingAddress JSON
     const storedSummary = (typeof order.shippingAddress === 'object' && order.shippingAddress?.orderSummary)

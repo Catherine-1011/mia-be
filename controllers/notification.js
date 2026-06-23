@@ -132,7 +132,7 @@ const notifySellerOrderStatusChange = async (sellerId, orderId, status, orderDet
 
   const title = 'Order Status Updated by Admin';
   const statusText = statusMessages[status] || `has been updated to ${status.toUpperCase()}`;
-  const message = `Order #${orderId.slice(-8).toUpperCase()} ${statusText}.${
+  const message = `Order ${orderId.slice(-8).toUpperCase()} ${statusText}.${
     orderDetails.reason ? ` Reason: ${orderDetails.reason}` : ''
   }${
     orderDetails.trackingNumber ? ` Tracking: ${orderDetails.trackingNumber}` : ''

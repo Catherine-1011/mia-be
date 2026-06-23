@@ -717,7 +717,7 @@ const backfillOrderNotifications = async () => {
             type,
             priority: 'MEDIUM',
             status: isComplete ? 'COMPLETED' : 'PENDING',
-            message: `Order #${order.id.slice(-8).toUpperCase()} — Status: ${order.status}`,
+            message: `Order ${order.id.slice(-8).toUpperCase()} — Status: ${order.status}`,
             slaDeadline: calculateSLADeadline(type),
             completedAt: isComplete ? new Date() : null
           }

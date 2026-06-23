@@ -75,16 +75,16 @@ const sendOrderStatusSMS = async (phoneNumber, orderDetails) => {
     
     switch (orderDetails.status) {
       case "packed":
-        statusMessage = `Your order #${orderDetails.orderId} has been packed and is ready for shipping! 📦`;
+        statusMessage = `Your order ${orderDetails.orderId} has been packed and is ready for shipping! 📦`;
         break;
       case "shipped":
-        statusMessage = `Great news! Your order #${orderDetails.orderId} has been shipped! 🚚${orderDetails.trackingNumber ? `\n\nTracking: ${orderDetails.trackingNumber}` : ''}`;
+        statusMessage = `Great news! Your order ${orderDetails.orderId} has been shipped! 🚚${orderDetails.trackingNumber ? `\n\nTracking: ${orderDetails.trackingNumber}` : ''}`;
         break;
       case "delivered":
-        statusMessage = `Your order #${orderDetails.orderId} has been delivered! 🎉\n\nEnjoy your Aboriginal art piece!`;
+        statusMessage = `Your order ${orderDetails.orderId} has been delivered! 🎉\n\nEnjoy your purchase!`;
         break;
       case "cancelled":
-        statusMessage = `Your order #${orderDetails.orderId} has been cancelled. Refund will be processed within 3-5 business days. 💰`;
+        statusMessage = `Your order ${orderDetails.orderId} has been cancelled. Refund will be processed within 3-5 business days. 💰`;
         break;
       default:
         statusMessage = `Order #${orderDetails.orderId} status updated to: ${orderDetails.status}`;

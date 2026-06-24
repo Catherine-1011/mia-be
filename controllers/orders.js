@@ -3021,13 +3021,24 @@ exports.reorder = async (request, reply) => {
     const displayId = request.params.id;
     const userId = request.user.userId;
 
-    // Get the order with items
+    // Fetch order with items (direct + sub-order) and product/variant details
     const order = await prisma.order.findUnique({
       where: { displayId },
       include: {
         items: {
           include: {
-            product: true
+            product: { select: { id: true, title: true, stock: true, isActive: true, status: true, type: true, deletedAt: true, featuredImage: true, price: true } },
+            productVariant: { select: { id: true, stock: true, isActive: true } }
+          }
+        },
+        subOrders: {
+          include: {
+            items: {
+              include: {
+                product: { select: { id: true, title: true, stock: true, isActive: true, status: true, type: true, deletedAt: true, featuredImage: true, price: true } },
+                productVariant: { select: { id: true, stock: true, isActive: true } }
+              }
+            }
           }
         }
       }
@@ -3041,173 +3052,163 @@ exports.reorder = async (request, reply) => {
       return reply.status(403).send({ success: false, message: "Not authorized to reorder this order" });
     }
 
-    const orderId = order.id; // resolve to internal CUID (used later for cart ops)
-    void orderId; // suppress unused variable warning — orderId kept for any extensions
+    // Only delivered orders can be reordered
+    const effectiveStatus = order.overallStatus || order.status;
+    if (effectiveStatus !== 'DELIVERED') {
+      return reply.status(400).send({ success: false, message: "Only delivered orders can be reordered" });
+    }
 
-    if (order.items.length === 0) {
+    // Collect all items — from direct order items + sub-order items
+    const allItems = [...order.items];
+    if (order.subOrders?.length > 0) {
+      for (const sub of order.subOrders) {
+        allItems.push(...sub.items);
+      }
+    }
+
+    if (allItems.length === 0) {
       return reply.status(400).send({ success: false, message: "Order has no items to reorder" });
     }
 
     // Get or create user's cart
     let cart = await prisma.cart.findUnique({
       where: { userId },
-      include: {
-        items: true
-      }
+      include: { items: true }
     });
-
-    console.log(`📋 Found existing cart for user ${userId}:`, cart ? `Cart ID: ${cart.id}, Items: ${cart.items.length}` : 'No cart found');
 
     if (!cart) {
       cart = await prisma.cart.create({
         data: { userId },
-        include: {
-          items: true
-        }
+        include: { items: true }
       });
-      console.log(`🆕 Created new cart for user ${userId}: Cart ID: ${cart.id}`);
     }
 
     const addedItems = [];
     const unavailableItems = [];
-    
-    // Process each item from the order
-    for (const orderItem of order.items) {
+
+    for (const orderItem of allItems) {
       const product = orderItem.product;
-      
-      // Check if product still exists and is available
-      if (!product) {
+      const variant = orderItem.productVariant;
+
+      // Product deleted or doesn't exist
+      if (!product || product.deletedAt) {
         unavailableItems.push({
           productId: orderItem.productId,
-          reason: "Product no longer exists"
+          title: product?.title || 'Unknown Product',
+          reason: "This product is no longer available"
         });
         continue;
       }
 
-      // Check stock availability
-      if (product.stock < orderItem.quantity) {
+      // Product inactive or not approved
+      if (!product.isActive || product.status !== 'APPROVED') {
         unavailableItems.push({
           productId: product.id,
           title: product.title,
-          requestedQuantity: orderItem.quantity,
-          availableStock: product.stock,
-          reason: "Insufficient stock"
+          reason: `${product.title} is currently unavailable`
         });
         continue;
       }
 
-      // Check if item already exists in cart
+      // Variant inactive check
+      if (variant && !variant.isActive) {
+        unavailableItems.push({
+          productId: product.id,
+          title: product.title,
+          reason: `${product.title} (selected variant) is currently unavailable`
+        });
+        continue;
+      }
+
+      // Stock check — use variant stock if variant exists, otherwise product stock
+      const availableStock = variant ? variant.stock : (product.stock || 0);
+      if (availableStock < 1) {
+        unavailableItems.push({
+          productId: product.id,
+          title: product.title,
+          reason: `${product.title} is out of stock`
+        });
+        continue;
+      }
+
+      const desiredQty = Math.min(orderItem.quantity, availableStock);
+
+      // Check if same product+variant already in cart
       const existingCartItem = await prisma.cartItem.findFirst({
         where: {
           cartId: cart.id,
-          productId: product.id
+          productId: product.id,
+          variantId: orderItem.variantId || null
         }
       });
 
-      console.log(`🔍 Checking product ${product.id} (${product.title}) in cart:`, existingCartItem ? `Found existing item with quantity ${existingCartItem.quantity}` : 'Not in cart');
-
       if (existingCartItem) {
-        // Update existing cart item quantity
-        const newQuantity = existingCartItem.quantity + orderItem.quantity;
-        
-        // Check if new quantity exceeds stock
-        if (newQuantity > product.stock) {
+        const newQuantity = existingCartItem.quantity + desiredQty;
+        if (newQuantity > availableStock) {
           unavailableItems.push({
             productId: product.id,
             title: product.title,
-            requestedQuantity: orderItem.quantity,
-            currentCartQuantity: existingCartItem.quantity,
-            availableStock: product.stock,
-            reason: "Adding this quantity would exceed available stock"
+            reason: `${product.title} — cannot add more, already ${existingCartItem.quantity} in cart (stock: ${availableStock})`
           });
           continue;
         }
 
-        const updatedItem = await prisma.cartItem.update({
-          where: {
-            id: existingCartItem.id
-          },
-          data: {
-            quantity: newQuantity
-          }
+        await prisma.cartItem.update({
+          where: { id: existingCartItem.id },
+          data: { quantity: newQuantity }
         });
-
-        console.log(`📝 Updated cart item: Product ${product.id}, New quantity: ${updatedItem.quantity}`);
 
         addedItems.push({
           productId: product.id,
           title: product.title,
-          quantity: orderItem.quantity,
-          newTotalQuantity: newQuantity,
+          image: product.featuredImage,
+          quantity: desiredQty,
+          price: product.price ? parseFloat(product.price) : null,
           action: "updated"
         });
       } else {
-        // Create new cart item
-        const newCartItem = await prisma.cartItem.create({
+        await prisma.cartItem.create({
           data: {
             cartId: cart.id,
             productId: product.id,
-            quantity: orderItem.quantity
+            variantId: orderItem.variantId || null,
+            quantity: desiredQty
           }
         });
-
-        console.log(`➕ Created new cart item: Product ${product.id} (${product.title}), Quantity: ${newCartItem.quantity}, Cart Item ID: ${newCartItem.id}`);
 
         addedItems.push({
           productId: product.id,
           title: product.title,
-          quantity: orderItem.quantity,
+          image: product.featuredImage,
+          quantity: desiredQty,
+          price: product.price ? parseFloat(product.price) : null,
           action: "added"
         });
       }
     }
 
-    console.log(`✅ Reorder processed for order ${orderId} - Added: ${addedItems.length}, Unavailable: ${unavailableItems.length}`);
-
-    // Verify final cart state
-    const finalCart = await prisma.cart.findUnique({
-      where: { userId },
-      include: {
-        items: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                title: true
-              }
-            }
-          }
-        }
-      }
-    });
-
-    console.log(`🛒 Final cart verification for user ${userId}:`, finalCart ? 
-      `Cart ID: ${finalCart.id}, Total items: ${finalCart.items.length}` : 'Cart not found');
-    
-    if (finalCart && finalCart.items.length > 0) {
-      console.log('📦 Cart contents:', finalCart.items.map(item => 
-        `${item.product.title} (ID: ${item.productId}) - Qty: ${item.quantity}`
-      ));
-    }
+    // Build shipping address from original order for pre-fill
+    const shippingAddress = {
+      addressLine: order.shippingAddressLine || null,
+      city: order.shippingCity || null,
+      state: order.shippingState || null,
+      zipCode: order.shippingZipCode || null,
+      country: order.shippingCountry || null,
+      phone: order.shippingPhone || null
+    };
 
     return reply.status(200).send({
-      success: true,
-      message: addedItems.length > 0 
-        ? `Successfully added ${addedItems.length} items to cart for reorder`
+      success: addedItems.length > 0,
+      message: addedItems.length > 0
+        ? `${addedItems.length} item${addedItems.length > 1 ? 's' : ''} added to cart`
         : "No items could be added to cart",
-      data: {
-        orderId,
-        addedItems,
-        unavailableItems,
-        summary: {
-          totalOrderItems: order.items.length,
-          successfullyAdded: addedItems.length,
-          unavailable: unavailableItems.length
-        },
-        debug: {
-          cartId: finalCart?.id,
-          finalCartItemCount: finalCart?.items.length || 0
-        }
+      addedItems,
+      unavailableItems,
+      shippingAddress,
+      summary: {
+        totalOrderItems: allItems.length,
+        added: addedItems.length,
+        unavailable: unavailableItems.length
       }
     });
 

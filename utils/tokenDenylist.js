@@ -33,7 +33,6 @@ if (process.env.REDIS_URL) {
 
     redisClient.on('connect', () => {
       useRedis = true;
-      console.log('✅ [TokenDenylist] Connected to Redis');
     });
 
     // Only log once; then disconnect so ioredis never retries again
@@ -52,7 +51,6 @@ if (process.env.REDIS_URL) {
     console.warn('⚠️  [TokenDenylist] ioredis not available — using in-memory fallback');
   }
 } else {
-  console.log('ℹ️  [TokenDenylist] REDIS_URL not set — using in-memory denylist (dev mode)');
 }
 
 // ─── In-memory fallback ───────────────────────────────────────────────────────
@@ -70,7 +68,6 @@ setInterval(() => {
     }
   }
   if (removed > 0) {
-    console.log(`🧹 [TokenDenylist] Cleaned up ${removed} expired in-memory entries`);
   }
 }, 15 * 60 * 1000).unref(); // unref so it doesn't block process exit
 
@@ -89,7 +86,6 @@ async function addToBlacklist(jti, ttlSeconds) {
   if (useRedis && redisClient) {
     try {
       await redisClient.set(`${DENYLIST_PREFIX}${jti}`, '1', 'EX', ttl);
-      console.log(`🚫 [TokenDenylist] jti=${jti} added to Redis denylist (TTL ${ttl}s)`);
       return;
     } catch (err) {
       console.error('⚠️  [TokenDenylist] Redis write failed — falling back to in-memory:', err.message);
@@ -98,7 +94,6 @@ async function addToBlacklist(jti, ttlSeconds) {
 
   // In-memory fallback
   memoryDenylist.set(jti, Date.now() + ttl * 1000);
-  console.log(`🚫 [TokenDenylist] jti=${jti} added to in-memory denylist (TTL ${ttl}s)`);
 }
 
 /**

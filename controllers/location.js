@@ -30,7 +30,6 @@ const validate = async (request, reply) => {
     const result = await validateLocation(mapbox_id);
 
     if (!result.valid) {
-      console.log('⚠️ Validation failed:', result.reason);
       return reply.send({
         success: true,
         status: 'manual_review',
@@ -40,7 +39,6 @@ const validate = async (request, reply) => {
       });
     }
 
-    console.log('✅ Location validated successfully');
     return reply.send({
       success: true,
       status: 'verified',

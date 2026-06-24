@@ -381,7 +381,6 @@ async function _processCampaignSend({ campaign, subscribers, totalRecipients }) 
     validEmails.push(email);
   }
 
-  console.log(`[Campaign ${id}] Starting send: ${validEmails.length} valid, ${skippedCount} skipped (invalid format)`);
 
   for (let i = 0; i < validEmails.length; i++) {
     const email = validEmails[i];
@@ -424,5 +423,4 @@ async function _processCampaignSend({ campaign, subscribers, totalRecipients }) 
     }
   });
 
-  console.log(`[Campaign ${id}] Completed. Sent: ${sentCount}, Failed: ${failedCount}, Skipped: ${skippedCount}, Total: ${totalRecipients}`);
 }

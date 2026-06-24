@@ -14,7 +14,6 @@ const createNotification = async (userId, title, message, type, relatedId = null
         metadata
       }
     });
-    console.log(`🔔 Notification created for user ${userId}: ${title}`);
     return notification;
   } catch (error) {
     console.error(`[Notification] Failed to create notification (type: ${type}, userId: ${userId}):`, error.message);
@@ -24,7 +23,6 @@ const createNotification = async (userId, title, message, type, relatedId = null
 
 // CUSTOMER NOTIFICATIONS
 const notifyCustomerOrderStatusChange = async (userId, orderId, status, orderDetails = {}) => {
-  console.log(`🔔 notifyCustomerOrderStatusChange called: userId=${userId}, orderId=${orderId}, status=${status}`);
   
   const statusMessages = {
     'confirmed': 'Your order has been confirmed',
@@ -39,7 +37,6 @@ const notifyCustomerOrderStatusChange = async (userId, orderId, status, orderDet
   const title = `Order ${status.charAt(0).toUpperCase() + status.slice(1)}`;
   const message = statusMessages[status] || `Your order status has been updated to ${status}`;
 
-  console.log(`🔔 Creating notification: title="${title}", message="${message}"`);
 
   return await createNotification(
     userId,

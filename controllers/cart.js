@@ -226,7 +226,6 @@ exports.getMyCart = async (request, reply) => {
     const userId = request.user.userId; // from auth middleware
     const { shippingMethodId, gstId, internationalCountry } = request.query; // Optional: domestic method ID or international country
 
-    console.log(`🛒 Fetching cart for user: ${userId}`);
 
     const cart = await prisma.cart.findUnique({
       where: { userId },
@@ -261,13 +260,8 @@ exports.getMyCart = async (request, reply) => {
       }
     });
 
-    console.log(`📋 Cart found:`, cart ? 
-      `Cart ID: ${cart.id}, Items: ${cart.items.length}` : 'No cart found');
 
     if (cart && cart.items.length > 0) {
-      console.log('📦 Cart items:', cart.items.map(item => 
-        `${item.product?.title || 'Unknown'} (ID: ${item.productId}) - Qty: ${item.quantity}`
-      ));
     }
 
     if (!cart || cart.items.length === 0) {

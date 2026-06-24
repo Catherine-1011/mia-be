@@ -4,7 +4,6 @@ const prisma = require('../config/prisma');
 exports.getAllUsers = async (request, reply) => {
   try {
     // Debug: log the user object
-    console.log('Authenticated user:', request.user);
     if (!request.user || !['ADMIN', 'SUPER_ADMIN'].includes(request.user.role)) {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
@@ -17,7 +16,6 @@ exports.getAllUsers = async (request, reply) => {
 // Get profile for authenticated user
 exports.getProfile = async (request, reply) => {
   try {
-    console.log('Request user:', request.user); // Add this debug log
     
     const userId = request.user?.id;
     

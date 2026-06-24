@@ -32,7 +32,7 @@ exports.checkInventory = async (productId) => {
     if (stock <= 0) {
       if (isActive) {
         await prisma.$executeRaw`UPDATE "products" SET "isActive" = false WHERE id = ${productId}`;
-        console.log(`⚠️  Product auto-deactivated (out of stock): ${product.title}`);
+
       }
       broadcastStockUpdate(productId, 0, false);
       return { type: 'outOfStock' };
@@ -40,7 +40,7 @@ exports.checkInventory = async (productId) => {
 
     // LOW STOCK — warn but keep active, still broadcast updated count
     if (stock <= LOW_STOCK_THRESHOLD) {
-      console.log(`🟡 Low stock alert: "${product.title}" — ${stock} remaining`);
+
       broadcastStockUpdate(productId, stock, isActive ?? true);
       return { type: 'lowStock' };
     }

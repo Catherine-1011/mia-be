@@ -47,25 +47,20 @@ exports.updateProfile = async (request, reply) => {
       });
     }
 
-    console.log('=== UPDATE PROFILE START ===');
-    console.log('User ID:', userId);
 
     let name, phone, profileImageUrl;
 
     // Check if request is multipart
     const isMultipart = request.isMultipart();
-    console.log('Is request multipart?', isMultipart);
 
     if (isMultipart) {
       // Process multipart form data using parts()
       const parts = request.parts();
     
     for await (const part of parts) {
-      console.log('Processing part:', part.fieldname, 'Type:', part.type);
       
       if (part.type === 'file') {
         // Handle file upload
-        console.log('File detected:', part.filename, 'Fieldname:', part.fieldname);
         
         // Only process if fieldname is 'profileImage'
         if (part.fieldname === 'profileImage') {
@@ -81,20 +76,16 @@ exports.updateProfile = async (request, reply) => {
             // Write file using stream
             await pipeline(part.file, fs.createWriteStream(tempPath));
             
-            console.log('File saved to temp path:', tempPath);
 
             // Upload to Cloudinary
             const uploadResult = await uploadToCloudinary(tempPath, 'profile');
             profileImageUrl = uploadResult.url;
             
-            console.log('✓ Cloudinary upload successful:', profileImageUrl);
 
             // Clean up temp file
             try {
               await fs.promises.unlink(tempPath);
-              console.log('✓ Temp file cleaned up');
             } catch (unlinkError) {
-              console.log('Warning: Could not delete temp file:', unlinkError.message);
             }
           } catch (uploadError) {
             console.error('✗ File upload error:', uploadError);
@@ -111,30 +102,21 @@ exports.updateProfile = async (request, reply) => {
         } else if (part.fieldname === 'phone') {
           phone = part.value;
         }
-        console.log('Field:', part.fieldname, '=', part.value);
       }
     }
     } else {
       // Handle JSON body for non-multipart requests
-      console.log('Processing JSON body:', request.body);
       name = request.body?.name;
       phone = request.body?.phone;
       // Note: File upload not supported for JSON requests
-      console.log('JSON request - no file upload support');
     }
 
-    console.log('Extracted data:');
-    console.log('- Name:', name);
-    console.log('- Phone:', phone);
-    console.log('- Profile Image URL:', profileImageUrl);
 
     // Build update data object
     const updateData = {};
     if (typeof name === 'string' && name.trim() !== '') {
       updateData.name = name.trim();
-      console.log('Setting updateData.name =', updateData.name);
     } else {
-      console.log('Name not set or empty:', name);
     }
     if (typeof phone === 'string' && phone.trim() !== '') {
       updateData.phone = phone.trim();
@@ -143,10 +125,8 @@ exports.updateProfile = async (request, reply) => {
       updateData.profileImage = profileImageUrl;
     }
 
-    console.log('Update data to be sent to database:', updateData);
 
     if (Object.keys(updateData).length === 0) {
-      console.log('✗ No data to update');
       return reply.status(400).send({ 
         message: 'No data provided to update',
         debug: 'No valid fields or files were found in the request'
@@ -154,7 +134,6 @@ exports.updateProfile = async (request, reply) => {
     }
 
     // Update the user in database
-    console.log('Updating user in database...');
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: updateData,
@@ -172,9 +151,6 @@ exports.updateProfile = async (request, reply) => {
       }
     });
 
-    console.log('✓ Database updated successfully');
-    console.log('Updated user profileImage:', updatedUser.profileImage);
-    console.log('=== UPDATE PROFILE END ===');
 
     reply.send({
       message: 'Profile updated successfully',

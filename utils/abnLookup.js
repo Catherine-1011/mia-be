@@ -13,9 +13,7 @@ const abnLookup = async (abn) => {
     if (!process.env.ABN_GUID) {
       throw new Error("ABN_GUID not configured in environment variables");
     }
-      
-      console.log("🔍 Validating ABN:", cleanABN);
-      
+
       const response = await axios.get(
         `https://abr.business.gov.au/json/AbnDetails.aspx`,
         {
@@ -43,20 +41,11 @@ const abnLookup = async (abn) => {
       }
 
       // Log raw response for debugging
-      console.log("📋 ABR API Response:", JSON.stringify(abrData, null, 2));
 
       // Check if ABN was found and is active
       const abnExists = abrData.Abn && abrData.Abn.toString().trim() === cleanABN;
       const isActive = abrData.AbnStatus === "Active";
       const isValid = !!(abnExists && isActive);
-
-      console.log("✅ ABN Validation Result:", {
-        abnExists,
-        isActive,
-        isValid,
-        returnedABN: abrData.Abn,
-        status: abrData.AbnStatus
-      });
 
       // Determine message based on validation result
       let message = "";

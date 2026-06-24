@@ -9,7 +9,6 @@ async function validateLocation(mapboxId) {
   }
 
   try {
-    console.log('🔍 Validating mapbox_id:', mapboxId);
 
     const encodedId = encodeURIComponent(mapboxId);
     const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedId}.json`;
@@ -26,8 +25,6 @@ async function validateLocation(mapboxId) {
     const feature = features[0];
     const context = feature.context || [];
 
-    console.log('📍 Place name:', feature.place_name);
-    console.log('🗺️ Context:', JSON.stringify(context, null, 2));
 
     const countryCtx = context.find(c => c.id.startsWith('country'));
     const regionCtx = context.find(c => c.id.startsWith('region'));
@@ -35,8 +32,6 @@ async function validateLocation(mapboxId) {
     const isAustralia = countryCtx?.short_code === 'au';
     const isNT = regionCtx?.short_code === 'AU-NT';
 
-    console.log('✅ Is Australia:', isAustralia);
-    console.log('✅ Is NT:', isNT);
 
     if (!isAustralia) {
       return {
@@ -48,7 +43,7 @@ async function validateLocation(mapboxId) {
 
     if (!isNT) {
       const stateName = regionCtx?.text || 'Unknown State';
-      console.log('⚠️ Location is in:', stateName);
+
       return {
         valid: false,
         reason: `Location is in ${stateName}, not Northern Territory`,
@@ -56,8 +51,6 @@ async function validateLocation(mapboxId) {
         state: stateName
       };
     }
-
-    console.log('✅ Location verified in Northern Territory');
 
     return {
       valid: true,

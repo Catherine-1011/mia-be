@@ -14,10 +14,10 @@ const verifySessionOrToken = async (request, reply) => {
     if (request.cookies && request.cookies.session_token) {
       try {
         const decoded = jwt.verify(request.cookies.session_token, process.env.JWT_SECRET);
-        console.log("✅ Session cookie verified");
+
         return { token: decoded, source: "cookie" };
       } catch (error) {
-        console.log("⚠️ Session cookie invalid or expired");
+
       }
     }
 
@@ -27,10 +27,10 @@ const verifySessionOrToken = async (request, reply) => {
       const token = authHeader.slice(7);
       try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        console.log("✅ Authorization token verified");
+
         return { token: decoded, source: "header" };
       } catch (error) {
-        console.log("⚠️ Authorization token invalid or expired");
+
       }
     }
 

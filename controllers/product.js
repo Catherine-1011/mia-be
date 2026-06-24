@@ -180,14 +180,6 @@ exports.addProduct = async (request, reply) => {
   galleryImages = [...new Set(galleryImages)];
 
   // Debug logging
-  console.log('DEBUG - Add Product:', {
-    type: productType,
-    price: productType === 'SIMPLE' ? price : 'N/A (variants)',
-    stock: productType === 'SIMPLE' ? stock : 'N/A (variants)',
-    variantsCount: productType === 'VARIABLE' ? variants?.length : 0,
-    featuredImage: featuredImageUrl,
-    galleryImagesCount: galleryImages.length
-  });
 
   try {
     const sellerId = request.user.userId; // From authenticateSeller middleware
@@ -413,7 +405,6 @@ exports.addProduct = async (request, reply) => {
         await prisma.$executeRaw`UPDATE "products" SET "isActive" = false, status = 'INACTIVE' WHERE id = ${product.id}`;
         isActive = false;
         lowStockTriggered = true;
-        console.log(`⚠️  New SIMPLE product "${product.title}" auto-deactivated on add — stock: ${stock}`);
       }
     } else if (productType === 'VARIABLE') {
       // For VARIABLE products, check if ALL variants are low stock
@@ -424,7 +415,6 @@ exports.addProduct = async (request, reply) => {
         await prisma.$executeRaw`UPDATE "products" SET "isActive" = false, status = 'INACTIVE' WHERE id = ${product.id}`;
         isActive = false;
         lowStockTriggered = true;
-        console.log(`⚠️  New VARIABLE product "${product.title}" auto-deactivated on add — all variants low stock (total: ${totalVariantStock})`);
       }
     }
 
@@ -489,7 +479,6 @@ exports.addProduct = async (request, reply) => {
         // In-app notifications for all admins (failure must not block email)
         try {
           await notifyAdminNewProduct(product.id, pendingDetails);
-          console.log(`✅ [addProduct] In-app notifications sent to all admins for product "${title}"`);
         } catch (inAppErr) {
           console.error('❌ [addProduct] In-app notification error (non-fatal):', inAppErr.message);
         }
@@ -497,7 +486,6 @@ exports.addProduct = async (request, reply) => {
         // Email all admins — separate try/catch so notification failure never blocks email
         try {
           const admins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } });
-          console.log(`📧 [addProduct] Found ${admins.length} admin(s) to email — product "${title}"`);
           for (const admin of admins) {
             if (admin.email) {
               const result = await sendAdminProductPendingEmail(admin.email, admin.name, {
@@ -506,7 +494,6 @@ exports.addProduct = async (request, reply) => {
                 productId: product.id
               });
               if (result.success) {
-                console.log(`✅ [addProduct] Pending-review email sent to admin ${admin.email}`);
               } else {
                 console.error(`❌ [addProduct] Failed to email admin ${admin.email}:`, result.error);
               }
@@ -1013,11 +1000,6 @@ exports.updateProduct = async (request, reply) => {
     }
 
     // Debug logging
-    console.log('DEBUG - Form Data Received:', {
-      existingGalleryImages: existingGalleryImages,
-      newGalleryFiles: newGalleryFiles,
-      keepExistingGallery: body.keepExistingGallery
-    });
 
     // MERGE existing images with new uploaded images
     let allGalleryImages = [];
@@ -1048,10 +1030,6 @@ exports.updateProduct = async (request, reply) => {
       galleryImages = uniqueGalleryImages;
     }
 
-    console.log('DEBUG - Final Gallery Images:', {
-      count: galleryImages.length,
-      images: galleryImages
-    });
 
     // Parse price, weight and stock to correct types, ignore empty string
     if (typeof price === 'string' && price.trim() !== '') price = parseFloat(price);
@@ -1168,7 +1146,6 @@ exports.updateProduct = async (request, reply) => {
       `;
       newIsActive = false;
       lowStockTriggered = true;
-      console.log(`⚠️  Product "${updatedProduct.title}" auto-deactivated — stock: ${finalStock}`);
 
       // ── Audit log: auto-deactivated due to low stock ───────────────────────
       auditLog({
@@ -1233,7 +1210,6 @@ exports.updateProduct = async (request, reply) => {
         // In-app notifications for all admins (failure must not block email)
         try {
           await notifyAdminProductPending(request.params.id, pendingDetails);
-          console.log(`✅ [updateProduct] In-app notifications sent to all admins for product "${pendingDetails.productTitle}"`);
         } catch (inAppErr) {
           console.error('❌ [updateProduct] In-app notification error (non-fatal):', inAppErr.message);
         }
@@ -1241,7 +1217,6 @@ exports.updateProduct = async (request, reply) => {
         // Email all admins — separate try/catch so notification failure never blocks email
         try {
           const admins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } });
-          console.log(`📧 [updateProduct] Found ${admins.length} admin(s) to email — product "${pendingDetails.productTitle}"`);
           for (const admin of admins) {
             if (admin.email) {
               const result = await sendAdminProductPendingEmail(admin.email, admin.name, {
@@ -1250,7 +1225,6 @@ exports.updateProduct = async (request, reply) => {
                 productId: request.params.id
               });
               if (result.success) {
-                console.log(`✅ [updateProduct] Pending-review email sent to admin ${admin.email}`);
               } else {
                 console.error(`❌ [updateProduct] Failed to email admin ${admin.email}:`, result.error);
               }
@@ -1885,7 +1859,6 @@ const autoReactivateIfStocked = async (productId) => {
         SET "isActive" = true, status = 'ACTIVE'
         WHERE id = ${productId}
       `;
-      console.log(`✅ Auto-reactivated VARIABLE product "${product.title}" — variant stock restored (total: ${totalStock})`);
     }
   } catch (err) {
     console.error('autoReactivateIfStocked error (non-fatal):', err.message);
@@ -2322,4 +2295,3 @@ exports.bulkSaveVariants = async (request, reply) => {
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
-

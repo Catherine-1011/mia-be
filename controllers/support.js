@@ -141,4 +141,3 @@ exports.getMyTickets = async (request, reply) => {
   }
 };
 
-

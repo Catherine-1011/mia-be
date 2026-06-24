@@ -1,4 +1,4 @@
-﻿const prisma = require("../config/prisma");
+const prisma = require("../config/prisma");
 const { generateOTP, sendOTPEmail, sendSellerApplicationSubmittedEmail, sendSellerRegistrationEmail, sendSuperAdminNewSellerEmail } = require("../utils/emailService");
 const { abnLookup } = require("../utils/abnLookup");
 const { uploadToCloudinary } = require("../config/cloudinary");
@@ -357,7 +357,6 @@ exports.verifyOTP = async (request, reply) => {
     
     try {
       await notifyAdminNewSellerApplication(result.user.id, sellerDetails);
-      console.log(`🔔 Notifications sent to admins for new seller: ${result.user.name}`);
     } catch (notificationError) {
       console.error('Failed to send notifications to admins:', notificationError);
     }
@@ -379,7 +378,6 @@ exports.verifyOTP = async (request, reply) => {
           });
         }
       }
-      console.log(`📧 Emails sent to ${superAdmins.length} super admins for new seller: ${result.user.name}`);
     } catch (emailError) {
       console.error('Failed to send emails to super admins:', emailError);
     }
@@ -2053,4 +2051,3 @@ exports.getBankChangeHistory = async (request, reply) => {
     return reply.status(500).send({ success: false, message: "Server error" });
   }
 };
-

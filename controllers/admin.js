@@ -240,7 +240,6 @@ exports.scanLowStockProducts = async (request, reply) => {
         }).catch(err => console.error('Admin lookup error (low stock deactivation email):', err.message));
 
       results.push({ productId: product.id, title: product.title, stock: Number(product.stock) });
-      console.log(`⚠️  [Admin scan] Deactivated "${product.title}" — stock: ${product.stock}`);
     }
 
     return reply.status(200).send({
@@ -447,7 +446,6 @@ exports.getAllOrders = async (request, reply) => {
     const allOrders = [...transformedDirectOrders, ...transformedSubOrders, ...transformedLegacyOrders]
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    console.log(`[Admin] Found ${allOrders.length} total orders: ${transformedDirectOrders.length} direct, ${transformedSubOrders.length} sub-orders, ${transformedLegacyOrders.length} legacy`);
 
     return reply.status(200).send({
       success: true,
@@ -688,7 +686,6 @@ exports.getOrdersBySellerId = async (request, reply) => {
     const allDirectOrders = [...directOrders, ...processedOldOrders.filter(o => o.isDirectOrder)];
     const legacyMultiSellerOrders = processedOldOrders.filter(o => !o.isDirectOrder);
 
-    console.log(`[Admin] Found ${allDirectOrders.length} direct orders, ${subOrders.length} sub-orders, and ${legacyMultiSellerOrders.length} legacy multi-seller orders for seller ${sellerId}`);
 
     // ── Batch-fetch commission_earned records ─────────────────────────────────
     const _directOrderIds = allDirectOrders.map(o => o.id);
@@ -1516,7 +1513,6 @@ exports.cleanupExpiredUsers = async (request, reply) => {
               });
             }
             
-            console.log(`[Manual-Cleanup] Updated ${userNotifications.length} notifications containing user name/email`);
           }
         } catch (notifError) {
           console.warn('[Manual-Cleanup] Notification content update error:', notifError.message);
@@ -1658,7 +1654,6 @@ exports.autoCleanupExpiredUsers = async (retentionMinutes = 15) => {
     });
 
     if (expiredUsers.length === 0) {
-      console.log(`[Auto-Cleanup] No expired users to anonymize (${retentionMinutes}min testing)`);
       return { processed: 0, message: 'No expired users found' };
     }
 
@@ -1831,12 +1826,10 @@ exports.autoCleanupExpiredUsers = async (retentionMinutes = 15) => {
               });
             }
             
-            console.log(`[Auto-Cleanup] Updated ${userNotifications.length} notifications containing user name/email`);
           })().catch(err => console.warn('[Auto-Cleanup] Notification content error:', err.message))
         ]);
 
         processed++;
-        console.log(`[Auto-Cleanup] Anonymized user ${user.id} (${user.email})`);
 
       } catch (userError) {
         console.error(`[Auto-Cleanup] Failed to anonymize user ${user.id}:`, userError);
@@ -1844,7 +1837,6 @@ exports.autoCleanupExpiredUsers = async (retentionMinutes = 15) => {
       }
     }
 
-    console.log(`[Auto-Cleanup] Successfully anonymized ${processed} expired users`);
     return { processed, message: `Anonymized ${processed} expired users` };
 
   } catch (error) {
@@ -2844,7 +2836,6 @@ exports.retrySellerTransfers = async (request, reply) => {
         `;
 
         results.push({ id: row.id, status: "transferred", transferId: transfer.id, amount: payout.sellerTotalPayout });
-        console.log(`💸 Retry transfer — seller: ${sellerId}, amount: $${payout.sellerTotalPayout}, transferId: ${transfer.id}`);
       } catch (err) {
         results.push({ id: row.id, status: "failed", error: err.message });
         console.error(`❌ Retry transfer failed for commission ${row.id}:`, err.message);
@@ -4004,7 +3995,6 @@ exports.approveProduct = async (request, reply) => {
 
     // Send notification to seller about product approval
     await notifySellerProductStatusChange(product.sellerId, productId, "ACTIVE", product.title);
-    console.log(`✅ [approveProduct] In-app notification sent to seller ${product.sellerId} for product "${product.title}"`);
 
     // Send email to seller about product approval
     // Use included relation first; fall back to direct DB lookup so email is
@@ -4018,14 +4008,12 @@ exports.approveProduct = async (request, reply) => {
       });
     }
     if (sellerForEmail?.email) {
-      console.log(`📧 [approveProduct] Sending approval email to seller ${sellerForEmail.email}`);
       try {
         const result = await sendSellerProductApprovedEmail(sellerForEmail.email, sellerForEmail.name, {
           productTitle: product.title,
           productId
         });
         if (result.success) {
-          console.log(`✅ [approveProduct] Approval email sent to ${sellerForEmail.email}`);
         } else {
           console.error(`❌ [approveProduct] Email failed for ${sellerForEmail.email}:`, result.error);
         }
@@ -4116,7 +4104,6 @@ exports.rejectProduct = async (request, reply) => {
 
     // Send notification to seller about product rejection
     await notifySellerProductStatusChange(product.sellerId, productId, "REJECTED", product.title, reason || "No specific reason provided");
-    console.log(`✅ [rejectProduct] In-app notification sent to seller ${product.sellerId} for product "${product.title}"`);
 
     // Send email to seller about product rejection
     // Use included relation first; fall back to direct DB lookup.
@@ -4129,7 +4116,6 @@ exports.rejectProduct = async (request, reply) => {
       });
     }
     if (sellerForEmail?.email) {
-      console.log(`📧 [rejectProduct] Sending rejection email to seller ${sellerForEmail.email}`);
       try {
         const result = await sendSellerProductRejectedEmail(sellerForEmail.email, sellerForEmail.name, {
           productTitle: product.title,
@@ -4137,7 +4123,6 @@ exports.rejectProduct = async (request, reply) => {
           productId
         });
         if (result.success) {
-          console.log(`✅ [rejectProduct] Rejection email sent to ${sellerForEmail.email}`);
         } else {
           console.error(`❌ [rejectProduct] Email failed for ${sellerForEmail.email}:`, result.error);
         }
@@ -5324,15 +5309,12 @@ exports.createSponsoredSection = async (request, reply) => {
 
     // Check if request is multipart (for file uploads)
     if (request.isMultipart()) {
-      console.log('Processing multipart form-data...');
       const parts = request.parts();
 
       for await (const part of parts) {
-        console.log('Part detected - Type:', part.type, 'Fieldname:', part.fieldname, 'Value:', part.value);
         
         if (part.type === 'file') {
           // Handle file upload (media file - image or video)
-          console.log('File detected:', part.filename, 'Fieldname:', part.fieldname);
           
           if (part.fieldname === 'media' || part.fieldname === 'mediaFile') {
             try {
@@ -5346,7 +5328,6 @@ exports.createSponsoredSection = async (request, reply) => {
               
               // Write file using stream
               await pipeline(part.file, fs.createWriteStream(tempPath));
-              console.log('File saved to temp path:', tempPath);
 
               // Determine media type by file extension or MIME type
               const fileExtension = path.extname(part.filename).toLowerCase();
@@ -5362,14 +5343,11 @@ exports.createSponsoredSection = async (request, reply) => {
               const uploadResult = await uploadToCloudinary(tempPath, 'sponsored');
               mediaUrl = uploadResult.url;
               
-              console.log('✓ Cloudinary upload successful:', mediaUrl);
 
               // Clean up temp file
               try {
                 await fs.promises.unlink(tempPath);
-                console.log('✓ Temp file cleaned up');
               } catch (unlinkError) {
-                console.log('Warning: Could not delete temp file:', unlinkError.message);
               }
             } catch (uploadError) {
               console.error('✗ File upload error:', uploadError);
@@ -5381,7 +5359,6 @@ exports.createSponsoredSection = async (request, reply) => {
           }
         } else {
           // Handle regular form fields (CREATE function)
-          console.log('Field:', part.fieldname, '=', part.value);
           
           // Trim whitespace and store field
           if (part.fieldname) {
@@ -5396,9 +5373,6 @@ exports.createSponsoredSection = async (request, reply) => {
       mediaType = requestData.mediaType || 'IMAGE';
     }
     
-    console.log('Processed data:', requestData);
-    console.log('Media URL:', mediaUrl);
-    console.log('Media Type:', mediaType);
     
     const { title, description, ctaText, ctaUrl, isActive, order } = requestData;
 
@@ -5407,12 +5381,6 @@ exports.createSponsoredSection = async (request, reply) => {
 
     // Validate required fields
     if (!title || !description || !finalMediaUrl || !ctaText || !ctaUrl) {
-      console.log('Validation failed - Missing fields:');
-      console.log('title:', title);
-      console.log('description:', description); 
-      console.log('finalMediaUrl:', finalMediaUrl);
-      console.log('ctaText:', ctaText);
-      console.log('ctaUrl:', ctaUrl);
       
       return reply.status(400).send({ 
         success: false, 
@@ -5423,7 +5391,6 @@ exports.createSponsoredSection = async (request, reply) => {
 
     // Validate mediaType if provided in form data
     const finalMediaType = requestData.mediaType || mediaType;
-    console.log('Final MediaType being validated:', finalMediaType, 'Type:', typeof finalMediaType);
     
     if (finalMediaType && !['IMAGE', 'VIDEO'].includes(finalMediaType.toString().toUpperCase().trim())) {
       return reply.status(400).send({ 
@@ -5518,13 +5485,11 @@ exports.updateSponsoredSection = async (request, reply) => {
 
     // Check if request is multipart (for file uploads)
     if (request.isMultipart()) {
-      console.log('Processing multipart form-data...');
       const parts = request.parts();
 
       for await (const part of parts) {
         if (part.type === 'file') {
           // Handle file upload (media file - image or video)
-          console.log('File detected:', part.filename, 'Fieldname:', part.fieldname);
           
           if (part.fieldname === 'media' || part.fieldname === 'mediaFile') {
             try {
@@ -5538,7 +5503,6 @@ exports.updateSponsoredSection = async (request, reply) => {
               
               // Write file using stream
               await pipeline(part.file, fs.createWriteStream(tempPath));
-              console.log('File saved to temp path:', tempPath);
 
               // Determine media type by file extension or MIME type
               const fileExtension = path.extname(part.filename).toLowerCase();
@@ -5554,14 +5518,11 @@ exports.updateSponsoredSection = async (request, reply) => {
               const uploadResult = await uploadToCloudinary(tempPath, 'sponsored');
               mediaUrl = uploadResult.url;
               
-              console.log('✓ Cloudinary upload successful:', mediaUrl);
 
               // Clean up temp file
               try {
                 await fs.promises.unlink(tempPath);
-                console.log('✓ Temp file cleaned up');
               } catch (unlinkError) {
-                console.log('Warning: Could not delete temp file:', unlinkError.message);
               }
             } catch (uploadError) {
               console.error('✗ File upload error:', uploadError);
@@ -5573,7 +5534,6 @@ exports.updateSponsoredSection = async (request, reply) => {
           }
         } else {
           // Handle regular form fields (UPDATE function)
-          console.log('Field:', part.fieldname, '=', part.value);
           
           // Trim whitespace and store field
           if (part.fieldname) {
@@ -5991,7 +5951,6 @@ exports.updateRefundRequestStatus = async (request, reply) => {
         }
         const stripeRefund = await stripe.refunds.create(refundParams);
         stripeRefundId = stripeRefund.id;
-        console.log(`💳 Stripe refund created: ${stripeRefundId} for order ${order?.displayId}`);
       } catch (stripeErr) {
         console.error('Stripe refund failed:', stripeErr.message);
         return reply.status(502).send({
@@ -6198,7 +6157,6 @@ exports.toggleInternationalShipping = async (request, reply) => {
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
-
 
 
 

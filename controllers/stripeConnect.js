@@ -172,7 +172,6 @@ exports.handleOAuthCallback = async (request, reply) => {
       },
     });
 
-    console.log(`✅ Stripe Standard account connected — seller: ${userId}, accountId: ${stripeAccountId}`);
 
     return reply.status(200).send({
       success: true,
@@ -324,7 +323,6 @@ exports.stripeConnectWebhook = async (request, reply) => {
         },
       });
 
-      console.log(`✅ Stripe Connect: synced account ${account.id} — KYC: ${stripeKycStatus}`);
 
       // Fire the "you're approved" email the FIRST time charges_enabled flips to true
       if (account.charges_enabled && existing && !existing.stripeChargesEnabled) {
@@ -334,7 +332,6 @@ exports.stripeConnectWebhook = async (request, reply) => {
           sendSellerStripeApprovedEmail(email, name).catch((e) =>
             console.error("sendSellerStripeApprovedEmail error:", e.message)
           );
-          console.log(`📧 Stripe approved email queued for ${email}`);
         }
       }
     } catch (err) {
@@ -384,7 +381,6 @@ exports.stripeConnectWebhook = async (request, reply) => {
                   updated_at             = NOW()
               WHERE id = ${rec.id}
             `;
-            console.log(`↩️  Transfer reversed (dispute) — commissionId: ${rec.id}, transferId: ${rec.stripe_transfer_id}`);
           } catch (reverseErr) {
             console.error(`❌ Transfer reversal failed for dispute (commissionId: ${rec.id}):`, reverseErr.message);
           }
@@ -406,7 +402,6 @@ exports.stripeConnectWebhook = async (request, reply) => {
         customerEmail: charge?.billing_details?.email || disputedOrder?.user?.email || null,
       });
 
-      console.log(`🚨 Connect dispute created — ID: ${dispute.id}, Amount: ${dispute.amount}, Reason: ${dispute.reason}, Order: ${disputedOrder?.displayId || "unknown"}`);
     } catch (err) {
       console.error("Stripe Connect dispute handler error:", err.message);
     }
@@ -416,18 +411,15 @@ exports.stripeConnectWebhook = async (request, reply) => {
   // Stripe has withdrawn funds from the platform balance for the dispute.
   else if (event.type === "charge.dispute.funds_withdrawn") {
     const dispute = event.data.object;
-    console.log(`💸 Dispute funds withdrawn — ID: ${dispute.id}, Amount: ${dispute.amount}`);
   }
 
   // ── charge.dispute.closed ──────────────────────────────────────────────────
   // Dispute resolved. If won, funds returned; if lost, record the outcome.
   else if (event.type === "charge.dispute.closed") {
     const dispute = event.data.object;
-    console.log(`🏁 Dispute closed — ID: ${dispute.id}, Status: ${dispute.status}, Outcome: ${dispute.reason}`);
   }
 
   else {
-    console.log(`Unhandled Stripe Connect event: ${event.type}`);
   }
 
   return reply.status(200).send({ received: true });

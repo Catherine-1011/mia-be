@@ -58,7 +58,6 @@ const createOrderNotification = async (orderId, sellerId, type, priority = 'MEDI
       return { success: false, message: 'Model not available' };
     }
 
-    console.log(`📋 [OrderNotification] Creating: type=${type} | orderId=${orderId} | sellerId=${sellerId}`);
 
     const notification = await prisma.orderNotification.create({
       data: {
@@ -74,7 +73,6 @@ const createOrderNotification = async (orderId, sellerId, type, priority = 'MEDI
       }
     });
 
-    console.log(`✅ [OrderNotification] Created id=${notification.id} type=${type}`);
     return notification;
   } catch (error) {
     console.error(`❌ [OrderNotification] Create failed — type=${type} orderId=${orderId} sellerId=${sellerId}:`, error.message);
@@ -116,7 +114,6 @@ exports.getSellerNotifications = async (request, reply) => {
       });
     }
 
-    console.log(`Getting notifications for seller: ${sellerId} (requested by ${userRole})`);
 
     // Check if prisma and model are available
     if (!prisma) {
@@ -135,7 +132,6 @@ exports.getSellerNotifications = async (request, reply) => {
       
       // If table doesn't exist, return empty result for now
       if (modelError.code === 'P2021' || modelError.message.includes('does not exist')) {
-        console.log('OrderNotification table does not exist yet, returning empty result');
         return reply.status(200).send({
           success: true,
           message: 'Order notification system is being set up. Please run database migrations.',
@@ -603,7 +599,6 @@ const checkSLAStatus = async () => {
   try {
     // Safety check for database availability
     if (!prisma) {
-      console.log("Prisma not available, skipping SLA check");
       return;
     }
 
@@ -613,11 +608,9 @@ const checkSLAStatus = async () => {
     });
 
     if (!pendingNotifications || pendingNotifications.length === 0) {
-      console.log("No pending notifications to check");
       return;
     }
 
-    console.log(`Checking SLA status for ${pendingNotifications.length} notifications`);
 
     for (const notification of pendingNotifications) {
       const slaStatus = calculateSLAStatus(notification);
@@ -629,7 +622,6 @@ const checkSLAStatus = async () => {
           data: { priority: slaStatus.priority }
         });
 
-        console.log(`Updated notification ${notification.id} priority to ${slaStatus.priority}`);
 
         // Send warning email if critical or breached
         if (slaStatus.status === 'CRITICAL' || slaStatus.status === 'BREACHED') {
@@ -641,7 +633,6 @@ const checkSLAStatus = async () => {
               notification.type,
               slaStatus
             );
-            console.log(`Sent SLA warning email for notification ${notification.id}`);
           } catch (emailError) {
             console.error("SLA warning email error (non-blocking):", emailError.message);
           }
@@ -653,7 +644,6 @@ const checkSLAStatus = async () => {
     
     // Don't throw the error to prevent cron job from failing
     if (error.code === 'P1001' || error.message.includes('database')) {
-      console.log("Database connection issue, will retry in next scheduled run");
     }
   }
 };
@@ -661,7 +651,6 @@ const checkSLAStatus = async () => {
 // BACKFILL: Create notifications for all orders that do not have one yet
 const backfillOrderNotifications = async () => {
   try {
-    console.log('🔄 [Backfill] Starting order notification backfill...');
 
     // Fetch all orders
     const orders = await prisma.order.findMany({
@@ -726,7 +715,6 @@ const backfillOrderNotifications = async () => {
       }
     }
 
-    console.log(`✅ [Backfill] Done — Created: ${created}, Skipped (already existed): ${skipped}`);
     return { created, skipped };
   } catch (error) {
     console.error('❌ [Backfill] Error:', error.message);

@@ -25,10 +25,6 @@ const generateDeviceFingerprint = (request) => {
     .update(fingerprintData)
     .digest('hex');
 
-  console.log("🔐 Device fingerprint created (no IP):", {
-    userAgentLength: userAgent.length,
-    fingerprintPrefix: fingerprint.substring(0, 8)
-  });
 
   return fingerprint.substring(0, 32); // First 32 chars for storage
 };
@@ -36,12 +32,10 @@ const generateDeviceFingerprint = (request) => {
 // SIGNUP - Send OTP for verification
 exports.register = async (request, reply) => {
   try {
-    console.log("📝 Register request received:", { email: request.body?.email });
     
     const { name, email, password, mobile, role } = request.body;
 
     if (!name || !email || !password || !mobile || !role) {
-      console.log("❌ Missing required fields");
       return reply.status(400).send({ success: false, message: "All fields are required" });
     }
 
@@ -63,14 +57,12 @@ exports.register = async (request, reply) => {
 
     const normalizedEmail = email.toLowerCase();
 
-    console.log("🔍 Checking if email exists...");
     // Check if email already exists in users or pending registrations
     const existingUser = await prisma.user.findUnique({
       where: { email: normalizedEmail }
     });
 
     if (existingUser) {
-      console.log("❌ Email already registered");
       return reply.status(400).send({ 
         success: false, 
         message: "Email already registered. Please login." 
@@ -85,12 +77,10 @@ exports.register = async (request, reply) => {
     if (pendingReg) {
       // If expired, delete it and allow new registration
       if (new Date() > pendingReg.otpExpiry) {
-        console.log("♻️ Deleting expired pending registration");
         await prisma.pendingRegistration.delete({
           where: { email: normalizedEmail }
         });
       } else {
-        console.log("❌ Pending registration exists");
         return reply.status(400).send({ 
           success: false, 
           message: "Registration pending. Please verify your email or request a new OTP." 
@@ -98,7 +88,6 @@ exports.register = async (request, reply) => {
       }
     }
 
-    console.log("🔑 Generating OTP and hashing password...");
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
     
@@ -106,7 +95,6 @@ exports.register = async (request, reply) => {
     const otp = generateOTP();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
 
-    console.log("💾 Storing pending registration in database...");
     // Store pending registration
     await prisma.pendingRegistration.create({
       data: {
@@ -120,7 +108,6 @@ exports.register = async (request, reply) => {
       }
     });
 
-    console.log("📧 Sending OTP email...");
     // Send OTP email
     const emailResult = await sendOTPEmail(email, otp, name);
 
@@ -133,7 +120,6 @@ exports.register = async (request, reply) => {
       });
     }
 
-    console.log("✅ Registration successful, OTP sent");
     return reply.status(200).send({ 
       success: true, 
       message: "OTP sent to your email. Please verify to complete registration.",
@@ -185,14 +171,8 @@ exports.login = async (request, reply) => {
     if (isInternalStaff) {
        sessionDuration = "60m";
        cookieMaxAge = 60 * 60 * 1000;
-       console.log("🔒 Internal Staff Login (Lane 2): Configuring for 60m session and AuthPoint MFA bypass.");
     }
 
-    console.log("🔍 Checking device session for:", { 
-      email: normalizedEmail, 
-      deviceFingerprint,
-      userId: user.id 
-    });
 
     // Check if this device has a valid session (verified within last 7 days)
     const existingSession = await prisma.userSession.findUnique({
@@ -214,11 +194,6 @@ exports.login = async (request, reply) => {
       }
     });
 
-    console.log("📊 Existing session:", existingSession ? {
-      isActive: existingSession.isActive,
-      expiresAt: existingSession.verificationExpiryAt,
-      expired: now > existingSession.verificationExpiryAt
-    } : "No session found");
 
     let needsVerification = false;
     let verificationReason = "";
@@ -229,28 +204,23 @@ exports.login = async (request, reply) => {
         // MFA handled by AuthPoint -> Verification skipped here
         needsVerification = false;
         verificationReason = "internal_auth_policy_bypass";
-        console.log("✅ Internal Staff Policy: Bypassing OTP, assuming AuthPoint verified.");
     } else {
         // Lane 1: External Users (Original Logic)
         if (!user.emailVerified) {
           // First login after signup - always require verification
-          console.log("🔐 First login after signup - email verification required");
           needsVerification = true;
           verificationReason = "first_login_after_signup";
         } else if (!existingSession) {
           // New device - require verification
-          console.log("🆕 New device detected - verification needed");
           needsVerification = true;
           verificationReason = "new_device";
         } else if (now > existingSession.verificationExpiryAt) {
           // Session expired (7 days passed) - require verification again
-          console.log("⏰ Session expired (7 days passed) - verification needed");
           needsVerification = true;
           verificationReason = "session_expired";
         } else {
           // Session exists and is valid (within 7 days) - allow direct login
           // This includes re-login after logout, as long as within 7-day window
-          console.log("✅ Valid session found (same device, within 7 days) - direct login allowed");
           needsVerification = false;
           verificationReason = "session_valid";
         }
@@ -258,7 +228,6 @@ exports.login = async (request, reply) => {
 
     // If verification is NOT needed, proceed with direct login
     if (!needsVerification) {
-      console.log(`✅ Direct login - Session Duration: ${sessionDuration}`);
 
       const token = jwt.sign(
         { userId: user.id, uid: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
@@ -305,7 +274,6 @@ exports.login = async (request, reply) => {
       const otp = generateOTP();
       const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-      console.log(`🔑 Generating OTP for ${normalizedEmail}: ${otp}`);
 
       // Delete ALL existing login verifications for this user (both verified and unverified)
       await prisma.loginVerification.deleteMany({
@@ -342,7 +310,6 @@ exports.login = async (request, reply) => {
         });
       }
 
-      console.log("✅ Verification OTP sent to email");
 
       return reply.status(200).send({
         success: true,
@@ -438,7 +405,6 @@ exports.verifyOTP = async (request, reply) => {
       createdAt: user.createdAt,
     };
 
-    console.log(`✅ OTP verified for ${user.email}. User will need to verify on first login.`);
 
     return reply.status(201).send({ 
       success: true, 
@@ -533,7 +499,6 @@ exports.resendOTP = async (request, reply) => {
         });
       }
 
-      console.log(`✅ Login OTP resent to ${normalizedEmail}`);
       return reply.send({
         success: true,
         message: "New OTP sent to your email.",
@@ -577,7 +542,6 @@ exports.resendOTP = async (request, reply) => {
       });
     }
 
-    console.log(`✅ Registration OTP resent to ${normalizedEmail}`);
 
     return reply.status(200).send({ 
       success: true, 
@@ -734,7 +698,6 @@ exports.resetPassword = async (request, reply) => {
 // LOGOUT - Clear session cookie and denylist the JWT so SSO tickets can no longer be created
 exports.logout = async (request, reply) => {
   try {
-    console.log("🚪 Logout request received");
 
     // Extract token from Authorization header OR session cookie
     const authHeader = request.headers.authorization;
@@ -774,7 +737,6 @@ exports.logout = async (request, reply) => {
       path: '/'
     });
 
-    console.log("✅ Session cookie cleared + token invalidated in denylist");
 
     return reply.status(200).send({ 
       success: true, 
@@ -815,7 +777,6 @@ exports.verifyLoginOTP = async (request, reply) => {
     });
 
     if (!verification) {
-      console.log(`❌ No verification found for ${normalizedEmail}`);
       return reply.status(404).send({ 
         success: false, 
         message: "Verification session expired. Please login again to receive a new OTP." 
@@ -824,7 +785,6 @@ exports.verifyLoginOTP = async (request, reply) => {
 
     // Check if OTP is expired
     if (new Date() > verification.otpExpiry) {
-      console.log(`⏰ OTP expired for ${normalizedEmail}`);
       // Delete expired verification
       await prisma.loginVerification.delete({
         where: { id: verification.id }
@@ -837,14 +797,12 @@ exports.verifyLoginOTP = async (request, reply) => {
 
     // Verify OTP
     if (verification.otp !== otp) {
-      console.log(`❌ Invalid OTP for ${normalizedEmail}`);
       return reply.status(400).send({ 
         success: false, 
         message: "Invalid OTP. Please check and try again." 
       });
     }
 
-    console.log(`✅ OTP verified for ${normalizedEmail}`);
 
     // If this was the user's first login after signup, mark email as verified
     if (!verification.user.emailVerified) {
@@ -852,7 +810,6 @@ exports.verifyLoginOTP = async (request, reply) => {
         where: { id: verification.user.id },
         data: { emailVerified: true }
       });
-      console.log(`📧 Email marked as verified for ${normalizedEmail} (first login completed)`);
     }
 
     // Delete the verification record (clean up)
@@ -900,7 +857,6 @@ exports.verifyLoginOTP = async (request, reply) => {
       path: '/'
     });
 
-    console.log(`✅ Login verification successful for ${normalizedEmail}. Device session valid for 7 days.`);
 
     // Get updated user data (in case emailVerified was updated)
     const updatedUser = await prisma.user.findUnique({
@@ -1023,7 +979,6 @@ exports.resendLoginOTP = async (request, reply) => {
       });
     }
 
-    console.log(`✅ New login OTP sent to ${normalizedEmail}`);
 
     return reply.status(200).send({
       success: true,
@@ -1038,7 +993,6 @@ exports.resendLoginOTP = async (request, reply) => {
 // SAML Callback Handler (Lane 2)
 exports.samlCallback = async (request, reply) => {
   try {
-    console.log("🔐 Processing SAML Callback...");
     
     // Passport strategies populate user
     const user = request.user;
@@ -1049,7 +1003,6 @@ exports.samlCallback = async (request, reply) => {
       return reply.redirect(`${dashboardUrl}/login?error=auth_failed`);
     }
     
-    console.log(`✅ SAML Login Success for ${user.email}`);
     
     // Lane 2: Internal Admin Session -> 60 Minutes (Strict Requirement)
     const sessionDuration = "60m";
@@ -1073,7 +1026,6 @@ exports.samlCallback = async (request, reply) => {
     // Always redirect to the Admin Dashboard login-callback page
     const dashboardUrl = (process.env.DASHBOARD_URL || "https://alpa-dashboard.vercel.app").replace(/\/$/, '');
       
-    console.log(`➡️ Redirecting to: ${dashboardUrl}/login-callback`);
     
     return reply.redirect(`${dashboardUrl}/login-callback?token=${token}&type=saml`);
     
@@ -1367,7 +1319,6 @@ exports.createTicket = async (request, reply) => {
       data: { userId: user.id, expiresAt }
     });
 
-    console.log(`🎫 SSO Ticket created for ${user.email} (${user.role}): ${ticket.id} — expires in 60s`);
 
     return reply.status(200).send({
       success: true,
@@ -1463,7 +1414,6 @@ exports.exchangeTicket = async (request, reply) => {
       createdAt: user.createdAt
     };
 
-    console.log(`✅ SSO Ticket exchanged successfully for ${user.email} (${user.role})`);
 
     // Response shape the Dashboard /login-callback page expects:
     // { token, role, user }

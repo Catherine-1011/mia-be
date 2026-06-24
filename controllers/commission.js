@@ -427,12 +427,6 @@ exports.createCommissionEarned = async ({
       )
     `;
 
-    console.log(
-      `💰 Commission recorded — order: ${orderId}, seller: ${sellerId}, ` +
-      `productGSTIncl: $${orderValue.toFixed(2)}, ` +
-      (payout ? `productExGST: $${payout.productValueExGST}, gst: $${payout.gstAmount}, ` : '') +
-      `commission: $${commissionAmount}, shipping: $${shippingAmount}, netPayable: $${netPayable}`
-    );
 
     return newId;
   } catch (err) {
@@ -1007,7 +1001,6 @@ exports.updatePayoutRequestStatus = async (request, reply) => {
       const requestedAmount = parseFloat(payoutDetails[0]?.requestedAmount || 0);
       
       if (requestedAmount <= 0) {
-        console.log(`⚠️ Invalid requested amount: ${requestedAmount} for payout ${id}`);
         return reply.status(400).send({ 
           success: false, 
           message: "Invalid payout amount" 
@@ -1064,7 +1057,6 @@ exports.updatePayoutRequestStatus = async (request, reply) => {
       }
       
       if (recordsToUpdate.length === 0) {
-        console.log(`⚠️ No pending commissions found for seller ${sellerId}`);
         return reply.status(400).send({ 
           success: false, 
           message: "No pending commissions available to mark as paid" 
@@ -1081,19 +1073,12 @@ exports.updatePayoutRequestStatus = async (request, reply) => {
           AND status    = 'PENDING'::"CommissionStatus"
       `;
       
-      console.log(`💳 Payout completed for seller ${sellerId}:`);
-      console.log(`   - Requested amount: $${requestedAmount}`);
-      console.log(`   - Actually marked as paid: $${totalMarkedAsPaid.toFixed(2)}`);
-      console.log(`   - Commission records updated: ${updated}`);
-      console.log(`   - Record IDs: ${recordsToUpdate.join(', ')}`);
       
       // Verify the seller's remaining balance
       const balanceAfterPayout = await calculateRedeemableBalance(sellerId);
-      console.log(`   - Remaining redeemable balance: $${balanceAfterPayout.redeemableAmount.toFixed(2)}`);
       
       // If there's a significant difference, log a warning
       if (Math.abs(totalMarkedAsPaid - requestedAmount) > 0.01) {
-        console.log(`⚠️ Warning: Marked $${totalMarkedAsPaid.toFixed(2)} as paid, but requested was $${requestedAmount}`);
       }
     }
 

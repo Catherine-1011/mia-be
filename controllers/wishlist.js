@@ -197,7 +197,6 @@ exports.removeFromWishlist = async (request, reply) => {
     const { productId } = request.params;
     const { variantId } = request.body || {};
 
-    console.log(`[removeFromWishlist] User: ${userId}, Product: ${productId}, Variant: ${variantId}`);
 
     // For deletion, if no variantId is provided in body, try to find any item with that productId
     let wishlistItem;
@@ -242,7 +241,6 @@ exports.removeFromWishlist = async (request, reply) => {
         }
       });
       
-      console.log(`[removeFromWishlist] No item found. Existing items for this product:`, existingItems);
       
       return reply.status(404).send({ 
         success: false, 
@@ -257,11 +255,6 @@ exports.removeFromWishlist = async (request, reply) => {
       });
     }
 
-    console.log(`[removeFromWishlist] Found wishlist item:`, {
-      id: wishlistItem.id,
-      productId: wishlistItem.productId,
-      variantId: wishlistItem.variantId
-    });
 
     // Remove from wishlist using the item ID (most reliable)
     await prisma.wishlist.delete({
@@ -270,7 +263,6 @@ exports.removeFromWishlist = async (request, reply) => {
       }
     });
 
-    console.log(`[removeFromWishlist] Successfully removed item:`, wishlistItem.id);
 
     return reply.status(200).send({
       success: true,
@@ -494,7 +486,6 @@ exports.moveToCart = async (request, reply) => {
     const { productId } = request.params;
     const { quantity = 1, variantId } = request.body;
 
-    console.log(`[moveToCart] User: ${userId}, Product: ${productId}, Variant: ${variantId}, Quantity: ${quantity}`);
 
     // Check if productId is provided
     if (!productId) {
@@ -628,7 +619,6 @@ exports.moveToCart = async (request, reply) => {
     if (existingCartItem) {
       // Update quantity (ensure we don't exceed stock)
       const newQuantity = existingCartItem.quantity + parseInt(quantity);
-      console.log(`[moveToCart] Existing cart item found. Current: ${existingCartItem.quantity}, Adding: ${quantity}, New total: ${newQuantity}`);
       
       if (newQuantity > availableStock) {
         return reply.status(400).send({ 
@@ -645,10 +635,8 @@ exports.moveToCart = async (request, reply) => {
           quantity: newQuantity
         }
       });
-      console.log(`[moveToCart] Updated cart item quantity to: ${newQuantity}`);
     } else {
       // Add new cart item
-      console.log(`[moveToCart] Creating new cart item with quantity: ${quantity}`);
       await prisma.cartItem.create({
         data: {
           cartId: cart.id,
@@ -660,7 +648,6 @@ exports.moveToCart = async (request, reply) => {
     }
 
     // Remove from wishlist
-    console.log(`[moveToCart] Removing from wishlist - Product: ${productId}, Variant: ${variantId}, WishlistItemId: ${wishlistItem.id}`);
     
     try {
       if (variantId) {
@@ -680,7 +667,6 @@ exports.moveToCart = async (request, reply) => {
           }
         });
       }
-      console.log(`[moveToCart] Successfully removed from wishlist`);
     } catch (deleteError) {
       console.error(`[moveToCart] Error removing from wishlist:`, deleteError);
       // Don't fail the whole operation if wishlist removal fails
@@ -729,10 +715,8 @@ exports.removeWishlistItemById = async (request, reply) => {
       }
     });
 
-    console.log(`[removeWishlistItemById] User: ${userId}, ItemId: ${itemId}`);
 
     if (!wishlistItem) {
-      console.log(`[removeWishlistItemById] Item not found: ${itemId}`);
       return reply.status(404).send({ 
         success: false, 
         message: "Wishlist item not found" 
@@ -741,25 +725,18 @@ exports.removeWishlistItemById = async (request, reply) => {
 
     // Verify ownership
     if (wishlistItem.userId !== userId) {
-      console.log(`[removeWishlistItemById] Ownership mismatch. Item belongs to: ${wishlistItem.userId}, requested by: ${userId}`);
       return reply.status(403).send({ 
         success: false, 
         message: "Not authorized to remove this item" 
       });
     }
 
-    console.log(`[removeWishlistItemById] Found item:`, {
-      id: wishlistItem.id,
-      productTitle: wishlistItem.product.title,
-      variantId: wishlistItem.variantId
-    });
 
     // Remove the item
     await prisma.wishlist.delete({
       where: { id: itemId }
     });
 
-    console.log(`[removeWishlistItemById] Successfully removed item: ${itemId}`);
 
     return reply.status(200).send({
       success: true,

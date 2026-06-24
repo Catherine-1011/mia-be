@@ -27,8 +27,6 @@ function initStockSocket(io) {
   _io = io;
 
   io.on('connection', (socket) => {
-    console.log(`🟢 [Stock socket] connected: ${socket.id}`);
-
     // ── Client wants real-time updates for a single product ──
     socket.on('watch:product', (productId) => {
       if (typeof productId === 'string' && productId.trim()) {
@@ -55,7 +53,6 @@ function initStockSocket(io) {
     });
 
     socket.on('disconnect', () => {
-      console.log(`🔴 [Stock socket] disconnected: ${socket.id}`);
     });
   });
 }

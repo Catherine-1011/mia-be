@@ -9,9 +9,9 @@ try {
   
   if (accountSid && authToken) {
     twilioClient = twilio(accountSid, authToken);
-    console.log("✅ Twilio SMS service initialized");
+
   } else {
-    console.log("⚠️  Twilio credentials not configured. SMS notifications disabled.");
+
   }
 } catch (error) {
   console.error("❌ Twilio initialization error:", error.message);
@@ -21,7 +21,7 @@ try {
 const sendOrderConfirmationSMS = async (phoneNumber, orderDetails) => {
   try {
     if (!twilioClient) {
-      console.log("⚠️  Twilio not configured. SMS skipped.");
+
       return { success: false, message: "SMS service not configured" };
     }
 
@@ -45,8 +45,6 @@ Thank you for supporting Aboriginal artists! 🌟
       to: phoneNumber
     });
 
-    console.log(`✅ Order confirmation SMS sent to ${phoneNumber}. SID: ${result.sid}`);
-    
     return {
       success: true,
       messageSid: result.sid,
@@ -67,7 +65,7 @@ Thank you for supporting Aboriginal artists! 🌟
 const sendOrderStatusSMS = async (phoneNumber, orderDetails) => {
   try {
     if (!twilioClient) {
-      console.log("⚠️  Twilio not configured. SMS skipped.");
+
       return { success: false, message: "SMS service not configured" };
     }
 
@@ -104,8 +102,6 @@ Track: ${process.env.FRONTEND_URL || 'https://yourwebsite.com'}/orders/${orderDe
       to: phoneNumber
     });
 
-    console.log(`✅ Status update SMS sent to ${phoneNumber}. SID: ${result.sid}`);
-    
     return {
       success: true,
       messageSid: result.sid,
@@ -124,7 +120,7 @@ Track: ${process.env.FRONTEND_URL || 'https://yourwebsite.com'}/orders/${orderDe
 const sendSellerOrderNotificationSMS = async (phoneNumber, orderDetails) => {
   try {
     if (!twilioClient) {
-      console.log("⚠️  Twilio not configured. SMS skipped.");
+
       return { success: false, message: "SMS service not configured" };
     }
 
@@ -146,8 +142,6 @@ ${process.env.SELLER_DASHBOARD_URL || 'https://yourwebsite.com/seller/orders'}
       to: phoneNumber
     });
 
-    console.log(`✅ Seller notification SMS sent to ${phoneNumber}. SID: ${result.sid}`);
-    
     return {
       success: true,
       messageSid: result.sid,

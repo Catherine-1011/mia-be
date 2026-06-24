@@ -368,7 +368,6 @@ exports.requestCategory = async (request, reply) => {
     
     try {
       await notifyAdminNewCategoryRequest(newId, categoryDetails);
-      console.log(`🔔 Notifications sent to admins for category request: ${categoryName.trim()}`);
     } catch (notificationError) {
       console.error('Failed to send notifications to admins:', notificationError);
     }
@@ -390,7 +389,6 @@ exports.requestCategory = async (request, reply) => {
           });
         }
       }
-      console.log(`📧 Emails sent to ${superAdmins.length} super admins for category request: ${categoryName.trim()}`);
     } catch (emailError) {
       console.error('Failed to send emails to super admins:', emailError);
     }
@@ -467,7 +465,6 @@ exports.approveCategory = async (request, reply) => {
           sellerName: seller.name,
           categoryId: id
         });
-        console.log(`🔔 Approval notification sent to seller for category: ${category.categoryName}`);
       } catch (notificationError) {
         console.error('Failed to send approval notification to seller:', notificationError);
       }
@@ -480,7 +477,6 @@ exports.approveCategory = async (request, reply) => {
             approvalMessage: approvalMessage || null,
             categoryId: id
           });
-          console.log(`📧 Approval email sent to seller for category: ${category.categoryName}`);
         } catch (emailError) {
           console.error('Failed to send approval email to seller:', emailError);
         }
@@ -558,7 +554,6 @@ exports.rejectCategory = async (request, reply) => {
           sellerName: seller.name,
           categoryId: id
         });
-        console.log(`🔔 Rejection notification sent to seller for category: ${category.categoryName}`);
       } catch (notificationError) {
         console.error('Failed to send rejection notification to seller:', notificationError);
       }
@@ -571,7 +566,6 @@ exports.rejectCategory = async (request, reply) => {
             rejectionMessage: rejectionMessage.trim(),
             categoryId: id
           });
-          console.log(`📧 Rejection email sent to seller for category: ${category.categoryName}`);
         } catch (emailError) {
           console.error('Failed to send rejection email to seller:', emailError);
         }
@@ -767,7 +761,6 @@ exports.resubmitCategory = async (request, reply) => {
     
     try {
       await notifyAdminNewCategoryRequest(id, categoryDetails);
-      console.log(`🔔 Resubmit notifications sent to admins for category: ${categoryName.trim()}`);
     } catch (notificationError) {
       console.error('Failed to send resubmit notifications to admins:', notificationError);
     }
@@ -789,7 +782,6 @@ exports.resubmitCategory = async (request, reply) => {
           });
         }
       }
-      console.log(`📧 Resubmit emails sent to ${superAdmins.length} super admins for category: ${categoryName.trim()}`);
     } catch (emailError) {
       console.error('Failed to send resubmit emails to super admins:', emailError);
     }

@@ -40,10 +40,7 @@ exports.createBlog = async (request, reply) => {
     const { title, slug, content, shortDescription, tags, ctaText } = body;
 
     // DEBUG: Log tags processing
-    console.log('🐛 DEBUG - Raw tags received:', tags);
-    console.log('🐛 DEBUG - Type of tags:', typeof tags);
     const processedTags = processTags(tags);
-    console.log('🐛 DEBUG - Processed tags:', processedTags);
 
     // Enhanced validation with specific error messages
     if (!title || title.trim() === '') {
@@ -123,8 +120,6 @@ exports.updateBlog = async (request, reply) => {
 
     // DEBUG: Log tags processing for updates
     if (tags !== undefined) {
-      console.log('🐛 UPDATE DEBUG - Raw tags received:', tags);
-      console.log('🐛 UPDATE DEBUG - Type of tags:', typeof tags);
     }
 
     const blog = await prisma.blog.findUnique({ where: { id } });

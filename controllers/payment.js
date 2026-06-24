@@ -619,13 +619,11 @@ exports.stripeWebhook = async (request, reply) => {
             });
           }
 
-          console.log(`❌ Payment failed — Order #${failedOrder.displayId} cancelled, stock restored. Reason: ${failReason}`);
         } else {
           await prisma.order.updateMany({
             where: { stripePaymentIntentId: pi.id },
             data: { paymentStatus: 'FAILED' },
           });
-          console.log(`⚠️ Payment failed for PaymentIntent: ${pi.id}. Reason: ${failReason}`);
         }
         break;
       }
@@ -648,7 +646,6 @@ exports.stripeWebhook = async (request, reply) => {
 
         if (chargeType === 'direct') {
           // Stripe automatically reversed the application fee — nothing to do
-          console.log(`↩️  Direct Charge refunded for PI ${piId} — Stripe handled application fee reversal automatically`);
           break;
         }
 
@@ -679,7 +676,6 @@ exports.stripeWebhook = async (request, reply) => {
                   updated_at             = NOW()
               WHERE id = ${rec.id}
             `;
-            console.log(`↩️  Transfer reversed — commissionId: ${rec.id}, transferId: ${rec.stripe_transfer_id}`);
           } catch (reverseErr) {
             console.error(`❌ Transfer reversal failed (commissionId: ${rec.id}):`, reverseErr.message);
           }
@@ -715,11 +711,9 @@ exports.stripeWebhook = async (request, reply) => {
           customerEmail: disputedCharge?.billing_details?.email || disputedOrder?.user?.email || null,
         });
 
-        console.log(`🚨 Dispute created — ID: ${dispute.id}, Amount: ${dispute.amount}, Reason: ${dispute.reason}, Order: ${disputedOrder?.displayId || 'unknown'}`);
         break;
       }
       default:
-        console.log(`Unhandled Stripe event: ${event.type}`);
     }
 
     return reply.status(200).send({ received: true });
@@ -786,7 +780,6 @@ async function handlePaymentSucceeded(paymentIntentId) {
   });
 
   if (claimed.count === 0) {
-    console.log(`ℹ️  handlePaymentSucceeded: ${paymentIntentId} already processed — skipping`);
     return false;
   }
 
@@ -875,7 +868,6 @@ async function handlePaymentSucceeded(paymentIntentId) {
     });
   });
 
-  console.log(`✅ Order ${order.id} confirmed (paymentIntentId: ${paymentIntentId})`);
 
   // ── Send confirmation email ─────────────────────────────────────────────
   // Uses order.customerEmail which is always stored at order-creation time for
@@ -1170,7 +1162,6 @@ async function handlePaymentSucceeded(paymentIntentId) {
                 description: sellerTransactionDescription,
                 metadata: sellerStripeMetadata,
               });
-              console.log(`📝 Seller Stripe payment updated — transferId: ${autoTransferId}, order: ${order.displayId}`);
               if (commissionEarnedId) {
                 await prisma.$executeRaw`
                   UPDATE commission_earned
@@ -1194,7 +1185,6 @@ async function handlePaymentSucceeded(paymentIntentId) {
           console.error(`⚠️  Could not update auto-transfer description for seller ${sid}:`, e.message);
         }
       })();
-      console.log(`✅ Direct Charge — seller ${sid} payout handled by Stripe automatically`);
 
       // Notify seller by email (non-blocking)
       const sellerUser = await prisma.user.findUnique({
@@ -1226,7 +1216,6 @@ async function handlePaymentSucceeded(paymentIntentId) {
           });
 
           if (!sellerProfile?.stripeAccountId || !sellerProfile?.stripePayoutsEnabled) {
-            console.log(`⏳ Seller ${sid} has no active Stripe account — transfer skipped, manual payout required`);
             return;
           }
 
@@ -1270,7 +1259,6 @@ async function handlePaymentSucceeded(paymentIntentId) {
             },
           });
 
-          console.log(`💸 Transfer created — seller: ${sid}, amount: $${payout.sellerTotalPayout}, transferId: ${transfer.id}`);
 
           await stripe.transfers.update(transfer.id, {
             description: payoutTransactionDescription,
@@ -1640,7 +1628,6 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       });
     }
 
-    console.log(`✅ Guest Stripe PaymentIntent created: ${paymentIntent.id}, order: ${order.id}`);
 
     // Update PaymentIntent metadata with order ID so it's visible in Stripe Dashboard
     const guestStripeOrderDescription = buildSellerTransactionDescription({
@@ -1804,7 +1791,6 @@ exports.confirmGuestPayment = async (request, reply) => {
     // logged-in confirm, and guest confirm paths without duplication.
     await handlePaymentSucceeded(paymentIntentId);
 
-    console.log(`✅ Guest Stripe payment confirmed for order: ${order.id}`);
 
     return reply.status(200).send({
       success: true,

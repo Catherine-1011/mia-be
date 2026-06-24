@@ -13,9 +13,8 @@ async function validateLocation(placeId) {
   }
 
   try {
-    console.log('🔍 Validating place_id:', placeId);
-    console.log('🔑 Using API key:', apiKey.substring(0, 10) + '...');
-    
+
+
     const url = `https://maps.googleapis.com/maps/api/geocode/json`;
     
     const response = await axios.get(url, {
@@ -24,9 +23,7 @@ async function validateLocation(placeId) {
         key: apiKey
       }
     });
-    
-    console.log('📡 Google API Status:', response.data.status);
-    
+
     if (response.data.status !== 'OK') {
       console.error('❌ Google API Error:', response.data.status);
       if (response.data.error_message) {
@@ -56,9 +53,7 @@ async function validateLocation(placeId) {
 
     const result = response.data.results[0];
     const addressComponents = result.address_components;
-    
-    console.log('📍 Formatted Address:', result.formatted_address);
-    console.log('🗺️ Address Components:', JSON.stringify(addressComponents, null, 2));
+
 
     // Check if in Northern Territory
     const hasNT = addressComponents.some(component => 
@@ -72,8 +67,6 @@ async function validateLocation(placeId) {
       component.short_name === 'AU'
     );
 
-    console.log('✅ Has Australia:', hasAustralia);
-    console.log('✅ Has NT:', hasNT);
 
     if (!hasAustralia) {
       return {
@@ -87,9 +80,7 @@ async function validateLocation(placeId) {
       const state = addressComponents.find(c => 
         c.types.includes('administrative_area_level_1')
       )?.long_name || 'Unknown State';
-      
-      console.log('⚠️ Location is in:', state);
-      
+
       return {
         valid: false,
         reason: `Location is in ${state}, not Northern Territory`,
@@ -98,8 +89,6 @@ async function validateLocation(placeId) {
       };
     }
 
-    console.log('✅ Location verified in Northern Territory');
-    
     return {
       valid: true,
       reason: 'Location verified in Northern Territory',

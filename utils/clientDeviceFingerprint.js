@@ -18,12 +18,7 @@ class DeviceFingerprint {
     
     // Create hash from fingerprint string
     this.fingerprint = await this.createHash(fingerprintString);
-    
-    console.log('🔐 Client device fingerprint generated:', {
-      components,
-      fingerprint: this.fingerprint.substring(0, 8) + '...'
-    });
-    
+
     return this.fingerprint;
   }
 
@@ -146,7 +141,7 @@ class DeviceFingerprint {
       // Try to get from localStorage first (persistent across sessions)
       const stored = localStorage.getItem('_device_fp');
       if (stored && stored.length > 20) {
-        console.log('🔐 Using stored device fingerprint');
+
         this.fingerprint = stored;
         return stored;
       }

@@ -330,7 +330,6 @@ exports.getSellerOrders = async (request, reply) => {
       })
       .filter(Boolean);
 
-    console.log(`📋 Found ${directOrders.length} direct orders, ${subOrders.length} sub-orders, and ${processedOldOrders.length} old orders`);
 
     // Combine direct orders with old direct orders
     const allDirectOrders = [...directOrders, ...processedOldOrders.filter(o => o.isDirectOrder)];
@@ -620,7 +619,6 @@ exports.updateOrderStatus = async (request, reply) => {
         }
       }
     } catch (error) {
-      console.log('Direct order query failed:', error.message);
     }
     
     // If not a direct order, try to find as sub-order (multi-seller)
@@ -662,7 +660,6 @@ exports.updateOrderStatus = async (request, reply) => {
           isSubOrder = true;
         }
       } catch (error) {
-        console.log('SubOrder query failed:', error.message);
       }
     }
     
@@ -847,7 +844,6 @@ exports.updateOrderStatus = async (request, reply) => {
           where: { id: updatedOrder.parentOrder.id },
           data: { status: newParentStatus, overallStatus: newParentStatus, updatedAt: new Date() }
         });
-        console.log(`📦 Parent order ${updatedOrder.parentOrder.id} status updated: ${currentParentStatus} → ${newParentStatus}`);
       }
       // ── End aggregation ───────────────────────────────────────────────────
     }
@@ -858,7 +854,6 @@ exports.updateOrderStatus = async (request, reply) => {
     const customerName = (customer?.isDeleted ? 'Deleted User' : customer?.name) || orderRecord.customerName || 'Customer';
     
     if (customerEmail) {
-      console.log(`📧 Sending status update email to customer: ${customerEmail}`);
       
       sendOrderStatusEmail(customerEmail, customerName, {
         displayId: orderRecord.parentOrder?.displayId || orderRecord.id,
@@ -889,7 +884,6 @@ exports.updateOrderStatus = async (request, reply) => {
 
       // Create in-app notification for customer (only for logged-in users)
       if (customer?.id) {
-        console.log(`🔔 Creating status change notification for customer ${customer.id}: ${normalizedStatus}`);
         notifyCustomerOrderStatusChange(customer.id, orderRecord.id, normalizedStatus.toLowerCase(), {
           totalAmount: orderRecord.subtotal.toString(),
           itemCount: orderRecord.items.length,
@@ -1139,7 +1133,6 @@ exports.updateTrackingInfo = async (request, reply) => {
           where: { id: order.parentOrderId },
           data: { status: newParentStatus, overallStatus: newParentStatus, updatedAt: new Date() }
         });
-        console.log(`📦 Parent order ${order.parentOrderId} status updated: ${currentParentStatus2} → ${newParentStatus}`);
       }
     } else {
       await prisma.order.update({
@@ -1157,7 +1150,6 @@ exports.updateTrackingInfo = async (request, reply) => {
     const customerName  = (order.user?.isDeleted ? 'Deleted User' : order.user?.name) || order.customerName || 'Customer';
 
     if (customerEmail) {
-      console.log(`📧 Sending tracking info email to customer: ${customerEmail}`);
       sendOrderStatusEmail(customerEmail, customerName, {
         displayId: order.displayId,
         status: "shipped",
@@ -1183,7 +1175,6 @@ exports.updateTrackingInfo = async (request, reply) => {
       }).catch(error => { console.error("Email error (non-blocking):", error.message); });
 
       if (order.user?.id) {
-        console.log(`🔔 Creating shipped notification for customer ${order.user.id}`);
         notifyCustomerOrderStatusChange(order.user.id, orderId, "shipped", {
           totalAmount: order.totalAmount.toString(),
           itemCount: order.items.length,
@@ -1757,7 +1748,6 @@ exports.exportSalesReport = async (request, reply) => {
       return reply.status(404).send({ success: false, message: "No sales data found for the specified period" });
     }
 
-    console.log(`✅ Found ${sellerOrders.length} orders (${subOrders.length} sub, ${directOrders.length} direct, ${legacyOrders.length} legacy)`);
 
     let csv, filename;
     if (reportType === 'summary') {
@@ -1784,7 +1774,6 @@ exports.getSalesAnalytics = async (request, reply) => {
     const sellerId = request.user.userId;
     const { startDate, endDate } = request.query;
 
-    console.log(`📊 Fetching sales analytics for seller: ${sellerId}`);
 
     // Build optional date filter
     const dateFilter = {};
@@ -1899,7 +1888,6 @@ exports.getSalesAnalytics = async (request, reply) => {
       }
     };
 
-    console.log(`✅ Analytics generated for seller: ${sellerId} — direct: ${directOrders.length}, sub: ${subOrders.length}, legacy: ${oldOrders.length}`);
 
     return reply.status(200).send({
       success: true,

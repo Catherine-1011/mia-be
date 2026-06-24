@@ -51,7 +51,6 @@ const duoCircleCampaignTransporter = nodemailer.createTransport({
 
 if (process.env.DUO_CIRCLE_USER && process.env.DUO_CIRCLE_PASS) {
   duoCircleConfigured = true;
-  console.log("Duo Circle email service initialized");
 }
 
 // Initialize SendGrid
@@ -60,11 +59,7 @@ let emailConfigured = false;
 if (process.env.SENDGRID_API_KEY) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
   emailConfigured = true;
-  console.log("SendGrid email service initialized");
-  console.log("SendGrid senderEmail:", process.env.SENDER_EMAIL);
-  console.log("SendGrid API Key present:", !!process.env.SENDGRID_API_KEY);
 } else {
-  console.log("SendGrid API key not configured. Emails will be logged to console.");
 }
 
 const isDevelopmentMode = (!emailConfigured && !duoCircleConfigured);
@@ -92,15 +87,12 @@ const sendWithFallback = async (msg, context = 'Email', extraInfo = {}) => {
       
       try {
         await duoCircleTransporter.sendMail(mailOptions);
-        console.log(`[Duo Circle] ${context} sent successfully to:`, msg.to);
         return { success: true };
       } catch (duoErr) {
         console.error(`[Duo Circle] ${context} failed:`, duoErr.message);
         // Fall through to SendGrid if available
         if (emailConfigured) {
-          console.log(`?? Falling back to SendGrid for ${context}...`);
           await sgMail.send(msg);
-          console.log(`? [SendGrid fallback] ${context} sent successfully to:`, msg.to);
           return { success: true };
         }
         throw duoErr;
@@ -110,7 +102,6 @@ const sendWithFallback = async (msg, context = 'Email', extraInfo = {}) => {
     // Otherwise use SendGrid if configured
     if (emailConfigured) {
       await sgMail.send(msg);
-      console.log(`? [SendGrid] ${context} sent successfully to:`, msg.to);
       return { success: true };
     }
 
@@ -127,13 +118,9 @@ const sendWithFallback = async (msg, context = 'Email', extraInfo = {}) => {
     
     // Fallback for development or quota exceeded
     if (process.env.NODE_ENV === 'development' || isQuotaExceeded) {
-      console.log(`? Fallback mode: ${context} sending failed but returning success for development`);
       if (isQuotaExceeded) {
-        console.log("? Reason: SendGrid quota/credits exceeded - please upgrade your SendGrid plan");
       }
       if (extraInfo.otp) {
-        console.log(`? OTP for testing: ${extraInfo.otp}`);
-        console.log(`? Email would have been sent to: ${msg.to}`);
       }
       return { success: true };
     }
@@ -491,7 +478,6 @@ sgMail.send = async (rawMsg, ...args) => {
       console.error('? Duo Circle sending error (via sgMail interceptor):', err.message);
       // Fall back to SendGrid rather than silently dropping the email
       if (emailConfigured) {
-        console.log('?? Falling back to SendGrid for email delivery...');
         return _sgMailSend(msg, ...args);
       }
       throw err;
@@ -510,13 +496,6 @@ const generateOTP = () => {
 // Send OTP email
 const sendOTPEmail = async (email, otp, name) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - OTP Email");
-    console.log("=".repeat(50));
-    console.log(`To: ${email}`);
-    console.log(`Name: ${name}`);
-    console.log(`OTP: ${otp}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -626,10 +605,6 @@ const sendOTPEmail = async (email, otp, name) => {
 // Send Finance Order Invoice Email
 const sendFinanceOrderInvoiceEmail = async (orderDetails, pdfBuffer) => {
   if (isDevelopmentMode) {
-    console.log('\n' + '='.repeat(50));
-    console.log('DEVELOPMENT MODE - Finance Order Invoice Email');
-    console.log(`To: ${process.env.FINANCE_EMAIL_RECEIVER || 'ritikkashyap013@gmail.com'}`);
-    console.log('=' .repeat(50) + '\n');
     return { success: true };
   }
 
@@ -701,7 +676,6 @@ const sendFinanceOrderInvoiceEmail = async (orderDetails, pdfBuffer) => {
 
   try {
     await sgMail.send(msg);
-    console.log(`? Finance invoice email sent to ${process.env.FINANCE_EMAIL_RECEIVER || 'ritikkashyap013@gmail.com'} for order ${orderDetails.displayId}`);
     return { success: true };
   } catch (error) {
     console.error('? Finance invoice email sending error:', error.response?.body || error.message);
@@ -712,14 +686,6 @@ const sendFinanceOrderInvoiceEmail = async (orderDetails, pdfBuffer) => {
 // Send Order Confirmation Email
 const sendOrderConfirmationEmail = async (email, customerName, orderDetails, invoicePDFBuffer) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Order Confirmation Email");
-    console.log("=".repeat(50));
-    console.log(`To: ${email}`);
-    console.log(`Customer: ${customerName}`);
-    console.log(`Order ID: ${orderDetails.displayId}`);
-    console.log(`Total: $${orderDetails.totalAmount.toFixed(2)}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true, message: "Email logged to console (dev mode)" };
   }
 
@@ -984,7 +950,6 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
       }];
     }
     await sgMail.send(msg);
-    console.log(`Order confirmation email sent to ${email}`);
     return { success: true, message: "Email sent successfully" };
   } catch (error) {
     console.error("Email sending error:", error.response?.body || error.message);
@@ -996,12 +961,6 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
 // Send Order Status Update Email
 const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Order Status Update");
-    console.log("=".repeat(50));
-    console.log(`To: ${email}`);
-    console.log(`Status: ${orderDetails.status}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -1283,13 +1242,6 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
 // Send Seller Order Notification Email
 const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Seller Notification");
-    console.log("=".repeat(50));
-    console.log(`To: ${email}`);
-    console.log(`Seller: ${sellerName}`);
-    console.log(`Order: ${orderDetails.displayId}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -1428,12 +1380,6 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
 // Send Contact Form Email
 const sendContactFormEmail = async (email, name, subject, message) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Contact Form");
-    console.log("=".repeat(50));
-    console.log(`To: ${email}`);
-    console.log(`Subject: ${subject}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -1523,7 +1469,6 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
     }
 
     if (isDevelopmentMode) {
-      console.log("\n SLA WARNING:", seller.email, orderId, notificationType);
       return { success: true };
     }
 
@@ -1630,13 +1575,6 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
 // Send Seller Application Submitted Email
 const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Seller Application Submitted");
-    console.log("=".repeat(50));
-    console.log(`To: ${email}`);
-    console.log(`Name: ${name}`);
-    console.log(`Application ID: ${applicationId}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -1818,7 +1756,6 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
 
   try {
     await sgMail.send(msg);
-    console.log(`? Application submitted email sent to ${email}`);
     return { success: true };
   } catch (error) {
     console.error("? Email error:", error.response?.body || error.message);
@@ -1829,13 +1766,6 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
 // Send Seller Registration / Account Created Email (sent right after OTP is verified)
 const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Seller Registration Confirmation");
-    console.log("=".repeat(50));
-    console.log(`To: ${email}`);
-    console.log(`Name: ${name}`);
-    console.log(`Application Number: ${applicationNumber}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -1928,7 +1858,6 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
 
   try {
     await sgMail.send(msg);
-    console.log(`? Registration confirmation email sent to ${email}`);
     return { success: true };
   } catch (error) {
     console.error("? Email error:", error.response?.body || error.message);
@@ -1939,13 +1868,6 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
 // Send Seller Approved Email
 const sendSellerApprovedEmail = async (email, name) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Seller Approved");
-    console.log("=".repeat(50));
-    console.log(`To: ${email}`);
-    console.log(`Name: ${name}`);
-    console.log(`Application ID: ${applicationId}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -2044,7 +1966,6 @@ const sendSellerApprovedEmail = async (email, name) => {
 
   try {
     await sgMail.send(msg);
-    console.log(`? Seller approved email sent to ${email}`);
     return { success: true };
   } catch (error) {
     console.error("? Email error:", error.response?.body || error.message);
@@ -2054,18 +1975,12 @@ const sendSellerApprovedEmail = async (email, name) => {
 
 // Send Seller Low Stock Alert Email
 const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentStock, productId) => {
-  console.log(`\n[Low Stock Email] Preparing to send to: ${email} | Product: "${productTitle}" | Stock: ${currentStock} | isDevelopmentMode: ${isDevelopmentMode}`);
-
   if (!email) {
     console.warn(' [Low Stock Email] No email address provided ? skipping send.');
     return { success: false, error: 'No email address' };
   }
 
   if (isDevelopmentMode) {
-    console.log("=".repeat(50));
-    console.log("[Low Stock Email] DEVELOPMENT MODE ? Email not sent (SENDGRID_API_KEY missing).");
-    console.log(`   To: ${email} | Seller: ${sellerName} | Product: ${productTitle} | Stock: ${currentStock}`);
-    console.log("=".repeat(50) + "\n");
     return { success: false, error: 'Development mode ? SendGrid not configured' };
   }
 
@@ -2182,7 +2097,6 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
 
   try {
     await sgMail.send(msg);
-    console.log(`? Low stock alert email sent to ${email} for product: ${productTitle}`);
     return { success: true };
   } catch (error) {
     console.error("? Low stock email error:", error.response?.body || error.message);
@@ -2193,11 +2107,6 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
 // Send Admin Product Pending Review Email
 const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitle, sellerName, productId } = {}) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Admin Product Pending");
-    console.log("=".repeat(50));
-    console.log(`To: ${adminEmail} | Admin: ${adminName} | Product: ${productTitle} | Seller: ${sellerName}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -2299,7 +2208,6 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
 
   try {
     await sgMail.send(msg);
-    console.log(`? Admin product pending email sent to ${adminEmail} for product: "${productTitle}"`);
     return { success: true };
   } catch (error) {
     console.error("? Admin product pending email error:", error.response?.body || error.message);
@@ -2310,11 +2218,6 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
 // Send Seller Product Approved Email
 const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { productTitle, productId } = {}) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Seller Product Approved");
-    console.log("=".repeat(50));
-    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Product: ${productTitle}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -2413,7 +2316,6 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
 
   try {
     await sgMail.send(msg);
-    console.log(`Seller product approved email sent to ${sellerEmail} for product: "${productTitle}"`);
     return { success: true };
   } catch (error) {
     const detail = error.response?.body?.errors?.[0]?.message || error.response?.body || error.message;
@@ -2425,11 +2327,6 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
 // Send Seller Product Rejected Email
 const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { productTitle, reason, productId } = {}) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Seller Product Rejected");
-    console.log("=".repeat(50));
-    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Product: ${productTitle} | Reason: ${reason}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -2535,7 +2432,6 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
 
   try {
     await sgMail.send(msg);
-    console.log(`? Seller product rejected email sent to ${sellerEmail} for product: "${productTitle}"`);
     return { success: true };
   } catch (error) {
     console.error("? Seller product rejected email error:", error.response?.body || error.message);
@@ -2546,11 +2442,6 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
 // -- Send Seller Category Approved Email --------------------------------------
 const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { categoryName, approvalMessage, categoryId } = {}) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Seller Category Approved");
-    console.log("=".repeat(50));
-    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Category: ${categoryName}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -2629,7 +2520,6 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
 
   try {
     await sgMail.send(msg);
-    console.log(`? Seller category approved email sent to ${sellerEmail} for category: "${categoryName}"`);
     return { success: true };
   } catch (error) {
     console.error("? Seller category approved email error:", error.response?.body || error.message);
@@ -2640,11 +2530,6 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
 // -- Send Seller Category Rejected Email --------------------------------------
 const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { categoryName, rejectionMessage, categoryId } = {}) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Seller Category Rejected");
-    console.log("=".repeat(50));
-    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Category: ${categoryName}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -2722,7 +2607,6 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
 
   try {
     await sgMail.send(msg);
-    console.log(`? Seller category rejected email sent to ${sellerEmail} for category: "${categoryName}"`);
     return { success: true };
   } catch (error) {
     console.error("? Seller category rejected email error:", error.response?.body || error.message);
@@ -2733,11 +2617,6 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
 // -- Send Super Admin Category Request Email ----------------------------------
 const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categoryName, description, sellerName, categoryId } = {}) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Super Admin Category Request");
-    console.log("=".repeat(50));
-    console.log(`To: ${adminEmail} | Seller: ${sellerName} | Category: ${categoryName}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -2810,7 +2689,6 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
 
   try {
     await sgMail.send(msg);
-    console.log(`? Super admin category request email sent to ${adminEmail} for category: "${categoryName}"`);
     return { success: true };
   } catch (error) {
     console.error("? Super admin category request email error:", error.response?.body || error.message);
@@ -2822,11 +2700,6 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
 // Sent to super admins when a new seller submits their application
 const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName, email, businessName, applicationId } = {}) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Super Admin New Seller");
-    console.log("=".repeat(50));
-    console.log(`To: ${adminEmail} | Seller: ${sellerName} | Business: ${businessName}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -2900,7 +2773,6 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
 
   try {
     await sgMail.send(msg);
-    console.log(`? Super admin new seller email sent to ${adminEmail} for seller: "${sellerName}"`);
     return { success: true };
   } catch (error) {
     console.error("? Super admin new seller email error:", error.response?.body || error.message);
@@ -2914,15 +2786,6 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
 //                 sellerNames (string), totalAmount, paymentMethod, items[] }
 const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Admin New Order Email");
-    console.log("=".repeat(50));
-    console.log(`To: ${adminEmail}`);
-    console.log(`Order: ${orderDetails.displayId}`);
-    console.log(`Customer: ${orderDetails.customerName}`);
-    console.log(`Sellers: ${orderDetails.sellerNames}`);
-    console.log(`Total: $${parseFloat(orderDetails.totalAmount).toFixed(2)}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -3072,7 +2935,6 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
 
   try {
     await sgMail.send(msg);
-    console.log(`? Admin new order email sent to ${adminEmail} for order ${orderDetails.displayId}`);
     return { success: true };
   } catch (error) {
     console.error("? Admin new order email error:", error.response?.body || error.message);
@@ -3085,10 +2947,6 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
 // orderDetails: { orderId, status, customerName, totalAmount, reason?, trackingNumber?, estimatedDelivery? }
 const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Seller Order Status Update");
-    console.log(`To: ${email} | Seller: ${sellerName} | Order: ${orderDetails.displayId} | Status: ${orderDetails.status}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -3166,7 +3024,6 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
 
   try {
     await sgMail.send(msg);
-    console.log(`? Seller order status email sent to ${email} for order ${orderDetails.displayId}`);
     return { success: true };
   } catch (error) {
     console.error("? Seller order status email error:", error.response?.body || error.message);
@@ -3179,10 +3036,6 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
 // orderDetails: { orderId, status, sellerName?, customerName, totalAmount, updatedBy, reason?, trackingNumber? }
 const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Admin Order Status Update");
-    console.log(`To: ${adminEmail} | Order: ${orderDetails.displayId} | Status: ${orderDetails.status} | By: ${orderDetails.updatedBy}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -3256,7 +3109,6 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
 
   try {
     await sgMail.send(msg);
-    console.log(`? Admin order status email sent to ${adminEmail} for order ${orderDetails.displayId}`);
     return { success: true };
   } catch (error) {
     console.error("? Admin order status email error:", error.response?.body || error.message);
@@ -3269,11 +3121,6 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
 // productDetails: { productTitle, productId }
 const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { productTitle, productId } = {}) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Seller Product Activated");
-    console.log("=".repeat(50));
-    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Product: ${productTitle}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -3346,7 +3193,6 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
 
   try {
     await sgMail.send(msg);
-    console.log(`? Seller product activated email sent to ${sellerEmail} for product: "${productTitle}"`);
     return { success: true };
   } catch (error) {
     console.error("? Seller product activated email error:", error.response?.body || error.message);
@@ -3359,11 +3205,6 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
 // productDetails: { productTitle, reason, productId }
 const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { productTitle, reason, productId } = {}) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Seller Product Deactivated");
-    console.log("=".repeat(50));
-    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Product: ${productTitle} | Reason: ${reason}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -3443,7 +3284,6 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
 
   try {
     await sgMail.send(msg);
-    console.log(`? Seller product deactivated email sent to ${sellerEmail} for product: "${productTitle}"`);
     return { success: true };
   } catch (error) {
     console.error("? Seller product deactivated email error:", error.response?.body || error.message);
@@ -3456,11 +3296,6 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
 // productDetails: { productTitle, sellerName, stock, productId }
 const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { productTitle, sellerName, stock, productId } = {}) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Admin Low Stock Deactivation");
-    console.log("=".repeat(50));
-    console.log(`To: ${adminEmail} | Admin: ${adminName} | Product: ${productTitle} | Seller: ${sellerName} | Stock: ${stock}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -3549,7 +3384,6 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
 
   try {
     await sgMail.send(msg);
-    console.log(`? Admin low-stock deactivation email sent to ${adminEmail} for product: "${productTitle}"`);
     return { success: true };
   } catch (error) {
     console.error("? Admin low-stock deactivation email error:", error.response?.body || error.message);
@@ -3562,11 +3396,6 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
 // details: { productTitle, productId, sellerName, inactiveReason }
 const sendAdminProductSellerDeactivatedEmail = async (adminEmail, adminName, { productTitle, productId, sellerName, inactiveReason } = {}) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Admin: Seller Deactivated Product");
-    console.log("=".repeat(50));
-    console.log(`To: ${adminEmail} | Product: ${productTitle} | Seller: ${sellerName} | Reason: ${inactiveReason}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -3637,7 +3466,6 @@ const sendAdminProductSellerDeactivatedEmail = async (adminEmail, adminName, { p
 
   try {
     await sgMail.send(msg);
-    console.log(`? Admin seller-deactivated email sent to ${adminEmail} for product: "${productTitle}"`);
     return { success: true };
   } catch (error) {
     console.error("? Admin seller-deactivated email error:", error.response?.body || error.message);
@@ -3650,11 +3478,6 @@ const sendAdminProductSellerDeactivatedEmail = async (adminEmail, adminName, { p
 // details: { productTitle, productId, sellerName, reviewNote }
 const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { productTitle, productId, sellerName, reviewNote } = {}) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Admin: Product Submit for Review");
-    console.log("=".repeat(50));
-    console.log(`To: ${adminEmail} | Product: ${productTitle} | Seller: ${sellerName} | Note: ${reviewNote}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -3725,7 +3548,6 @@ const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { produc
 
   try {
     await sgMail.send(msg);
-    console.log(`? Admin product-submit-review email sent to ${adminEmail} for product: "${productTitle}"`);
     return { success: true };
   } catch (error) {
     console.error("? Admin product-submit-review email error:", error.response?.body || error.message);
@@ -3738,11 +3560,6 @@ const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { produc
 // details: { productTitle, productId, inactiveReason }
 const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { productTitle, productId, inactiveReason } = {}) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Seller Self-Deactivated Product");
-    console.log("=".repeat(50));
-    console.log(`To: ${sellerEmail} | Product: ${productTitle} | Reason: ${inactiveReason}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -3809,7 +3626,6 @@ const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { 
 
   try {
     await sgMail.send(msg);
-    console.log(`? Seller self-deactivation email sent to ${sellerEmail} for product: "${productTitle}"`);
     return { success: true };
   } catch (error) {
     console.error("? Seller self-deactivation email error:", error.response?.body || error.message);
@@ -3822,11 +3638,6 @@ const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { 
 // details: { productTitle, productId, reviewNote }
 const sendSellerProductSubmitReviewConfirmEmail = async (sellerEmail, sellerName, { productTitle, productId, reviewNote } = {}) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Seller Product Submit Review Confirmation");
-    console.log("=".repeat(50));
-    console.log(`To: ${sellerEmail} | Product: ${productTitle}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -3898,7 +3709,6 @@ const sendSellerProductSubmitReviewConfirmEmail = async (sellerEmail, sellerName
 
   try {
     await sgMail.send(msg);
-    console.log(`? Seller submit-review confirmation email sent to ${sellerEmail} for product: "${productTitle}"`);
     return { success: true };
   } catch (error) {
     console.error("? Seller submit-review confirmation email error:", error.response?.body || error.message);
@@ -3909,11 +3719,8 @@ const sendSellerProductSubmitReviewConfirmEmail = async (sellerEmail, sellerName
 // Test email configuration
 const testEmailConfig = async () => {
   if (!emailConfigured) {
-    console.log(" Email not configured");
     return false;
   }
-  
-  console.log("? SendGrid email service is ready");
   return true;
 };
 
@@ -3925,11 +3732,6 @@ const sendSuperAdminBankChangeRequestEmail = async (adminEmail, adminName, detai
   const { sellerName, storeName, requestId, newBankDetails = {} } = details;
 
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Super Admin Bank Change Request");
-    console.log("=".repeat(50));
-    console.log(`To: ${adminEmail} | Seller: ${sellerName} | Request: ${requestId}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -3999,7 +3801,6 @@ const sendSuperAdminBankChangeRequestEmail = async (adminEmail, adminName, detai
 
   try {
     await sgMail.send(buildMsg(msg));
-    console.log(`? Super admin bank change request email sent to ${adminEmail}`);
     return { success: true };
   } catch (error) {
     console.error("? Super admin bank change request email error:", error.response?.body || error.message);
@@ -4013,11 +3814,6 @@ const sendSellerBankChangeApprovedEmail = async (sellerEmail, sellerName, detail
   const { requestId, newBankDetails = {} } = details;
 
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Seller Bank Change Approved");
-    console.log("=".repeat(50));
-    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Request: ${requestId}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -4085,7 +3881,6 @@ const sendSellerBankChangeApprovedEmail = async (sellerEmail, sellerName, detail
 
   try {
     await sgMail.send(buildMsg(msg));
-    console.log(`? Seller bank change approved email sent to ${sellerEmail}`);
     return { success: true };
   } catch (error) {
     console.error("? Seller bank change approved email error:", error.response?.body || error.message);
@@ -4099,12 +3894,6 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
   const { requestId, reviewNote } = details;
 
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Seller Bank Change Rejected");
-    console.log("=".repeat(50));
-    console.log(`To: ${sellerEmail} | Seller: ${sellerName} | Request: ${requestId}`);
-    console.log(`Reason: ${reviewNote || 'No reason provided'}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -4170,7 +3959,6 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
 
   try {
     await sgMail.send(buildMsg(msg));
-    console.log(`? Seller bank change rejected email sent to ${sellerEmail}`);
     return { success: true };
   } catch (error) {
     console.error("? Seller bank change rejected email error:", error.response?.body || error.message);
@@ -4181,13 +3969,6 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
 // --- Refund Request Confirmation Email ---------------------------------------
 const sendRefundRequestConfirmationEmail = async (email, customerName, refundDetails, invoicePDFBuffer) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Refund Request Confirmation");
-    console.log("=".repeat(50));
-    console.log(`To: ${email}`);
-    console.log(`Order: ${refundDetails.displayId}`);
-    console.log(`Type: ${refundDetails.requestType}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -4411,10 +4192,6 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
 // refundDetails: { displayId, status, adminMessage?, requestType, totalAmount?, requestedItems?, isGuest? }
 const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, invoicePDFBuffer) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Refund Status Update (Customer)");
-    console.log(`To: ${email} | Order: ${refundDetails.displayId} | Status: ${refundDetails.status}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -4627,10 +4404,6 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
 // refundDetails: { displayId, status, adminMessage?, requestType, customerName, totalAmount?, requestedItems? }
 const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Refund Status Update (Seller)");
-    console.log(`To: ${email} | Seller: ${sellerName} | Order: ${refundDetails.displayId} | Status: ${refundDetails.status}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 
@@ -4912,9 +4685,7 @@ const sendMonthlyGstReportEmail = async (email, reportData, csvBase64String) => 
   try {
     if (process.env.NODE_ENV !== 'test') {
       await sgMail.send(msg);
-      console.log(`? Monthly GST Report email sent to ${email}`);
     } else {
-      console.log(`[TEST] Simulating Monthly GST Report email to ${email}`);
     }
     return { success: true };
   } catch (error) {
@@ -4925,11 +4696,6 @@ const sendMonthlyGstReportEmail = async (email, reportData, csvBase64String) => 
 
 const sendNewsletterCampaignEmail = async ({ toEmail, subject, content, bannerImage, buttonText, buttonLink }) => {
   if (isDevelopmentMode) {
-    console.log('\n' + '='.repeat(50));
-    console.log('DEVELOPMENT MODE - Newsletter Campaign Email');
-    console.log(`To: ${toEmail}`);
-    console.log(`Subject: ${subject}`);
-    console.log('='.repeat(50) + '\n');
     return { success: true };
   }
 
@@ -4972,7 +4738,6 @@ const sendNewsletterCampaignEmail = async ({ toEmail, subject, content, bannerIm
         subject,
         html
       });
-      console.log(`? [SendGrid] Newsletter Campaign Email sent to: ${toEmail}`);
       return { success: true };
     } catch (error) {
       console.error(`? [SendGrid] Newsletter Campaign Email failed for ${toEmail}:`, error.response?.body || error.message);
@@ -4989,7 +4754,6 @@ const sendNewsletterCampaignEmail = async ({ toEmail, subject, content, bannerIm
         subject,
         html
       });
-      console.log(`? [Duo Circle] Newsletter Campaign Email sent to: ${toEmail}`);
       return { success: true };
     } catch (error) {
       console.error(`? [Duo Circle] Newsletter Campaign Email failed for ${toEmail}:`, error.message);
@@ -5008,11 +4772,6 @@ const sendNewsletterSubscriptionAlertEmail = async ({ subscribedEmail, subscribe
   }
 
   if (isDevelopmentMode) {
-    console.log('\n' + '='.repeat(50));
-    console.log('DEVELOPMENT MODE - Newsletter Admin Alert');
-    console.log(`To: ${adminEmail}`);
-    console.log(`Subscriber: ${subscribedEmail}`);
-    console.log('='.repeat(50) + '\n');
     return { success: true };
   }
 
@@ -5043,10 +4802,6 @@ const sendNewsletterSubscriptionAlertEmail = async ({ subscribedEmail, subscribe
 // a customer order is paid.
 const sendSellerPayoutTransferEmail = async (sellerEmail, sellerName, { orderId, orderDisplayId, amount, currency = 'AUD' } = {}) => {
   if (isDevelopmentMode) {
-    console.log('\n' + '='.repeat(50));
-    console.log('DEVELOPMENT MODE - Seller Payout Transfer');
-    console.log(`To: ${sellerEmail} | Order: ${orderDisplayId} | Amount: ${currency} ${amount}`);
-    console.log('='.repeat(50) + '\n');
     return { success: true };
   }
 
@@ -5125,10 +4880,6 @@ const sendSellerPayoutTransferEmail = async (sellerEmail, sellerName, { orderId,
 // charges_enabled flips to true for the first time.
 const sendSellerStripeApprovedEmail = async (sellerEmail, sellerName) => {
   if (isDevelopmentMode) {
-    console.log('\n' + '='.repeat(50));
-    console.log('DEVELOPMENT MODE - Seller Stripe Approved');
-    console.log(`To: ${sellerEmail} | Name: ${sellerName}`);
-    console.log('='.repeat(50) + '\n');
     return { success: true };
   }
 
@@ -5194,8 +4945,6 @@ const sendSellerStripeApprovedEmail = async (sellerEmail, sellerName) => {
 };
 
 const sendDisputeAlertEmail = async ({ adminEmail, adminName, disputeId, amount, currency, reason, orderId, orderDisplayId, chargeId, customerEmail }) => {
-  console.log(`[sendDisputeAlertEmail] Dispute ${disputeId} — Order #${orderDisplayId || orderId}`);
-
   const amountFormatted = amount ? `${currency?.toUpperCase() || 'AUD'} ${(amount / 100).toFixed(2)}` : 'Unknown';
   const orderLink = orderDisplayId ? `${orderDisplayId}` : (orderId || 'N/A');
 
@@ -5229,13 +4978,6 @@ const sendDisputeAlertEmail = async ({ adminEmail, adminName, disputeId, amount,
 // Send seller account deactivated email
 const sendSellerAccountDeactivatedEmail = async (email, sellerName, reason) => {
   if (isDevelopmentMode) {
-    console.log("\n" + "=".repeat(50));
-    console.log("DEVELOPMENT MODE - Seller Account Deactivated");
-    console.log("=".repeat(50));
-    console.log(`To: ${email}`);
-    console.log(`Seller Name: ${sellerName}`);
-    console.log(`Reason: ${reason || 'No reason provided'}`);
-    console.log("=".repeat(50) + "\n");
     return { success: true };
   }
 

@@ -67,12 +67,9 @@ async function triggerStripeRefund(paymentIntentId, reason, displayId) {
         reason: 'requested_by_customer',
         metadata: { displayId, cancellationReason: reason.slice(0, 500) }
       });
-      console.log(`↩️  Stripe refund issued for order #${displayId}`);
     } else if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(pi.status)) {
       await stripe.paymentIntents.cancel(paymentIntentId);
-      console.log(`❌ Stripe PaymentIntent cancelled for order #${displayId} (not yet captured)`);
     } else {
-      console.log(`ℹ️  Stripe PI ${paymentIntentId} status "${pi.status}" — no action needed`);
     }
   } catch (err) {
     console.error(`⚠️  Stripe refund/cancel error for order #${displayId}:`, err.message);
@@ -123,7 +120,6 @@ const handleLowStockAlerts = async (productIds) => {
         SET "isActive" = false, status = 'INACTIVE'
         WHERE id = ${product.id}
       `;
-      console.log(`⚠️  Product "${product.title}" deactivated — effective stock: ${effectiveStock}`);
 
       // In-app notification (non-blocking)
       notifySellerLowStock(
@@ -724,9 +720,7 @@ exports.createOrder = async (request, reply) => {
     const orderId = mainOrder.id;
     
     if (order.isMultiSeller) {
-      console.log(`✅ Multi-seller Order created: Parent ${orderId} with ${order.subOrders.length} sub-orders`);
     } else {
-      console.log(`✅ Single-seller Order created: ${orderId} (direct order, no sub-orders)`);
     }
     
     // Stock broadcasts are handled automatically by the Prisma middleware
@@ -839,7 +833,6 @@ exports.createOrder = async (request, reply) => {
       try {
         // 1. Customer confirmation email (invoice download link is in the email)
         if (user.email) {
-          console.log(`📧 Sending order confirmation email to customer: ${user.email}`);
           try {
             const emailResult = await sendOrderConfirmationEmail(user.email, user.name, {
               displayId: mainOrder.displayId,
@@ -871,7 +864,6 @@ exports.createOrder = async (request, reply) => {
               }
             });
             if (emailResult?.success) {
-              console.log(`✅ Order confirmation email sent to ${user.email}`);
             } else {
               console.error(`❌ Order confirmation email failed for ${user.email}:`, emailResult?.error);
             }
@@ -922,7 +914,6 @@ exports.createOrder = async (request, reply) => {
                   }
                 });
                 if (adminConfirmResult?.success) {
-                  console.log(`✅ Super admin order confirmation sent to ${admin.email}`);
                 } else {
                   console.error(`❌ Super admin order confirmation failed for ${admin.email}:`, adminConfirmResult?.error);
                 }
@@ -956,7 +947,6 @@ exports.createOrder = async (request, reply) => {
             }
             if (seller && seller.email) {
               const sellerName = seller.sellerProfile?.storeName || seller.sellerProfile?.businessName || seller.name || 'Seller';
-              console.log(`📧 Sending order notification email to seller: ${seller.email}`);
               try {
                 const sellerEmailResult = await sendSellerOrderNotificationEmail(seller.email, sellerName, {
                   displayId: mainOrder.displayId,
@@ -970,7 +960,6 @@ exports.createOrder = async (request, reply) => {
                   customerPhone: mobileNumber || user.phone || ''
                 });
                 if (sellerEmailResult?.success) {
-                  console.log(`✅ Seller order email sent to ${seller.email}`);
                 } else {
                   console.error(`❌ Seller order email failed for ${seller.email}:`, sellerEmailResult?.error);
                 }
@@ -986,13 +975,11 @@ exports.createOrder = async (request, reply) => {
         }));
 
         // 3. Admin order emails — notify SUPER_ADMIN only
-        console.log('🔍 Attempting to send super admin notifications...');
         try {
           const admins = await prisma.user.findMany({
             where: { role: 'SUPER_ADMIN' },
             select: { email: true, name: true }
           });
-          console.log(`📋 Found ${admins.length} super admins:`, admins.map(a => a.email));
           
           const allItems = cart.items.map(item => ({
             title: getItemDisplayTitle(item),
@@ -1002,7 +989,6 @@ exports.createOrder = async (request, reply) => {
           
           for (const admin of admins) {
             if (admin.email) {
-              console.log(`📧 Sending admin order email to: ${admin.email}`);
               try {
                 const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
                   displayId: mainOrder.displayId,
@@ -1015,7 +1001,6 @@ exports.createOrder = async (request, reply) => {
                   items: allItems
                 });
                 if (adminEmailResult?.success) {
-                  console.log(`✅ Admin order email sent to ${admin.email}`);
                 } else {
                   console.error(`❌ Admin order email failed for ${admin.email}:`, adminEmailResult?.error);
                 }
@@ -1477,7 +1462,6 @@ exports.cancelOrder = async (request, reply) => {
             updatedAt: new Date()
           }
         });
-        console.log(`✅ Cancelled ${updateResult.count} sub-orders for order ${orderId}`);
       }
 
       // Then cancel the parent order
@@ -1489,7 +1473,6 @@ exports.cancelOrder = async (request, reply) => {
           updatedAt: new Date()
         }
       });
-      console.log(`✅ Cancelled parent order ${orderId}`);
     });
 
     // Trigger Stripe refund / cancellation (non-blocking — DB is already updated)
@@ -1619,7 +1602,6 @@ exports.cancelOrder = async (request, reply) => {
 
     // ── Email (only when email address is available) ──────────────────────
     if (user && user.email) {
-      console.log(`📧 Sending cancellation email to customer: ${user.email}`);
 
       sendOrderStatusEmail(user.email, user.name, {
         displayId: order.displayId,
@@ -1741,7 +1723,6 @@ exports.cancelGuestOrder = async (request, reply) => {
             updatedAt: new Date()
           }
         });
-        console.log(`✅ Cancelled ${updateResult.count} guest sub-orders for order ${orderId_internal}`);
       }
 
       // Then cancel the parent order
@@ -1753,7 +1734,6 @@ exports.cancelGuestOrder = async (request, reply) => {
           updatedAt: new Date()
         }
       });
-      console.log(`✅ Cancelled parent guest order ${orderId_internal}`);
     });
 
     // Trigger Stripe refund / cancellation (non-blocking — DB is already updated)
@@ -1876,7 +1856,6 @@ exports.cancelGuestOrder = async (request, reply) => {
 
     // ── Email notification to guest ──────────────────────────────────────────
     if (order.customerEmail) {
-      console.log(`📧 Sending cancellation email to guest: ${order.customerEmail}`);
 
       sendOrderStatusEmail(order.customerEmail, order.customerName, {
         displayId: order.displayId,
@@ -3533,7 +3512,6 @@ exports.createGuestOrder = async (request, reply) => {
       return newOrder;
     });
 
-    console.log(`✅ Guest order created: ${order.id}`);
 
     // Check for low stock on all ordered products and deactivate + alert if <= 2
     handleLowStockAlerts(orderItems.map(i => i.productId));
@@ -3589,7 +3567,6 @@ exports.createGuestOrder = async (request, reply) => {
     ;(async () => {
       try {
         // 1. Guest customer confirmation email (invoice download button is in the email)
-        console.log(`📧 Sending order confirmation email to guest customer: ${customerEmail}`);
         try {
           const guestEmailResult = await sendOrderConfirmationEmail(customerEmail, customerName, {
             displayId: order.displayId,
@@ -3621,7 +3598,6 @@ exports.createGuestOrder = async (request, reply) => {
             }
           });
           if (guestEmailResult?.success) {
-            console.log(`✅ Guest order confirmation email sent to ${customerEmail}`);
           } else {
             console.error(`❌ Guest order confirmation email failed for ${customerEmail}:`, guestEmailResult?.error);
           }
@@ -3671,7 +3647,6 @@ exports.createGuestOrder = async (request, reply) => {
                   }
                 });
                 if (adminGuestConfirmResult?.success) {
-                  console.log(`✅ Super admin guest order confirmation sent to ${admin.email}`);
                 } else {
                   console.error(`❌ Super admin guest order confirmation failed for ${admin.email}:`, adminGuestConfirmResult?.error);
                 }
@@ -3699,7 +3674,6 @@ exports.createGuestOrder = async (request, reply) => {
             }
             if (seller && seller.email) {
               const sellerName = seller.sellerProfile?.storeName || seller.sellerProfile?.businessName || seller.name || 'Seller';
-              console.log(`📧 Sending order notification email to seller: ${seller.email}`);
               try {
                 const sellerEmailResult = await sendSellerOrderNotificationEmail(seller.email, sellerName, {
                   displayId: order.displayId,
@@ -3714,7 +3688,6 @@ exports.createGuestOrder = async (request, reply) => {
                   isGuest: true
                 });
                 if (sellerEmailResult?.success) {
-                  console.log(`✅ Guest seller order email sent to ${seller.email}`);
                 } else {
                   console.error(`❌ Guest seller order email failed for ${seller.email}:`, sellerEmailResult?.error);
                 }
@@ -3730,13 +3703,11 @@ exports.createGuestOrder = async (request, reply) => {
         }));
 
         // 3. Admin order emails for guest orders
-        console.log('🔍 Attempting to send super admin notifications for guest order...');
         try {
           const admins = await prisma.user.findMany({
             where: { role: 'SUPER_ADMIN' },
             select: { email: true, name: true }
           });
-          console.log(`📋 Found ${admins.length} super admins for guest order:`, admins.map(a => a.email));
           
           const guestSellerNames = [...sellerNotifications.keys()]
             .map(sid => guestSellerNameMap?.get(sid) || 'Unknown')
@@ -3750,7 +3721,6 @@ exports.createGuestOrder = async (request, reply) => {
           
           for (const admin of admins) {
             if (admin.email) {
-              console.log(`📧 Sending guest admin order email to: ${admin.email}`);
               try {
                 const adminEmailResult = await sendAdminNewOrderEmail(admin.email, admin.name || 'Admin', {
                   displayId: order.displayId,
@@ -3763,7 +3733,6 @@ exports.createGuestOrder = async (request, reply) => {
                   items: allItems
                 });
                 if (adminEmailResult?.success) {
-                  console.log(`✅ Admin guest order email sent to ${admin.email}`);
                 } else {
                   console.error(`❌ Admin guest order email failed for ${admin.email}:`, adminEmailResult?.error);
                 }

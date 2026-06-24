@@ -3100,8 +3100,8 @@ exports.reorder = async (request, reply) => {
         continue;
       }
 
-      // Product inactive or not approved
-      if (!product.isActive || product.status !== 'APPROVED') {
+      // Product inactive or not active
+      if (!product.isActive || product.status !== 'ACTIVE') {
         unavailableItems.push({
           productId: product.id,
           title: product.title,

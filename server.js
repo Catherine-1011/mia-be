@@ -250,6 +250,7 @@ const orderRoutes = require("./routes/orderRoutes");
 const sellerOrderRoutes = require("./routes/sellerOrderRoutes");
 const sellerOnboardingRoutes = require("./routes/sellerOnboardingRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const samlAdminRoutes = require("./routes/samlAdminRoutes");
 const supportRoutes = require("./routes/supportRoutes");
 const ratingRoutes = require("./routes/ratingRoutes");
 const locationRoutes = require("./routes/locationRoutes.js");
@@ -382,6 +383,7 @@ app.register(sellerOnboardingRoutes, { prefix: "/api/sellers" });
 app.register(sellerOnboardingRoutes, { prefix: "/api/seller-onboarding" }); // alias for frontend compatibility
 app.register(supportRoutes, { prefix: "/api/support" });
 app.register(adminRoutes, { prefix: "/api/admin" });
+app.register(samlAdminRoutes, { prefix: "/api/admin" });
 app.register(ratingRoutes, { prefix: "/api/ratings" });
 app.register(locationRoutes, { prefix: "/api" });
 app.register(userRoutes, { prefix: "/api/users" });

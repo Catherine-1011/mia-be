@@ -72,18 +72,24 @@ module.exports = function (app) {
         // OR we map them to an account.
         
         if (!user) {
-           console.log(`⚠️ User not found for SAML email: ${email}. Creating provisioned account.`);
-           // Optional: Auto-provision user
-           user = await prisma.user.create({
-             data: {
-               email: email.toLowerCase(),
-               name: profile.givenName ? `${profile.givenName} ${profile.sn || ''}` : email.split('@')[0],
-               role: 'ADMIN', // Default to ADMIN/STAFF for Internal Lane
-               password: 'SAML_MANAGED_ACCOUNT_NO_PASSWORD',
-               isVerified: true,
-               emailVerified: true
-             }
+           console.log(`⚠️ User not found for SAML email: ${email}. Creating provisioned account (pending approval).`);
+           user = await prisma.$transaction(async (tx) => {
+             const newUser = await tx.user.create({
+               data: {
+                 email: email.toLowerCase(),
+                 name: profile.givenName ? `${profile.givenName} ${profile.sn || ''}`.trim() : email.split('@')[0],
+                 role: 'ADMIN',
+                 password: 'SAML_MANAGED_ACCOUNT_NO_PASSWORD',
+                 isVerified: true,
+                 emailVerified: true,
+               },
+             });
+             await tx.samlApproval.create({
+               data: { userId: newUser.id, status: 'PENDING' },
+             });
+             return newUser;
            });
+           console.log(`✅ SAML user created as PENDING: ${email}`);
         }
 
         return done(null, user);

@@ -209,14 +209,22 @@ exports.isAdmin = async (request, reply) => {
       }
 
       // Check if user is admin
-      const user = await prisma.user.findUnique({
-        where: { id: userId }
-      });
+      let user;
+      try {
+        user = await prisma.user.findUnique({
+          where: { id: userId },
+          include: { samlApproval: true },
+        });
+      } catch {
+        user = await prisma.user.findUnique({
+          where: { id: userId },
+        });
+      }
 
       if (!user) {
-        return reply.status(404).send({ 
-          success: false, 
-          message: "User not found" 
+        return reply.status(404).send({
+          success: false,
+          message: "User not found"
         });
       }
 
@@ -229,10 +237,21 @@ exports.isAdmin = async (request, reply) => {
       }
 
       if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
-        return reply.status(403).send({ 
-          success: false, 
-          message: "Admin access required" 
+        return reply.status(403).send({
+          success: false,
+          message: "Admin access required"
         });
+      }
+
+      // SAML approval gate — block unapproved SAML users (SUPER_ADMIN always bypasses)
+      if (user.password === 'SAML_MANAGED_ACCOUNT_NO_PASSWORD' && user.role !== 'SUPER_ADMIN') {
+        if (!user.samlApproval || user.samlApproval.status !== 'APPROVED') {
+          return reply.status(403).send({
+            success: false,
+            message: "Your account is pending approval. Please contact the Super Admin.",
+            samlStatus: user.samlApproval?.status || 'PENDING',
+          });
+        }
       }
 
       // Attach user to request

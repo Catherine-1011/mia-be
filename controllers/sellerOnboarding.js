@@ -1,4 +1,4 @@
-const prisma = require("../config/prisma");
+﻿const prisma = require("../config/prisma");
 const { generateOTP, sendOTPEmail, sendSellerApplicationSubmittedEmail, sendSellerRegistrationEmail, sendSuperAdminNewSellerEmail } = require("../utils/emailService");
 const { abnLookup } = require("../utils/abnLookup");
 const { uploadToCloudinary } = require("../config/cloudinary");

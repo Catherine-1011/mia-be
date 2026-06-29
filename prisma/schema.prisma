@@ -45,6 +45,7 @@ model User {
   userSessions                    UserSession[]
   wishlist                        Wishlist[]
   sellerCoupons                   SellerCoupon[]      @relation("SellerCoupons")
+  samlApproval                    SamlApproval?
 
   @@map("users")
 }
@@ -974,4 +975,32 @@ model SiteSettings {
   updatedAt                    DateTime @updatedAt
 
   @@map("site_settings")
+}
+
+enum SamlApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  BLOCKED
+}
+
+model SamlApproval {
+  id              String             @id @default(cuid())
+  userId          String             @unique
+  status          SamlApprovalStatus @default(PENDING)
+  approvedBy      String?            @map("approved_by")
+  approvedAt      DateTime?          @map("approved_at")
+  rejectedBy      String?            @map("rejected_by")
+  rejectedAt      DateTime?          @map("rejected_at")
+  rejectionReason String?            @map("rejection_reason")
+  blockedBy       String?            @map("blocked_by")
+  blockedAt       DateTime?          @map("blocked_at")
+  blockReason     String?            @map("block_reason")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("saml_approvals")
 }

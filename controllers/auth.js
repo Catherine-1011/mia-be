@@ -993,27 +993,61 @@ exports.resendLoginOTP = async (request, reply) => {
 // SAML Callback Handler (Lane 2)
 exports.samlCallback = async (request, reply) => {
   try {
-    
+
     // Passport strategies populate user
     const user = request.user;
-    
+
     if (!user) {
       console.error("❌ No user returned from SAML strategy");
       const dashboardUrl = process.env.DASHBOARD_URL || "https://alpa-dashboard.vercel.app";
       return reply.redirect(`${dashboardUrl}/login?error=auth_failed`);
     }
-    
-    
+
+    const dashboardUrl = (process.env.DASHBOARD_URL || "https://alpa-dashboard.vercel.app").replace(/\/$/, '');
+
+    // SAML approval gate — only for SAML-managed users, SUPER_ADMIN always bypasses
+    if (user.password === 'SAML_MANAGED_ACCOUNT_NO_PASSWORD' && user.role !== 'SUPER_ADMIN') {
+      let samlApproval = null;
+      try {
+        samlApproval = await prisma.samlApproval.findUnique({ where: { userId: user.id } });
+
+        if (!samlApproval) {
+          samlApproval = await prisma.samlApproval.create({
+            data: { userId: user.id, status: 'PENDING' },
+          });
+        }
+      } catch {
+        // Table may not exist yet if migration hasn't run — skip gate
+        samlApproval = null;
+      }
+
+      if (samlApproval) switch (samlApproval.status) {
+        case 'PENDING':
+          console.log(`🔒 SAML user ${user.email} is pending approval — redirecting`);
+          return reply.redirect(`${dashboardUrl}/access-pending`);
+        case 'REJECTED':
+          console.log(`🔒 SAML user ${user.email} is rejected — redirecting`);
+          return reply.redirect(`${dashboardUrl}/access-rejected`);
+        case 'BLOCKED':
+          console.log(`🔒 SAML user ${user.email} is blocked — redirecting`);
+          return reply.redirect(`${dashboardUrl}/access-blocked`);
+        case 'APPROVED':
+          break;
+        default:
+          return reply.redirect(`${dashboardUrl}/login?error=unknown_status`);
+      }
+    }
+
     // Lane 2: Internal Admin Session -> 60 Minutes (Strict Requirement)
     const sessionDuration = "60m";
     const cookieMaxAge = 60 * 60 * 1000;
-    
+
     const token = jwt.sign(
       { userId: user.id, uid: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
       process.env.JWT_SECRET,
       { expiresIn: sessionDuration }
     );
-    
+
     // Set Cookie
     reply.setCookie('session_token', token, {
       httpOnly: true,
@@ -1022,13 +1056,10 @@ exports.samlCallback = async (request, reply) => {
       maxAge: cookieMaxAge,
       path: '/'
     });
-    
+
     // Always redirect to the Admin Dashboard login-callback page
-    const dashboardUrl = (process.env.DASHBOARD_URL || "https://alpa-dashboard.vercel.app").replace(/\/$/, '');
-      
-    
     return reply.redirect(`${dashboardUrl}/login-callback?token=${token}&type=saml`);
-    
+
   } catch (error) {
     console.error("❌ SAML Callback Error:", error);
     const dashboardUrl = process.env.DASHBOARD_URL || "https://alpa-dashboard.vercel.app";

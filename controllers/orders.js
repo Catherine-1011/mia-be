@@ -1655,7 +1655,6 @@ exports.cancelGuestOrder = async (request, reply) => {
       where: {
         displayId,
         customerEmail: { equals: customerEmail.trim(), mode: 'insensitive' },
-        userId: null // Only guest orders (no authenticated user) can be cancelled via this endpoint
       },
       include: {
         items: {

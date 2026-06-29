@@ -580,7 +580,7 @@ const sendOTPEmail = async (email, otp, name) => {
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;" class="email-footer footer-dark">
                   <p style="margin:0;color:#F0D0C8;font-size:12px;">This is an automated email &mdash; please do not reply.</p>
                   <p style="margin:6px 0 0;color:#8B5C54;font-size:11px;">&copy; 2026 Made in Arnhem Land. All rights reserved.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -919,7 +919,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
       <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;" class="email-footer">
         <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for the order</p>
         <p style="margin:0 0 8px;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-        <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
+        <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
     </tr>
@@ -1208,7 +1208,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for shopping with us!   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -1356,7 +1356,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued Made in Arnhem Land seller!</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -1552,7 +1552,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
                   <td bgcolor="#3D1009" style="background-color:#3D1009;padding:20px 40px;text-align:center;">
                     <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Automated SLA Monitor</p>
                     <p style="margin:0;color:#8B5C54;font-size:11px;">Please do not reply to this email. &copy; 2026 Made in Arnhem Land.</p>
-                    <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                    <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
                 </tr>
@@ -1742,7 +1742,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining Made in Arnhem Land!   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -1844,7 +1844,7 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining Made in Arnhem Land!   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -1952,7 +1952,7 @@ const sendSellerApprovedEmail = async (email, name) => {
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Welcome to the Made in Arnhem Land family!   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -2083,7 +2083,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -2302,7 +2302,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -2418,7 +2418,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -2506,7 +2506,7 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -2593,7 +2593,7 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -3012,7 +3012,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
               </td></tr>
               <tr><td bgcolor="#3D1009" style="background-color:#3D1009;padding:20px 40px;text-align:center;">
                 <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td></tr>
             </table>
@@ -3179,7 +3179,7 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -3270,7 +3270,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land   </p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -3612,7 +3612,7 @@ const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { 
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 Made in Arnhem Land. All rights reserved.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -3695,7 +3695,7 @@ const sendSellerProductSubmitReviewConfirmEmail = async (sellerEmail, sellerName
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0;color:#8B5C54;font-size:11px;">&copy; 2026 Made in Arnhem Land. All rights reserved.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -3867,7 +3867,7 @@ const sendSellerBankChangeApprovedEmail = async (sellerEmail, sellerName, detail
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Seller Notifications</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -3945,7 +3945,7 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Seller Notifications</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -4156,7 +4156,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">We appreciate your patience and will resolve this as quickly as possible.</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -4368,7 +4368,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for shopping with Made in Arnhem Land.</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -4560,7 +4560,7 @@ const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => 
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -4713,7 +4713,7 @@ const sendNewsletterCampaignEmail = async ({ toEmail, subject, content, bannerIm
     <p style="font-size:12px;color:#999;text-align:center;margin-top:32px;">
       You are receiving this email because you subscribed to our newsletter.<br/>
       If you no longer wish to receive these emails, you can unsubscribe by contacting us.<br/>
-      Questions? Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;">support@madeinarnhemland.com.au</a><br/>
+       Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;">support@madeinarnhemland.com.au</a><br/>
       <a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">www.madeinarnhemland.com.au</a>
     </p>`;
 
@@ -4860,7 +4860,7 @@ const sendSellerPayoutTransferEmail = async (sellerEmail, sellerName, { orderId,
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;border-radius:0 0 12px 12px;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued Made in Arnhem Land seller!</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -4929,7 +4929,7 @@ const sendSellerStripeApprovedEmail = async (sellerEmail, sellerName) => {
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;border-radius:0 0 12px 12px;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Welcome to your new earnings journey! 🎨</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
-                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;">Questions? Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>

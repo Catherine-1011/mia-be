@@ -1652,9 +1652,9 @@ exports.cancelGuestOrder = async (request, reply) => {
     }
 
     const order = await prisma.order.findFirst({
-      where: { 
+      where: {
         displayId,
-        customerEmail: customerEmail.trim(),
+        customerEmail: { equals: customerEmail.trim(), mode: 'insensitive' },
         userId: null // Only guest orders (no authenticated user) can be cancelled via this endpoint
       },
       include: {
@@ -1676,10 +1676,11 @@ exports.cancelGuestOrder = async (request, reply) => {
     }
 
     // For guests: ONLY CONFIRMED status is allowed (stricter than authenticated users)
-    if (order.status !== 'CONFIRMED') {
-      return reply.status(400).send({ 
-        success: false, 
-        message: "Guest orders can only be cancelled when status is CONFIRMED" 
+    const effectiveStatus = order.status || order.overallStatus;
+    if (effectiveStatus !== 'CONFIRMED') {
+      return reply.status(400).send({
+        success: false,
+        message: "Guest orders can only be cancelled when status is CONFIRMED"
       });
     }
 
@@ -1730,6 +1731,7 @@ exports.cancelGuestOrder = async (request, reply) => {
         where: { id: orderId_internal },
         data: {
           status: "CANCELLED",
+          overallStatus: "CANCELLED",
           statusReason: finalReason,
           updatedAt: new Date()
         }

@@ -2176,14 +2176,14 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
                   <!--[if mso]>
                     <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${dashboardUrl}" style="height:48px;v-text-anchor:middle;width:200px;" arcsize="8%" stroke="f" fillcolor="#5A1E12">
                       <w:anchorlock/>
-                      <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:700;padding:14px 40px;">Review Product</center>
+                      <center style="color:#ffffff !important;-webkit-text-fill-color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:700;padding:14px 40px;">Review Product</center>
                     </v:roundrect>
                   <![endif]-->
                   <!--[if !mso]><!---->
                   <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;border-radius:8px;overflow:hidden;">
                     <tr>
-                      <td align="center" bgcolor="#5A1E12" style="background-color:#5A1E12;padding:14px 40px;mso-padding-alt:14px 40px;border-radius:8px;display:inline-block;">
-                        <a href="${dashboardUrl}" style="display:inline-block;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;font-family:Arial,sans-serif;mso-line-height-rule:exactly;">Review Product</a>
+                      <td align="center" bgcolor="#5A1E12" style="background-color:#5A1E12;padding:14px 40px;mso-padding-alt:14px 40px;border-radius:8px;display:inline-block;color:#ffffff !important;-webkit-text-fill-color:#ffffff;">
+                        <a href="${dashboardUrl}" style="display:inline-block;color:#ffffff !important;-webkit-text-fill-color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;font-family:Arial,sans-serif;mso-line-height-rule:exactly;"><span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff;">Review Product</span></a>
                       </td>
                     </tr>
                   </table>
@@ -3529,7 +3529,7 @@ const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { produc
               </tr>
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
-                  <a href="${adminDashboardUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Review in Admin Dashboard</a>
+                  <a href="${adminDashboardUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff !important;-webkit-text-fill-color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;"><span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff;">Review in Admin Dashboard</span></a>
                 </td>
               </tr>
               <tr>
@@ -3606,7 +3606,7 @@ const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { 
               </tr>
               <tr>
                 <td style="padding:0 40px 36px;text-align:center;">
-                  <a href="${dashboardUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">Go to My Products</a>
+                  <a href="${dashboardUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff !important;-webkit-text-fill-color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;"><span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff;">Go to My Products</span></a>
                 </td>
               </tr>
               <tr>

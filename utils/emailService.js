@@ -612,7 +612,7 @@ const sendFinanceOrderInvoiceEmail = async (orderDetails, pdfBuffer) => {
     <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto;">
       <div style="text-align: center; margin-bottom: 30px;">
         <h2 style="color: #5A1E12; font-size: 24px; margin-bottom: 5px;">New Order Finance Copy</h2>
-        <p style="color: #666; font-size: 14px; margin-top: 0;">Invoice generated for Order ${orderDetails.displayId}</p>
+        <p style="color: #666; font-size: 14px; margin-top: 0;">Invoice generated for Order <span style="font-family:monospace;">${orderDetails.displayId}</span></p>
       </div>
 
       <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#fdf5f3" style="background-color:#fdf5f3;margin-bottom:25px"><tr><td bgcolor="#fdf5f3" style="background-color:#fdf5f3;padding:20px;border-left:4px solid #5A1E12">
@@ -633,7 +633,7 @@ const sendFinanceOrderInvoiceEmail = async (orderDetails, pdfBuffer) => {
         <tbody>
           <tr>
             <td bgcolor="#ffffff" style="padding: 12px 15px; border-bottom: 1px solid #eee; border-left: 1px solid #eee; background-color: #ffffff;"><strong>Order Number</strong></td>
-            <td bgcolor="#ffffff" style="padding: 12px 15px; border-bottom: 1px solid #eee; border-right: 1px solid #eee; background-color: #ffffff;">${orderDetails.displayId}</td>
+            <td bgcolor="#ffffff" style="padding: 12px 15px; border-bottom: 1px solid #eee; border-right: 1px solid #eee; background-color: #ffffff; font-family:monospace;">${orderDetails.displayId}</td>
           </tr>
           <tr>
             <td bgcolor="#ffffff" style="padding: 12px 15px; border-bottom: 1px solid #eee; border-left: 1px solid #eee; background-color: #ffffff;"><strong>Total Amount</strong></td>
@@ -763,7 +763,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
               <table width="100%" cellpadding="0" cellspacing="0" class="responsive-table mobile-table-stack">
                 <tr>
                   <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Invoice #</strong></td>
-                  <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;" class="dark-text mobile-center">${orderDetails.displayId}</td>
+                  <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;" class="dark-text mobile-center">${orderDetails.displayId}</td>
                 </tr>
                 <tr>
                   <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Order Date</strong></td>
@@ -1301,7 +1301,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
                       <table width="100%" cellpadding="0" cellspacing="0">
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.displayId}</td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${orderDetails.displayId}</td>
                         </tr>
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Date</strong></td>
@@ -2989,7 +2989,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
                 <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Order Status Updated</h1>
               </td></tr>
               <tr><td bgcolor="${statusColor}" style="background-color:${statusColor};padding:14px 40px;text-align:center;">
-                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order ${orderDetails.displayId || ''} is now <strong>${statusLabel}</strong></p>
+                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order <span style="font-family:monospace;">${orderDetails.displayId || ''}</span> is now <strong>${statusLabel}</strong></p>
               </td></tr>
               <tr><td style="padding:28px 40px 20px;">
                 <p style="color:#3D1009;font-size:16px;margin:0 0 8px;">Hi <strong>${sellerName}</strong>,</p>
@@ -3074,7 +3074,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
                 <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Order Status Updated</h1>
               </td></tr>
               <tr><td bgcolor="${statusColor}" style="background-color:${statusColor};padding:14px 40px;text-align:center;">
-                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order ${orderDetails.displayId || ''} &rarr; <strong>${st.toUpperCase()}</strong></p>
+                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order <span style="font-family:monospace;">${orderDetails.displayId || ''}</span> &rarr; <strong>${st.toUpperCase()}</strong></p>
               </td></tr>
               <tr><td style="padding:28px 40px 20px;">
                 <p style="color:#3D1009;font-size:16px;margin:0 0 8px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
@@ -4036,7 +4036,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
                   <p style="color:#3D1009;font-size:16px;margin:0 0 6px;">Hi <strong>${customerName}</strong>,</p>
                   <p style="color:#666;font-size:14px;line-height:1.7;margin:0 0 24px;">
                     Thank you for reaching out. Your <strong>${requestLabel.toLowerCase()}</strong> request for order 
-                    <strong>${refundDetails.displayId}</strong> has been successfully submitted and is currently 
+                    <strong style="font-family:monospace;">${refundDetails.displayId}</strong> has been successfully submitted and is currently 
                     <strong>under review</strong> by our team.
                   </p>
                 </td>
@@ -4207,7 +4207,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
       icon: '?', color: '#2E7D32', label: 'Approved',
       headline: 'Your Refund Has Been Approved',
       banner: 'Great news — your refund request has been reviewed and approved.',
-      body: `We are pleased to let you know that your refund request for order <strong>${refundDetails.displayId}</strong> has been <strong>approved</strong> by our team.<br><br>
+      body: `We are pleased to let you know that your refund request for order <strong style="font-family:monospace;">${refundDetails.displayId}</strong> has been <strong>approved</strong> by our team.<br><br>
              Please allow <strong>5?6 business days</strong> for the refunded amount to reflect in your original payment method. Processing times may vary depending on your bank or payment provider.`,
       note: null
     },
@@ -4215,7 +4215,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
       icon: '?', color: '#A03020', label: 'Rejected',
       headline: 'Refund Request Outcome',
       banner: 'Your refund request has been reviewed.',
-      body: `We regret to inform you that your refund request for order <strong>${refundDetails.displayId}</strong> has not been approved at this time.<br><br>
+      body: `We regret to inform you that your refund request for order <strong style="font-family:monospace;">${refundDetails.displayId}</strong> has not been approved at this time.<br><br>
              If you believe this decision was made in error or would like further clarification, please contact our support team.`,
       note: 'If you have questions, please reach out to our customer support team.'
     },
@@ -4223,7 +4223,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
       icon: '', color: '#1565C0', label: 'Completed',
       headline: 'Refund Payment Completed',
       banner: 'Your refund has been processed and payment issued.',
-      body: `Your refund for order <strong>${refundDetails.displayId}</strong> has been <strong>fully processed</strong> and the payment has been issued.<br><br>
+      body: `Your refund for order <strong style="font-family:monospace;">${refundDetails.displayId}</strong> has been <strong>fully processed</strong> and the payment has been issued.<br><br>
              The refunded amount should appear in your account within <strong>1?3 business days</strong> depending on your bank. If you have not received it after 5 business days, please contact your bank or reach out to us.`,
       note: null
     }
@@ -4231,7 +4231,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
     icon: '', color: '#C4603A', label: st,
     headline: 'Refund Request Updated',
     banner: `Your refund request status has been updated to ${st}.`,
-    body: `Your refund request for order <strong>${refundDetails.displayId}</strong> has been updated.`,
+    body: `Your refund request for order <strong style="font-family:monospace;">${refundDetails.displayId}</strong> has been updated.`,
     note: null
   };
 
@@ -4414,24 +4414,24 @@ const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => 
     APPROVED: {
       icon: '?', color: '#2E7D32', label: 'Approved',
       banner: 'A refund request for one of your orders has been approved.',
-      body: `A refund request from customer <strong>${refundDetails.customerName || 'Customer'}</strong> for order <strong>${refundDetails.displayId}</strong> has been <strong>approved</strong> by admin.<br><br>
+      body: `A refund request from customer <strong>${refundDetails.customerName || 'Customer'}</strong> for order <strong style="font-family:monospace;">${refundDetails.displayId}</strong> has been <strong>approved</strong> by admin.<br><br>
              The refund will be processed to the customer's original payment method. This will be reflected in your revenue and commission records.`
     },
     REJECTED: {
       icon: '?', color: '#A03020', label: 'Rejected',
       banner: 'A refund request for one of your orders has been reviewed.',
-      body: `The refund request from customer <strong>${refundDetails.customerName || 'Customer'}</strong> for order <strong>${refundDetails.displayId}</strong> has been <strong>rejected</strong> by admin. No changes will be made to the order or your revenue.`
+      body: `The refund request from customer <strong>${refundDetails.customerName || 'Customer'}</strong> for order <strong style="font-family:monospace;">${refundDetails.displayId}</strong> has been <strong>rejected</strong> by admin. No changes will be made to the order or your revenue.`
     },
     COMPLETED: {
       icon: '', color: '#1565C0', label: 'Completed',
       banner: 'A refund payment has been completed for one of your orders.',
-      body: `The refund for order <strong>${refundDetails.displayId}</strong> (customer: <strong>${refundDetails.customerName || 'Customer'}</strong>) has been <strong>fully processed</strong> and payment has been issued.<br><br>
+      body: `The refund for order <strong style="font-family:monospace;">${refundDetails.displayId}</strong> (customer: <strong>${refundDetails.customerName || 'Customer'}</strong>) has been <strong>fully processed</strong> and payment has been issued.<br><br>
              Your commission and revenue records for this order have been updated accordingly.`
     }
   }[st] || {
     icon: '', color: '#C4603A', label: st,
     banner: `A refund request status has been updated to ${st}.`,
-    body: `Refund request status for order <strong>${refundDetails.displayId}</strong> has been updated to ${st}.`
+    body: `Refund request status for order <strong style="font-family:monospace;">${refundDetails.displayId}</strong> has been updated to ${st}.`
   };
 
   const items = refundDetails.requestedItems || refundDetails.items || [];
@@ -4837,7 +4837,7 @@ const sendSellerPayoutTransferEmail = async (sellerEmail, sellerName, { orderId,
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
                         <td style="color:#555;font-size:14px;padding:6px 0;width:50%;">Order Reference</td>
-                        <td style="color:#3D1009;font-size:14px;font-weight:700;text-align:right;">${orderDisplayId}</td>
+                        <td style="color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:monospace;">${orderDisplayId}</td>
                       </tr>
                       <tr>
                         <td style="color:#555;font-size:14px;padding:6px 0;">Amount Transferred</td>
@@ -4958,7 +4958,7 @@ const sendDisputeAlertEmail = async ({ adminEmail, adminName, disputeId, amount,
         <p>Hi ${adminName || 'Admin'},</p>
         <p>A Stripe chargeback/dispute has been opened that requires your attention.</p>
         <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; width: 40%;">Order</td><td style="padding: 8px; border: 1px solid #ddd;">${orderLink}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; width: 40%;">Order</td><td style="padding: 8px; border: 1px solid #ddd; font-family:monospace;">${orderLink}</td></tr>
           <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Dispute ID</td><td style="padding: 8px; border: 1px solid #ddd;">${disputeId}</td></tr>
           <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Charge ID</td><td style="padding: 8px; border: 1px solid #ddd;">${chargeId || 'N/A'}</td></tr>
           <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Amount</td><td style="padding: 8px; border: 1px solid #ddd;">${amountFormatted}</td></tr>

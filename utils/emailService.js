@@ -578,7 +578,7 @@ const sendOTPEmail = async (email, otp, name) => {
               <!-- Footer -->
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;" class="email-footer footer-dark">
-                  <p style="margin:0;color:#F0D0C8;font-size:12px;">This is an automated email &mdash; please do not reply.</p>
+                  <p style="margin:0;color:#F0D0C8;font-size:12px;">This is an automated email, please do not reply.</p>
                   <p style="margin:6px 0 0;color:#8B5C54;font-size:11px;">&copy; 2026 Made in Arnhem Land. All rights reserved.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
@@ -612,7 +612,7 @@ const sendFinanceOrderInvoiceEmail = async (orderDetails, pdfBuffer) => {
     <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto;">
       <div style="text-align: center; margin-bottom: 30px;">
         <h2 style="color: #5A1E12; font-size: 24px; margin-bottom: 5px;">New Order Finance Copy</h2>
-        <p style="color: #666; font-size: 14px; margin-top: 0;">Invoice generated for Order <span style="font-family:monospace;">${orderDetails.displayId}</span></p>
+        <p style="color: #666; font-size: 14px; margin-top: 0;">Invoice generated for Order ${orderDetails.displayId}</p>
       </div>
 
       <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#fdf5f3" style="background-color:#fdf5f3;margin-bottom:25px"><tr><td bgcolor="#fdf5f3" style="background-color:#fdf5f3;padding:20px;border-left:4px solid #5A1E12">
@@ -633,7 +633,7 @@ const sendFinanceOrderInvoiceEmail = async (orderDetails, pdfBuffer) => {
         <tbody>
           <tr>
             <td bgcolor="#ffffff" style="padding: 12px 15px; border-bottom: 1px solid #eee; border-left: 1px solid #eee; background-color: #ffffff;"><strong>Order Number</strong></td>
-            <td bgcolor="#ffffff" style="padding: 12px 15px; border-bottom: 1px solid #eee; border-right: 1px solid #eee; background-color: #ffffff; font-family:monospace;">${orderDetails.displayId}</td>
+            <td bgcolor="#ffffff" style="padding: 12px 15px; border-bottom: 1px solid #eee; border-right: 1px solid #eee; background-color: #ffffff;">${orderDetails.displayId}</td>
           </tr>
           <tr>
             <td bgcolor="#ffffff" style="padding: 12px 15px; border-bottom: 1px solid #eee; border-left: 1px solid #eee; background-color: #ffffff;"><strong>Total Amount</strong></td>
@@ -763,7 +763,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
               <table width="100%" cellpadding="0" cellspacing="0" class="responsive-table mobile-table-stack">
                 <tr>
                   <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Invoice #</strong></td>
-                  <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;" class="dark-text mobile-center">${orderDetails.displayId}</td>
+                  <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;" class="dark-text mobile-center">${orderDetails.displayId}</td>
                 </tr>
                 <tr>
                   <td style="padding:6px 0;color:#7D2E1E;font-size:14px;" class="dark-text"><strong>Order Date</strong></td>
@@ -918,7 +918,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
     <tr>
       <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;" class="email-footer">
         <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for the order</p>
-        <p style="margin:0 0 8px;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+        <p style="margin:0 0 8px;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
         <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -1207,7 +1207,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for shopping with us!   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -1282,7 +1282,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
               <!-- Alert banner -->
               <tr>
                 <td bgcolor="#C4603A" style="background-color:#C4603A;padding:12px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:14px;font-weight:600;">Action Required &mdash; please process this order promptly</p>
+                  <p style="margin:0;color:#ffffff;font-size:14px;font-weight:600;">Action Required, please process this order promptly</p>
                 </td>
               </tr>
               <!-- Seller greeting -->
@@ -1301,7 +1301,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
                       <table width="100%" cellpadding="0" cellspacing="0">
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;font-family:monospace;">${orderDetails.displayId}</td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.displayId}</td>
                         </tr>
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Date</strong></td>
@@ -1355,7 +1355,7 @@ const sendSellerOrderNotificationEmail = async (email, sellerName, orderDetails)
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued Made in Arnhem Land seller!</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -1432,8 +1432,8 @@ const sendContactFormEmail = async (email, name, subject, message) => {
               <!-- Footer -->
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Customer Support</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated confirmation &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Customer Support</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated confirmation, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -1550,7 +1550,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
                 <!-- Footer -->
                 <tr>
                   <td bgcolor="#3D1009" style="background-color:#3D1009;padding:20px 40px;text-align:center;">
-                    <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Automated SLA Monitor</p>
+                    <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land, Automated SLA Monitor</p>
                     <p style="margin:0;color:#8B5C54;font-size:11px;">Please do not reply to this email. &copy; 2026 Made in Arnhem Land.</p>
                     <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
@@ -1581,7 +1581,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-        subject: "Your Seller Application Has Been Submitted — Made in Arnhem Land",
+        subject: "Your Seller Application Has Been Submitted, Made in Arnhem Land",
     html: `
       <!DOCTYPE html>
       <html>
@@ -1741,7 +1741,7 @@ const sendSellerApplicationSubmittedEmail = async (email, name, applicationId) =
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining Made in Arnhem Land!   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -1772,7 +1772,7 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-    subject: "Your Seller Account Has Been Created — Made in Arnhem Land",
+    subject: "Your Seller Account Has Been Created, Made in Arnhem Land",
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1786,14 +1786,14 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
                 <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
                   <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;"> Account Created!</h1>
-                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your seller account is ready — let's get started</p>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">Your seller account is ready, let's get started</p>
                 </td>
               </tr>
               <!-- Body -->
               <tr>
                 <td style="padding:36px 40px 28px;">
                   <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${name}</strong>,</p>
-                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Welcome to Made in Arnhem Land! Your email has been verified and your seller account has been successfully created. Please keep your application number safe — you'll need it when contacting our support team.</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">Welcome to Made in Arnhem Land! Your email has been verified and your seller account has been successfully created. Please keep your application number safe ,you'll need it when contacting our support team.</p>
 
                   <!-- Application Number Box -->
                   <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #5A1E12">
@@ -1843,7 +1843,7 @@ const sendSellerRegistrationEmail = async (email, name, applicationNumber) => {
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for joining Made in Arnhem Land!   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -1874,7 +1874,7 @@ const sendSellerApprovedEmail = async (email, name) => {
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-    subject: "Your Seller Account Has Been Approved — Made in Arnhem Land",
+    subject: "Your Seller Account Has Been Approved ,Made in Arnhem Land",
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -1951,7 +1951,7 @@ const sendSellerApprovedEmail = async (email, name) => {
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Welcome to the Made in Arnhem Land family!   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -1993,7 +1993,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
   const msg = {
     to: email,
     from: { email: senderEmail, name: senderName },
-        subject: `Low Stock Alert: "${productTitle}" — Made in Arnhem Land`,
+        subject: `Low Stock Alert: "${productTitle}" ,Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2082,7 +2082,7 @@ const sendSellerLowStockEmail = async (email, sellerName, productTitle, currentS
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -2166,7 +2166,7 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
                   <!-- Action note -->
                   <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #C4603A">
                     <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;"> Action Required</p>
-                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Visit the admin dashboard to review the product images, description, and details — then approve or reject the listing.</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">Visit the admin dashboard to review the product images, description, and details ,then approve or reject the listing.</p>
                   </td></tr></table>
                 </td>
               </tr>
@@ -2194,7 +2194,7 @@ const sendAdminProductPendingEmail = async (adminEmail, adminName, { productTitl
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -2301,7 +2301,7 @@ const sendSellerProductApprovedEmail = async (sellerEmail, sellerName, { product
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -2395,7 +2395,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
                       <tr>
                         <td style="padding:8px 0;">
                           <span style="color:#C4603A;font-size:16px;margin-right:10px;">3</span>
-                          <span style="color:#555;font-size:14px;">Save your changes — the product will be resubmitted for review automatically</span>
+                          <span style="color:#555;font-size:14px;">Save your changes ,the product will be resubmitted for review automatically</span>
                         </td>
                       </tr>
                     </table>
@@ -2417,7 +2417,7 @@ const sendSellerProductRejectedEmail = async (sellerEmail, sellerName, { product
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -2505,7 +2505,7 @@ const sendSellerCategoryApprovedEmail = async (sellerEmail, sellerName, { catego
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -2538,7 +2538,7 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Category Request Update: "${categoryName}" — Made in Arnhem Land`,
+    subject: `Category Request Update: "${categoryName}", Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2592,7 +2592,7 @@ const sendSellerCategoryRejectedEmail = async (sellerEmail, sellerName, { catego
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -2625,7 +2625,7 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `New Category Request: "${categoryName}" — Made in Arnhem Land`,
+    subject: `New Category Request: "${categoryName}" , Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2674,7 +2674,7 @@ const sendSuperAdminCategoryRequestEmail = async (adminEmail, adminName, { categ
               <!-- Footer -->
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel — Administrative Notifications</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel, Administrative Notifications</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -2708,7 +2708,7 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `New Seller Application: "${businessName || sellerName}" — Made in Arnhem Land`,
+    subject: `New Seller Application: "${businessName || sellerName}", Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2758,7 +2758,7 @@ const sendSuperAdminNewSellerEmail = async (adminEmail, adminName, { sellerName,
               <!-- Footer -->
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel — Administrative Notifications</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel Administrative Notifications</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -2800,7 +2800,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `New Order Placed: ${orderDetails.displayId} — Made in Arnhem Land`,
+    subject: `New Order Placed: ${orderDetails.displayId}, Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -2921,7 +2921,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;mso-padding-alt:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land • Admin Notification</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email — please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -2967,7 +2967,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
   const msg = {
     to: email,
     from: { name: senderName, email: senderEmail },
-    subject: `Order Status Updated: ${orderDetails.displayId || ''} — Made in Arnhem Land`,
+    subject: `Order Status Updated: ${orderDetails.displayId || ''}, Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -2989,7 +2989,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
                 <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Order Status Updated</h1>
               </td></tr>
               <tr><td bgcolor="${statusColor}" style="background-color:${statusColor};padding:14px 40px;text-align:center;">
-                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order <span style="font-family:monospace;">${orderDetails.displayId || ''}</span> is now <strong>${statusLabel}</strong></p>
+                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order ${orderDetails.displayId || ''} is now <strong>${statusLabel}</strong></p>
               </td></tr>
               <tr><td style="padding:28px 40px 20px;">
                 <p style="color:#3D1009;font-size:16px;margin:0 0 8px;">Hi <strong>${sellerName}</strong>,</p>
@@ -3011,7 +3011,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
                 <a href="${baseUrl}/seller/orders/${orderDetails.displayId}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order</a>
               </td></tr>
               <tr><td bgcolor="#3D1009" style="background-color:#3D1009;padding:20px 40px;text-align:center;">
-                <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                 <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td></tr>
@@ -3052,7 +3052,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
   const msg = {
     to: adminEmail,
     from: { name: senderName, email: senderEmail },
-    subject: `Order Status Updated by ${updatedBy}: ${orderDetails.displayId || ''} — Made in Arnhem Land`,
+    subject: `Order Status Updated by ${updatedBy}: ${orderDetails.displayId || ''}, Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -3074,7 +3074,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
                 <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Order Status Updated</h1>
               </td></tr>
               <tr><td bgcolor="${statusColor}" style="background-color:${statusColor};padding:14px 40px;text-align:center;">
-                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order <span style="font-family:monospace;">${orderDetails.displayId || ''}</span> &rarr; <strong>${st.toUpperCase()}</strong></p>
+                <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Order ${orderDetails.displayId || ''} &rarr; <strong>${st.toUpperCase()}</strong></p>
               </td></tr>
               <tr><td style="padding:28px 40px 20px;">
                 <p style="color:#3D1009;font-size:16px;margin:0 0 8px;">Hi <strong>${adminName || 'Admin'}</strong>,</p>
@@ -3097,7 +3097,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
                 <a href="${baseUrl}/admindashboard/orders" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View Order in Admin Panel</a>
               </td></tr>
               <tr><td bgcolor="#3D1009" style="background-color:#3D1009;padding:20px 40px;text-align:center;">
-                <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td></tr>
             </table>
@@ -3129,7 +3129,7 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Great News! Your Product "${productTitle}" Is Now Live — Made in Arnhem Land`,
+    subject: `Great News! Your Product "${productTitle}" Is Now Live, Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -3149,7 +3149,7 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
               <!-- Activated banner -->
               <tr>
                 <td bgcolor="#2E7D32" style="background-color:#2E7D32;padding:14px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Product Activated — Now Visible to Buyers</p>
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Product Activated, Now Visible to Buyers</p>
                 </td>
               </tr>
               <!-- Body -->
@@ -3178,7 +3178,7 @@ const sendSellerProductActivatedEmail = async (sellerEmail, sellerName, { produc
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -3213,7 +3213,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Product Deactivated: "${productTitle}" — Made in Arnhem Land`,
+    subject: `Product Deactivated: "${productTitle}", Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -3233,7 +3233,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
               <!-- Deactivated banner -->
               <tr>
                 <td bgcolor="#B71C1C" style="background-color:#B71C1C;padding:14px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">? Product Deactivated — No Longer Visible to Buyers</p>
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">? Product Deactivated, No Longer Visible to Buyers</p>
                 </td>
               </tr>
               <!-- Body -->
@@ -3269,7 +3269,7 @@ const sendSellerProductDeactivatedEmail = async (sellerEmail, sellerName, { prod
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -3304,7 +3304,7 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `[Low Stock] Product Auto-Deactivated: "${productTitle}" — Made in Arnhem Land`,
+    subject: `[Low Stock] Product Auto-Deactivated: "${productTitle}", Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -3316,7 +3316,7 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
               <!-- Header -->
               <tr>
                 <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land — Admin Alert</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land, Admin Alert</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Low Stock Auto-Deactivation</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A product has been automatically taken offline</p>
                 </td>
@@ -3369,8 +3369,8 @@ const sendAdminLowStockDeactivationEmail = async (adminEmail, adminName, { produ
               <!-- Footer -->
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Admin Notifications   </p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land, Admin Notifications   </p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
@@ -3404,7 +3404,7 @@ const sendAdminProductSellerDeactivatedEmail = async (adminEmail, adminName, { p
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Product Deactivated by Seller: "${productTitle}" — Made in Arnhem Land`,
+    subject: `Product Deactivated by Seller: "${productTitle}", Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -3415,14 +3415,14 @@ const sendAdminProductSellerDeactivatedEmail = async (adminEmail, adminName, { p
             <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <tr>
                 <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land — Admin</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land, Admin</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Deactivated by Seller</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A seller has taken their product offline</p>
                 </td>
               </tr>
               <tr>
                 <td bgcolor="#B71C1C" style="background-color:#B71C1C;padding:14px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Product Is Now Inactive — No Longer Visible to Buyers</p>
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Product Is Now Inactive, No Longer Visible to Buyers</p>
                 </td>
               </tr>
               <tr>
@@ -3486,7 +3486,7 @@ const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { produc
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Product Submitted for Review: "${productTitle}" — Made in Arnhem Land`,
+    subject: `Product Submitted for Review: "${productTitle}", Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -3497,14 +3497,14 @@ const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { produc
             <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
               <tr>
                 <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);padding:36px 40px;text-align:center;">
-                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land — Admin</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land, Admin</p>
                   <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">Product Submitted for Review</h1>
                   <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A seller has requested product re-activation</p>
                 </td>
               </tr>
               <tr>
                 <td bgcolor="#E65100" style="background-color:#E65100;padding:14px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Action Required &mdash; Review &amp; Approve or Reject</p>
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Action Required, Review &amp; Approve or Reject</p>
                 </td>
               </tr>
               <tr>
@@ -3568,7 +3568,7 @@ const sendSellerProductSelfDeactivatedEmail = async (sellerEmail, sellerName, { 
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Your Product Has Been Deactivated: "${productTitle}" — Made in Arnhem Land`,
+    subject: `Your Product Has Been Deactivated: "${productTitle}", Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -3646,7 +3646,7 @@ const sendSellerProductSubmitReviewConfirmEmail = async (sellerEmail, sellerName
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `Product Submitted for Review: "${productTitle}" — Made in Arnhem Land`,
+    subject: `Product Submitted for Review: "${productTitle}", Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html lang="en">
@@ -3758,7 +3758,7 @@ const sendSuperAdminBankChangeRequestEmail = async (adminEmail, adminName, detai
               </tr>
               <tr>
                 <td bgcolor="#FF9800" style="background-color:#FF9800;padding:14px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Seller Bank Details Change &mdash; Pending Your Review</p>
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Seller Bank Details Change, Pending Your Review</p>
                 </td>
               </tr>
               <tr>
@@ -3786,7 +3786,7 @@ const sendSuperAdminBankChangeRequestEmail = async (adminEmail, adminName, detai
               </tr>
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel — Administrative Notifications</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel, Administrative Notifications</p>
                   <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated admin notification. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -3865,8 +3865,8 @@ const sendSellerBankChangeApprovedEmail = async (sellerEmail, sellerName, detail
               </tr>
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Seller Notifications</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land, Seller Notifications</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -3920,7 +3920,7 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
               </tr>
               <tr>
                 <td bgcolor="#D32F2F" style="background-color:#D32F2F;padding:14px 40px;text-align:center;">
-                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Change Request Rejected — Existing Details Unchanged</p>
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;"> Change Request Rejected, Existing Details Unchanged</p>
                 </td>
               </tr>
               <tr>
@@ -3943,8 +3943,8 @@ const sendSellerBankChangeRejectedEmail = async (sellerEmail, sellerName, detail
               </tr>
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land — Seller Notifications</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land, Seller Notifications</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -3996,7 +3996,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
   const msg = {
     to: email,
     from: { name: senderName, email: senderEmail },
-    subject: `${requestLabel} Request Received — Order ${refundDetails.displayId} | Made in Arnhem Land`,
+    subject: `${requestLabel} Request Received, Order ${refundDetails.displayId} | Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -4036,7 +4036,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
                   <p style="color:#3D1009;font-size:16px;margin:0 0 6px;">Hi <strong>${customerName}</strong>,</p>
                   <p style="color:#666;font-size:14px;line-height:1.7;margin:0 0 24px;">
                     Thank you for reaching out. Your <strong>${requestLabel.toLowerCase()}</strong> request for order 
-                    <strong style="font-family:monospace;">${refundDetails.displayId}</strong> has been successfully submitted and is currently 
+                    <strong>${refundDetails.displayId}</strong> has been successfully submitted and is currently 
                     <strong>under review</strong> by our team.
                   </p>
                 </td>
@@ -4155,7 +4155,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">We appreciate your patience and will resolve this as quickly as possible.</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -4206,8 +4206,8 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
     APPROVED: {
       icon: '?', color: '#2E7D32', label: 'Approved',
       headline: 'Your Refund Has Been Approved',
-      banner: 'Great news — your refund request has been reviewed and approved.',
-      body: `We are pleased to let you know that your refund request for order <strong style="font-family:monospace;">${refundDetails.displayId}</strong> has been <strong>approved</strong> by our team.<br><br>
+      banner: 'Great news, your refund request has been reviewed and approved.',
+      body: `We are pleased to let you know that your refund request for order <strong>${refundDetails.displayId}</strong> has been <strong>approved</strong> by our team.<br><br>
              Please allow <strong>5?6 business days</strong> for the refunded amount to reflect in your original payment method. Processing times may vary depending on your bank or payment provider.`,
       note: null
     },
@@ -4215,7 +4215,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
       icon: '?', color: '#A03020', label: 'Rejected',
       headline: 'Refund Request Outcome',
       banner: 'Your refund request has been reviewed.',
-      body: `We regret to inform you that your refund request for order <strong style="font-family:monospace;">${refundDetails.displayId}</strong> has not been approved at this time.<br><br>
+      body: `We regret to inform you that your refund request for order <strong>${refundDetails.displayId}</strong> has not been approved at this time.<br><br>
              If you believe this decision was made in error or would like further clarification, please contact our support team.`,
       note: 'If you have questions, please reach out to our customer support team.'
     },
@@ -4223,7 +4223,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
       icon: '', color: '#1565C0', label: 'Completed',
       headline: 'Refund Payment Completed',
       banner: 'Your refund has been processed and payment issued.',
-      body: `Your refund for order <strong style="font-family:monospace;">${refundDetails.displayId}</strong> has been <strong>fully processed</strong> and the payment has been issued.<br><br>
+      body: `Your refund for order <strong>${refundDetails.displayId}</strong> has been <strong>fully processed</strong> and the payment has been issued.<br><br>
              The refunded amount should appear in your account within <strong>1?3 business days</strong> depending on your bank. If you have not received it after 5 business days, please contact your bank or reach out to us.`,
       note: null
     }
@@ -4231,7 +4231,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
     icon: '', color: '#C4603A', label: st,
     headline: 'Refund Request Updated',
     banner: `Your refund request status has been updated to ${st}.`,
-    body: `Your refund request for order <strong style="font-family:monospace;">${refundDetails.displayId}</strong> has been updated.`,
+    body: `Your refund request for order <strong>${refundDetails.displayId}</strong> has been updated.`,
     note: null
   };
 
@@ -4250,7 +4250,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
   const msg = {
     to: email,
     from: { name: senderName, email: senderEmail },
-    subject: `${config.icon} Refund ${config.label} — Order ${refundDetails.displayId} | Made in Arnhem Land`,
+    subject: `${config.icon} Refund ${config.label}, Order ${refundDetails.displayId} | Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -4367,7 +4367,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for shopping with Made in Arnhem Land.</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:support@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">support@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -4414,24 +4414,24 @@ const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => 
     APPROVED: {
       icon: '?', color: '#2E7D32', label: 'Approved',
       banner: 'A refund request for one of your orders has been approved.',
-      body: `A refund request from customer <strong>${refundDetails.customerName || 'Customer'}</strong> for order <strong style="font-family:monospace;">${refundDetails.displayId}</strong> has been <strong>approved</strong> by admin.<br><br>
+      body: `A refund request from customer <strong>${refundDetails.customerName || 'Customer'}</strong> for order <strong>${refundDetails.displayId}</strong> has been <strong>approved</strong> by admin.<br><br>
              The refund will be processed to the customer's original payment method. This will be reflected in your revenue and commission records.`
     },
     REJECTED: {
       icon: '?', color: '#A03020', label: 'Rejected',
       banner: 'A refund request for one of your orders has been reviewed.',
-      body: `The refund request from customer <strong>${refundDetails.customerName || 'Customer'}</strong> for order <strong style="font-family:monospace;">${refundDetails.displayId}</strong> has been <strong>rejected</strong> by admin. No changes will be made to the order or your revenue.`
+      body: `The refund request from customer <strong>${refundDetails.customerName || 'Customer'}</strong> for order <strong>${refundDetails.displayId}</strong> has been <strong>rejected</strong> by admin. No changes will be made to the order or your revenue.`
     },
     COMPLETED: {
       icon: '', color: '#1565C0', label: 'Completed',
       banner: 'A refund payment has been completed for one of your orders.',
-      body: `The refund for order <strong style="font-family:monospace;">${refundDetails.displayId}</strong> (customer: <strong>${refundDetails.customerName || 'Customer'}</strong>) has been <strong>fully processed</strong> and payment has been issued.<br><br>
+      body: `The refund for order <strong>${refundDetails.displayId}</strong> (customer: <strong>${refundDetails.customerName || 'Customer'}</strong>) has been <strong>fully processed</strong> and payment has been issued.<br><br>
              Your commission and revenue records for this order have been updated accordingly.`
     }
   }[st] || {
     icon: '', color: '#C4603A', label: st,
     banner: `A refund request status has been updated to ${st}.`,
-    body: `Refund request status for order <strong style="font-family:monospace;">${refundDetails.displayId}</strong> has been updated to ${st}.`
+    body: `Refund request status for order <strong>${refundDetails.displayId}</strong> has been updated to ${st}.`
   };
 
   const items = refundDetails.requestedItems || refundDetails.items || [];
@@ -4454,7 +4454,7 @@ const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => 
   const msg = {
     to: email,
     from: { name: senderName, email: senderEmail },
-    subject: `${config.icon} Refund ${config.label} — Order ${refundDetails.displayId}${subjectItems} | Made in Arnhem Land`,
+    subject: `${config.icon} Refund ${config.label}, Order ${refundDetails.displayId}${subjectItems} | Made in Arnhem Land`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -4559,7 +4559,7 @@ const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => 
 
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -4811,7 +4811,7 @@ const sendSellerPayoutTransferEmail = async (sellerEmail, sellerName, { orderId,
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `💸 Payment Transferred — Order ${orderDisplayId}`,
+    subject: `💸 Payment Transferred, Order ${orderDisplayId}`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -4837,7 +4837,7 @@ const sendSellerPayoutTransferEmail = async (sellerEmail, sellerName, { orderId,
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
                         <td style="color:#555;font-size:14px;padding:6px 0;width:50%;">Order Reference</td>
-                        <td style="color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:monospace;">${orderDisplayId}</td>
+                        <td style="color:#3D1009;font-size:14px;font-weight:700;text-align:right;">${orderDisplayId}</td>
                       </tr>
                       <tr>
                         <td style="color:#555;font-size:14px;padding:6px 0;">Amount Transferred</td>
@@ -4859,7 +4859,7 @@ const sendSellerPayoutTransferEmail = async (sellerEmail, sellerName, { orderId,
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;border-radius:0 0 12px 12px;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Thank you for being a valued Made in Arnhem Land seller!</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -4888,7 +4888,7 @@ const sendSellerStripeApprovedEmail = async (sellerEmail, sellerName) => {
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: '🎉 Your Stripe Account is Ready — You Can Now Receive Payments!',
+    subject: '🎉 Your Stripe Account is Ready, You Can Now Receive Payments!',
     html: `
       <!DOCTYPE html>
       <html>
@@ -4928,7 +4928,7 @@ const sendSellerStripeApprovedEmail = async (sellerEmail, sellerName) => {
               <tr>
                 <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;border-radius:0 0 12px 12px;">
                   <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Welcome to your new earnings journey! 🎨</p>
-                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email &mdash; please do not reply. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated email, please do not reply. &copy; 2026 Made in Arnhem Land.</p>
                   <p style="margin:4px 0 0;color:#B8998F;font-size:11px;"> Email us at <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">sellers@madeinarnhemland.com.au</a></p>
                   <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
@@ -4951,14 +4951,14 @@ const sendDisputeAlertEmail = async ({ adminEmail, adminName, disputeId, amount,
   const msg = {
     to: adminEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `⚠️ Stripe Dispute Opened — Order ${orderLink}`,
+    subject: `⚠️ Stripe Dispute Opened, Order ${orderLink}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #c0392b;">Stripe Dispute Opened</h2>
         <p>Hi ${adminName || 'Admin'},</p>
         <p>A Stripe chargeback/dispute has been opened that requires your attention.</p>
         <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; width: 40%;">Order</td><td style="padding: 8px; border: 1px solid #ddd; font-family:monospace;">${orderLink}</td></tr>
+          <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold; width: 40%;">Order</td><td style="padding: 8px; border: 1px solid #ddd;">${orderLink}</td></tr>
           <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Dispute ID</td><td style="padding: 8px; border: 1px solid #ddd;">${disputeId}</td></tr>
           <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Charge ID</td><td style="padding: 8px; border: 1px solid #ddd;">${chargeId || 'N/A'}</td></tr>
           <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Amount</td><td style="padding: 8px; border: 1px solid #ddd;">${amountFormatted}</td></tr>
@@ -4966,7 +4966,7 @@ const sendDisputeAlertEmail = async ({ adminEmail, adminName, disputeId, amount,
           <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Customer Email</td><td style="padding: 8px; border: 1px solid #ddd;">${customerEmail || 'N/A'}</td></tr>
         </table>
         <p>Please log in to the <a href="https://dashboard.stripe.com/disputes/${disputeId}">Stripe Dashboard</a> to respond to this dispute. You typically have 7 days to submit evidence.</p>
-        <p style="color: #888; font-size: 12px;">Made in Arnhem Land — Automated Dispute Alert</p>
+        <p style="color: #888; font-size: 12px;">Made in Arnhem Land, Automated Dispute Alert</p>
         <p style="font-size: 12px; margin-top: 8px;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;">www.madeinarnhemland.com.au</a></p>
       </div>
     `
@@ -5050,7 +5050,7 @@ const sendSellerAccountDeactivatedEmail = async (email, sellerName, reason) => {
                     <a href="${FRONTEND_URL || 'https://madeinarnhemland.com.au'}/contact-support" style="display:inline-block;background:#5A1E12;color:#ffffff;padding:12px 28px;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;margin-bottom:24px;">Contact Support</a>
                   </div>
 
-                  <p style="color:#888;font-size:12px;margin:0;text-align:center;">Made in Arnhem Land — Seller Account Management</p>
+                  <p style="color:#888;font-size:12px;margin:0;text-align:center;">Made in Arnhem Land, Seller Account Management</p>
                   <p style="margin:8px 0 0;text-align:center;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
                 </td>
               </tr>

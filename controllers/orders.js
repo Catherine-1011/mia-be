@@ -4295,7 +4295,7 @@ const generateInvoiceBuffer = (order) => {
       doc.fillColor('#bbbbbb').font('Helvetica').fontSize(8)
          .text('Support: support@madeinarnhemland.com.au', L, FOOTER_Y + 14, { align: 'center', width: R - L, lineBreak: false });
       doc.fillColor('#bbbbbb').font('Helvetica').fontSize(8)
-         .text('Website: madeinarnhemland.com.au', L, FOOTER_Y + 28, { align: 'center', width: R - L, lineBreak: false });
+         .text('Website: madeinarnhemland.com.au', L, FOOTER_Y + 28, { align: 'center', width: R - L, lineBreak: false, link: 'https://madeinarnhemland.com.au' });
     };
 
     const hasSubOrders = Array.isArray(order.subOrders) && order.subOrders.length > 0;

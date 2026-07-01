@@ -4044,9 +4044,9 @@ const generateInvoiceBuffer = (order) => {
       doc.save();
       doc.translate(doc.page.width / 2, doc.page.height / 2);
       doc.rotate(-45);
-      doc.fontSize(72).font('Helvetica-Bold')
-         .fillOpacity(0.12).fillColor(stampColor)
-         .text(stampText, -200, -40, { width: 400, align: 'center', lineBreak: false });
+      doc.fontSize(72).font('Helvetica-Bold').fillOpacity(0.12).fillColor(stampColor);
+      const stampWidth = doc.widthOfString(stampText);
+      doc.text(stampText, -stampWidth / 2, -40, { lineBreak: false });
       doc.fillOpacity(1);
       doc.restore();
     };

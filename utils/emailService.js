@@ -5065,7 +5065,119 @@ const sendSellerAccountDeactivatedEmail = async (email, sellerName, reason) => {
   return sendWithFallback(msg, 'Seller Account Deactivated Email');
 };
 
-module.exports = { 
+// -- Super Admin New SAML Admin Email -----------------------------------------
+// Sent to every Super Admin when a new admin is provisioned via SAML for the first time.
+const sendSuperAdminNewSamlAdminEmail = async (adminEmail, adminName, { newAdminName, newAdminEmail, role, idpName, createdAt } = {}) => {
+  if (isDevelopmentMode) {
+    return { success: true };
+  }
+
+  const formattedDate = createdAt
+    ? new Date(createdAt).toLocaleString('en-AU', { timeZone: 'Australia/Darwin', dateStyle: 'long', timeStyle: 'short' })
+    : new Date().toLocaleString('en-AU', { timeZone: 'Australia/Darwin', dateStyle: 'long', timeStyle: 'short' });
+
+  const msg = {
+    to: adminEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `New Admin Provisioned via SAML: ${newAdminName || newAdminEmail} - Made in Arnhem Land`,
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="UTF-8"><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>
+      <body style="margin:0;padding:0;background-color:#FDF5F3;font-family:Arial,sans-serif;">
+        <table bgcolor="#FDF5F3" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF5F3;">
+          <tr><td align="center" style="padding:30px 0;">
+            <table bgcolor="#ffffff" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(90,30,18,0.12);">
+              <!-- Header -->
+              <tr>
+                <td bgcolor="#5A1E12" style="background:linear-gradient(135deg,#5A1E12 0%,#7D2E1E 100%);background-color:#5A1E12;padding:36px 40px;mso-padding-alt:36px 40px;text-align:center;">
+                  <p style="margin:0 0 8px;font-size:12px;color:#F9EDE9;letter-spacing:3px;text-transform:uppercase;">Made in Arnhem Land - Admin</p>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">New Admin Provisioned</h1>
+                  <p style="margin:10px 0 0;color:#F0D0C8;font-size:14px;">A new admin account was created via SAML single sign-on</p>
+                </td>
+              </tr>
+              <!-- Status banner -->
+              <tr>
+                <td bgcolor="#E65100" style="background-color:#E65100;padding:14px 40px;mso-padding-alt:14px 40px;text-align:center;">
+                  <p style="margin:0;color:#ffffff;font-size:15px;font-weight:600;">Action Required: Review &amp; Approve New Admin</p>
+                </td>
+              </tr>
+              <!-- Body -->
+              <tr>
+                <td style="padding:36px 40px 28px;mso-padding-alt:36px 40px 28px;">
+                  <p style="color:#3D1009;font-size:17px;margin:0 0 10px;">Hi <strong>${adminName || 'Super Admin'}</strong>,</p>
+                  <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 28px;">A new admin account has been automatically provisioned through your SAML identity provider. This account is currently <strong style="color:#5A1E12;">pending approval</strong>. Please review the details below and approve or reject access from the dashboard.</p>
+
+                  <!-- Admin details box -->
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;margin-bottom:24px"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:22px;border-top:3px solid #5A1E12">
+                    <p style="margin:0 0 16px;color:#5A1E12;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">New Admin Details</p>
+                    <table cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;">
+                      <tr>
+                        <td style="padding:8px 0;mso-padding-alt:8px 0;border-bottom:1px solid #ECD5CF;">
+                          <span style="color:#7D2E1E;font-size:13px;font-weight:700;display:inline-block;width:140px;">Name</span>
+                          <span style="color:#333;font-size:14px;">${newAdminName || 'Not provided'}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;mso-padding-alt:8px 0;border-bottom:1px solid #ECD5CF;">
+                          <span style="color:#7D2E1E;font-size:13px;font-weight:700;display:inline-block;width:140px;">Email</span>
+                          <span style="color:#333;font-size:14px;">${newAdminEmail || 'Not provided'}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;mso-padding-alt:8px 0;border-bottom:1px solid #ECD5CF;">
+                          <span style="color:#7D2E1E;font-size:13px;font-weight:700;display:inline-block;width:140px;">Role</span>
+                          <span style="color:#333;font-size:14px;">${role || 'ADMIN'}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;mso-padding-alt:8px 0;border-bottom:1px solid #ECD5CF;">
+                          <span style="color:#7D2E1E;font-size:13px;font-weight:700;display:inline-block;width:140px;">SAML Provider</span>
+                          <span style="color:#333;font-size:14px;">${idpName || 'SAML Identity Provider'}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;mso-padding-alt:8px 0;border-bottom:1px solid #ECD5CF;">
+                          <span style="color:#7D2E1E;font-size:13px;font-weight:700;display:inline-block;width:140px;">Created</span>
+                          <span style="color:#333;font-size:14px;">${formattedDate}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;mso-padding-alt:8px 0;">
+                          <span style="color:#7D2E1E;font-size:13px;font-weight:700;display:inline-block;width:140px;">Created By</span>
+                          <span style="color:#333;font-size:14px;">SAML Provisioning (Automatic)</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td></tr></table>
+
+                  <!-- Alert note -->
+                  <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9"><tr><td bgcolor="#F9EDE9" style="background-color:#F9EDE9;padding:16px 20px;border-left:4px solid #C4603A">
+                    <p style="margin:0 0 6px;color:#5A1E12;font-weight:700;font-size:14px;">Security Notice</p>
+                    <p style="margin:0;color:#7D2E1E;font-size:13px;line-height:1.6;">If you do not recognise this user or did not authorise this login, please reject the account and review your SAML identity provider configuration immediately.</p>
+                  </td></tr></table>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td bgcolor="#3D1009" style="background-color:#3D1009;padding:22px 40px;text-align:center;">
+                  <p style="margin:0 0 4px;color:#F0D0C8;font-size:13px;">Made in Arnhem Land Admin Panel - Security Notifications</p>
+                  <p style="margin:0;color:#8B5C54;font-size:11px;">This is an automated security notification. &copy; 2026 Made in Arnhem Land.</p>
+                  <p style="margin:8px 0 0;"><a href="https://www.madeinarnhemland.com.au" style="color:#C4603A;text-decoration:underline;font-size:11px;">www.madeinarnhemland.com.au</a></p>
+                </td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+      </body>
+      </html>
+    `,
+  };
+
+  return sendWithFallback(msg, 'Super Admin New SAML Admin Email', { newAdminEmail });
+};
+
+module.exports = {
   generateOTP,
   sendOTPEmail, 
   testEmailConfig,
@@ -5108,7 +5220,8 @@ module.exports = {
   sendDisputeAlertEmail,
   sendSellerStripeApprovedEmail,
   sendSellerPayoutTransferEmail,
-  sendSellerAccountDeactivatedEmail
+  sendSellerAccountDeactivatedEmail,
+  sendSuperAdminNewSamlAdminEmail
 };
 
 

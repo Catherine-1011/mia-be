@@ -3,6 +3,7 @@ const { Strategy: SamlStrategy } = require("@node-saml/passport-saml");
 const fs = require("fs");
 const path = require("path");
 const prisma = require("./prisma");
+const { sendSuperAdminNewSamlAdminEmail } = require("../utils/emailService");
 
 module.exports = function (app) {
   // Load Certificate and Metadata if available
@@ -90,6 +91,30 @@ module.exports = function (app) {
              return newUser;
            });
            console.log(`✅ SAML user created as PENDING: ${email}`);
+
+           // Notify all Super Admins — fire-and-forget, must not block SAML login
+           try {
+             const superAdmins = await prisma.user.findMany({
+               where: { role: 'SUPER_ADMIN' },
+               select: { email: true, name: true },
+             });
+             const idpName = process.env.SAML_PROVIDER_NAME || process.env.SAML_ISSUER || 'SAML Identity Provider';
+             await Promise.all(
+               superAdmins.map((sa) =>
+                 sendSuperAdminNewSamlAdminEmail(sa.email, sa.name, {
+                   newAdminName: user.name,
+                   newAdminEmail: user.email,
+                   role: user.role,
+                   idpName,
+                   createdAt: user.createdAt,
+                 }).catch((emailErr) => {
+                   console.error(`[SAML] Failed to notify super admin ${sa.email} of new admin creation:`, emailErr.message);
+                 })
+               )
+             );
+           } catch (notifyErr) {
+             console.error('[SAML] Error fetching super admins for new admin notification:', notifyErr.message);
+           }
         }
 
         return done(null, user);

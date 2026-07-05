@@ -3,7 +3,8 @@ const { Strategy: SamlStrategy } = require("@node-saml/passport-saml");
 const fs = require("fs");
 const path = require("path");
 const prisma = require("./prisma");
-const { sendSuperAdminNewSamlAdminEmail } = require("../utils/emailService");
+
+const SAML_PASSWORD = 'SAML_MANAGED_ACCOUNT_NO_PASSWORD';
 
 module.exports = function (app) {
   // Load Certificate and Metadata if available
@@ -56,65 +57,36 @@ module.exports = function (app) {
       try {
         console.log("🔐 SAML Profile Received:", profile);
         
-        const email = profile.email || profile.nameID;
+        const email = (profile.email || profile.nameID || '').toLowerCase().trim();
         
         if (!email) {
           return done(new Error("No email returned from SAML Provider"), null);
         }
 
-        // Find user by email
-        let user = await prisma.user.findUnique({
-          where: { email: email.toLowerCase() }
+        // Allowlist-first SAML: only locally pre-authorized admins may continue.
+        const user = await prisma.user.findUnique({
+          where: { email },
+          include: { samlApproval: true },
         });
 
-        // Ensure user is internal/admin? 
-        // Logic: If user doesn't exist, should we create them? 
-        // For now, let's assume valid employees should be in the system 
-        // OR we map them to an account.
-        
         if (!user) {
-           console.log(`⚠️ User not found for SAML email: ${email}. Creating provisioned account (pending approval).`);
-           user = await prisma.$transaction(async (tx) => {
-             const newUser = await tx.user.create({
-               data: {
-                 email: email.toLowerCase(),
-                 name: profile.givenName ? `${profile.givenName} ${profile.sn || ''}`.trim() : email.split('@')[0],
-                 role: 'ADMIN',
-                 password: 'SAML_MANAGED_ACCOUNT_NO_PASSWORD',
-                 isVerified: true,
-                 emailVerified: true,
-               },
-             });
-             await tx.samlApproval.create({
-               data: { userId: newUser.id, status: 'PENDING' },
-             });
-             return newUser;
-           });
-           console.log(`✅ SAML user created as PENDING: ${email}`);
+          console.warn(`[SAML] Unauthorized SAML admin login attempt for unknown email: ${email}`);
+          return done(null, false, { message: 'Unauthorized SAML admin' });
+        }
 
-           // Notify all Super Admins — fire-and-forget, must not block SAML login
-           try {
-             const superAdmins = await prisma.user.findMany({
-               where: { role: 'SUPER_ADMIN' },
-               select: { email: true, name: true },
-             });
-             const idpName = process.env.SAML_PROVIDER_NAME || process.env.SAML_ISSUER || 'SAML Identity Provider';
-             await Promise.all(
-               superAdmins.map((sa) =>
-                 sendSuperAdminNewSamlAdminEmail(sa.email, sa.name, {
-                   newAdminName: user.name,
-                   newAdminEmail: user.email,
-                   role: user.role,
-                   idpName,
-                   createdAt: user.createdAt,
-                 }).catch((emailErr) => {
-                   console.error(`[SAML] Failed to notify super admin ${sa.email} of new admin creation:`, emailErr.message);
-                 })
-               )
-             );
-           } catch (notifyErr) {
-             console.error('[SAML] Error fetching super admins for new admin notification:', notifyErr.message);
-           }
+        if (user.password !== SAML_PASSWORD) {
+          console.warn(`[SAML] Unauthorized SAML admin type for email: ${email}`);
+          return done(null, false, { message: 'Unauthorized admin type' });
+        }
+
+        if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
+          console.warn(`[SAML] Non-admin SAML login attempt for email: ${email}`);
+          return done(null, false, { message: 'Admin role required' });
+        }
+
+        if (user.role !== 'SUPER_ADMIN' && (!user.samlApproval || user.samlApproval.status !== 'APPROVED')) {
+          console.warn(`[SAML] Admin access denied for email: ${email}; status: ${user.samlApproval?.status || 'NONE'}`);
+          return done(null, false, { message: 'Admin access denied' });
         }
 
         return done(null, user);

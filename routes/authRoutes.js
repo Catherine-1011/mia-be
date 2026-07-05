@@ -35,7 +35,7 @@ async function authRoutes(fastify, options) {
   }));
 
   // Receives the SAML assertion posted back to /saml/login (AuthPoint ACS URL)
-  const samlFailureRedirect = `${(process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app').replace(/\/$/, '')}/login?error=saml_fail`;
+  const samlFailureRedirect = `${(process.env.DASHBOARD_URL || 'https://alpa-dashboard.vercel.app').replace(/\/$/, '')}/access-rejected`;
 
   fastify.post("/saml/login",
       {

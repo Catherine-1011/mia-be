@@ -5177,6 +5177,65 @@ const sendSuperAdminNewSamlAdminEmail = async (adminEmail, adminName, { newAdmin
   return sendWithFallback(msg, 'Super Admin New SAML Admin Email', { newAdminEmail });
 };
 
+// -- Super Admin Created SAML Admin Email --------------------------------------
+// Sent only to the Super Admin who explicitly created an allowlisted SAML admin.
+const sendSuperAdminCreatedSamlAdminEmail = async (adminEmail, adminName, { newAdminName, newAdminEmail, role, status, createdAt, createdByName, createdByEmail } = {}) => {
+  if (isDevelopmentMode) {
+    return { success: true };
+  }
+
+  const formattedDate = createdAt
+    ? new Date(createdAt).toLocaleString('en-AU', { timeZone: 'Australia/Darwin', dateStyle: 'long', timeStyle: 'short' })
+    : new Date().toLocaleString('en-AU', { timeZone: 'Australia/Darwin', dateStyle: 'long', timeStyle: 'short' });
+
+  const msg = {
+    to: adminEmail,
+    from: { email: senderEmail, name: senderName },
+    subject: `New Admin Created: ${newAdminName || newAdminEmail}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:640px;margin:0 auto;background:#fff;border:1px solid #EDD8CC;border-radius:10px;overflow:hidden;">
+        <div style="background:#5A1E12;color:#fff;padding:24px 28px;">
+          <h2 style="margin:0;font-size:22px;">New Admin Created</h2>
+          <p style="margin:8px 0 0;color:#F0D0C8;font-size:14px;">A SAML admin was added to the local dashboard allowlist.</p>
+        </div>
+        <div style="padding:28px;">
+          <p style="margin:0 0 20px;">Hi ${adminName || 'Super Admin'},</p>
+          <p style="margin:0 0 24px;">You created a new admin account for WatchGuard/AuthPoint SAML dashboard access.</p>
+          <table style="width:100%;border-collapse:collapse;background:#FFF7F2;border:1px solid #EDD8CC;border-radius:8px;overflow:hidden;">
+            <tr>
+              <td style="padding:10px 14px;color:#7D2E1E;font-weight:700;width:160px;">Name</td>
+              <td style="padding:10px 14px;">${newAdminName || 'N/A'}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px;color:#7D2E1E;font-weight:700;">Email</td>
+              <td style="padding:10px 14px;">${newAdminEmail || 'N/A'}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px;color:#7D2E1E;font-weight:700;">Role</td>
+              <td style="padding:10px 14px;">${role || 'ADMIN'}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px;color:#7D2E1E;font-weight:700;">Status</td>
+              <td style="padding:10px 14px;">${status || 'APPROVED'}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px;color:#7D2E1E;font-weight:700;">Created</td>
+              <td style="padding:10px 14px;">${formattedDate}</td>
+            </tr>
+            <tr>
+              <td style="padding:10px 14px;color:#7D2E1E;font-weight:700;">Created By</td>
+              <td style="padding:10px 14px;">${createdByName || adminName || 'Super Admin'} (${createdByEmail || adminEmail})</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    `,
+    text: `New Admin Created: ${newAdminName || newAdminEmail}\nEmail: ${newAdminEmail}\nRole: ${role || 'ADMIN'}\nStatus: ${status || 'APPROVED'}\nCreated: ${formattedDate}\nCreated by: ${createdByName || adminName || 'Super Admin'} (${createdByEmail || adminEmail})`,
+  };
+
+  return sendWithFallback(msg, 'Super Admin Created SAML Admin Email', { newAdminEmail });
+};
+
 module.exports = {
   generateOTP,
   sendOTPEmail, 
@@ -5221,7 +5280,8 @@ module.exports = {
   sendSellerStripeApprovedEmail,
   sendSellerPayoutTransferEmail,
   sendSellerAccountDeactivatedEmail,
-  sendSuperAdminNewSamlAdminEmail
+  sendSuperAdminNewSamlAdminEmail,
+  sendSuperAdminCreatedSamlAdminEmail
 };
 
 

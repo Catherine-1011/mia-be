@@ -982,6 +982,7 @@ enum SamlApprovalStatus {
   APPROVED
   REJECTED
   BLOCKED
+  ARCHIVED
 }
 
 model SamlApproval {
@@ -996,11 +997,15 @@ model SamlApproval {
   blockedBy       String?            @map("blocked_by")
   blockedAt       DateTime?          @map("blocked_at")
   blockReason     String?            @map("block_reason")
+  archivedBy      String?            @map("archived_by")
+  archivedAt      DateTime?          @map("archived_at")
+  archiveReason   String?            @map("archive_reason")
   createdAt       DateTime           @default(now()) @map("created_at")
   updatedAt       DateTime           @updatedAt @map("updated_at")
   user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([createdAt])
+  @@index([archivedAt])
   @@map("saml_approvals")
 }

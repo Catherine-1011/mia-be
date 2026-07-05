@@ -42,8 +42,7 @@ exports.register = async (request, reply) => {
     // Validate and normalize role
     const roleMap = {
       'customer': 'CUSTOMER',
-      'seller': 'SELLER',
-      'admin': 'ADMIN'
+      'seller': 'SELLER'
     };
     
     const normalizedRole = roleMap[role.toLowerCase()];
@@ -51,7 +50,7 @@ exports.register = async (request, reply) => {
     if (!normalizedRole) {
       return reply.status(400).send({ 
         success: false, 
-        message: "Invalid role. Must be 'customer', 'seller', or 'admin'" 
+        message: "Invalid role. Must be 'customer' or 'seller'" 
       });
     }
 
@@ -148,7 +147,7 @@ exports.login = async (request, reply) => {
     if (!user) {
       return reply.status(404).send({ success: false, message: "User not found or invalid credentials" });
     }
-    
+
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
     
@@ -1000,7 +999,7 @@ exports.samlCallback = async (request, reply) => {
     if (!user) {
       console.error("❌ No user returned from SAML strategy");
       const dashboardUrl = process.env.DASHBOARD_URL || "https://alpa-dashboard.vercel.app";
-      return reply.redirect(`${dashboardUrl}/login?error=auth_failed`);
+      return reply.redirect(`${dashboardUrl}/access-rejected`);
     }
 
     const dashboardUrl = (process.env.DASHBOARD_URL || "https://alpa-dashboard.vercel.app").replace(/\/$/, '');
@@ -1012,13 +1011,11 @@ exports.samlCallback = async (request, reply) => {
         samlApproval = await prisma.samlApproval.findUnique({ where: { userId: user.id } });
 
         if (!samlApproval) {
-          samlApproval = await prisma.samlApproval.create({
-            data: { userId: user.id, status: 'PENDING' },
-          });
+          console.log(`🔒 SAML user ${user.email} has no local approval record — redirecting`);
+          return reply.redirect(`${dashboardUrl}/access-rejected`);
         }
       } catch {
-        // Table may not exist yet if migration hasn't run — skip gate
-        samlApproval = null;
+        return reply.redirect(`${dashboardUrl}/access-rejected`);
       }
 
       if (samlApproval) switch (samlApproval.status) {

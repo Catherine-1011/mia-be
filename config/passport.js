@@ -6,6 +6,40 @@ const prisma = require("./prisma");
 
 const SAML_PASSWORD = 'SAML_MANAGED_ACCOUNT_NO_PASSWORD';
 
+// TEMPORARY DEBUG HELPER — remove once the SAML email root cause is confirmed.
+// Masks values so we can see shape/format without dumping full PII to logs.
+function maskSamlValue(value) {
+  if (typeof value !== 'string' || value.length === 0) return value;
+  if (value.length <= 4) return '*'.repeat(value.length);
+  return `${value.slice(0, 2)}${'*'.repeat(value.length - 4)}${value.slice(-2)}`;
+}
+
+function extractSamlDebugInfo(profile) {
+  if (!profile || typeof profile !== 'object') return null;
+
+  const attributes = profile.attributes && typeof profile.attributes === 'object' ? profile.attributes : {};
+  const maskAttrValue = (v) => (Array.isArray(v) ? v.map(maskSamlValue) : maskSamlValue(v));
+
+  return {
+    nameID: maskSamlValue(profile.nameID),
+    nameIDFormat: profile.nameIDFormat || null,
+    email: maskSamlValue(profile.email),
+    mail: maskSamlValue(profile.mail),
+    emailAddress: maskSamlValue(profile.emailAddress),
+    upn: maskSamlValue(profile.upn),
+    userPrincipalName: maskSamlValue(profile.userPrincipalName),
+    profileKeys: Object.keys(profile),
+    attributesKeys: Object.keys(attributes),
+    attributes: Object.fromEntries(
+      Object.entries(attributes).map(([key, value]) => [key, maskAttrValue(value)])
+    ),
+    looksLikeEmail: {
+      nameID: typeof profile.nameID === 'string' && profile.nameID.includes('@'),
+      email: typeof profile.email === 'string' && profile.email.includes('@'),
+    },
+  };
+}
+
 module.exports = function (app) {
   // Load Certificate and Metadata if available
   let decryptionPvk = null;
@@ -56,7 +90,15 @@ module.exports = function (app) {
     async (profile, done) => {
       try {
         console.log("🔐 SAML Profile Received:", profile);
-        
+
+        // TEMPORARY DEBUG LOGGING — gated behind SAML_DEBUG_PROFILE=true.
+        // Purpose: confirm whether AuthPoint sends a real email anywhere in the
+        // assertion (mail/emailAddress/upn/userPrincipalName/attributes) or only
+        // a username-shaped NameID. Values are masked; remove after diagnosis.
+        if (process.env.SAML_DEBUG_PROFILE === 'true') {
+          console.log('🧪 [SAML_DEBUG_PROFILE] masked profile info:', JSON.stringify(extractSamlDebugInfo(profile), null, 2));
+        }
+
         const email = (profile.email || profile.nameID || '').toLowerCase().trim();
         
         if (!email) {

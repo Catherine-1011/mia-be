@@ -2,8 +2,8 @@ const fastifyPassport = require("@fastify/passport");
 const authMiddleware = require("../middlewares/auth");
 const {
   register, login, logout, verifyOTP, resendOTP,
-  forgotPassword, resetPassword, verifyLoginOTP, samlCallback,
-  createTicket, exchangeTicket
+  forgotPassword, resetPassword, verifyLoginOTP, samlCallbackV2,
+  submitSamlAccessEmail, verifySamlAccessOTP, createTicket, exchangeTicket
 } = require("../controllers/auth");
 // auth
 async function authRoutes(fastify, options) {
@@ -15,6 +15,8 @@ async function authRoutes(fastify, options) {
   fastify.post("/forgot-password", forgotPassword);
   fastify.post("/reset-password", resetPassword);
   fastify.post("/verify-login-otp", verifyLoginOTP);
+  fastify.post("/saml/access-email", submitSamlAccessEmail);
+  fastify.post("/saml/verify-access-otp", verifySamlAccessOTP);
 
   // SSO Handshake (Sellers & Customers only — Admin uses SAML)
   // Step 1: Website calls this after login — requires a valid Bearer token
@@ -44,7 +46,7 @@ async function authRoutes(fastify, options) {
             session: false
         })
       },
-      samlCallback
+      samlCallbackV2
   );
 
   // Receives the SAML assertion from AuthPoint (alternate ACS URL /saml/callback)
@@ -55,7 +57,7 @@ async function authRoutes(fastify, options) {
             session: false
         })
       }, 
-      samlCallback
+      samlCallbackV2
   );
 }
 

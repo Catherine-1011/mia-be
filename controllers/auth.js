@@ -6,6 +6,78 @@ const crypto = require("crypto");
 const { generateOTP, sendOTPEmail } = require("../utils/emailService");
 const { addToBlacklist, isBlacklisted } = require("../utils/tokenDenylist");
 
+const SAML_PASSWORD = 'SAML_MANAGED_ACCOUNT_NO_PASSWORD';
+const ALPA_EMAIL_DOMAIN = '@alpa.asn.au';
+const SAML_ACCESS_PURPOSE = 'saml_access_verification';
+const SAML_ACCESS_SESSION_TTL_SECONDS = 10 * 60;
+const SAML_ACCESS_DENIED_MESSAGE = 'You are not authorized to access this dashboard.\nPlease contact your administrator.';
+
+const normalizeAlpaEmail = (email) => (typeof email === 'string' ? email.toLowerCase().trim() : '');
+
+const isAlpaEmail = (email) => normalizeAlpaEmail(email).endsWith(ALPA_EMAIL_DOMAIN);
+
+const getDashboardUrl = () => (process.env.DASHBOARD_URL || "https://alpa-dashboard.vercel.app").replace(/\/$/, '');
+
+const createAdminSessionToken = (user) => jwt.sign(
+  { userId: user.id, uid: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
+  process.env.JWT_SECRET,
+  { expiresIn: "60m" }
+);
+
+const setAdminSessionCookie = (reply, token) => {
+  reply.setCookie('session_token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 1000,
+    path: '/'
+  });
+};
+
+const createSamlAccessSession = ({ samlSubject, samlNameIdFormat }) => jwt.sign(
+  {
+    purpose: SAML_ACCESS_PURPOSE,
+    samlSubject,
+    samlNameIdFormat: samlNameIdFormat || null,
+    jti: crypto.randomUUID(),
+  },
+  process.env.JWT_SECRET,
+  { expiresIn: SAML_ACCESS_SESSION_TTL_SECONDS }
+);
+
+const verifySamlAccessSession = (session) => {
+  if (!session || typeof session !== 'string') return null;
+  try {
+    const decoded = jwt.verify(session, process.env.JWT_SECRET);
+    if (decoded?.purpose !== SAML_ACCESS_PURPOSE || !decoded?.samlSubject) return null;
+    return decoded;
+  } catch {
+    return null;
+  }
+};
+
+const getSamlBoundApproval = async (samlSubject) => prisma.samlApproval.findFirst({
+  where: {
+    samlSubject,
+    samlBindingCompleted: true,
+    samlEmailVerified: true,
+  },
+  include: { user: true },
+});
+
+const isApprovedSamlAdminUser = (user, approval) => {
+  if (!user || !approval) return false;
+  if (user.password !== SAML_PASSWORD) return false;
+  if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) return false;
+  if (approval.status !== 'APPROVED') return false;
+  return true;
+};
+
+const sendAccessDenied = (reply, statusCode = 403) => reply.status(statusCode).send({
+  success: false,
+  message: SAML_ACCESS_DENIED_MESSAGE,
+});
+
 // HELPER FUNCTION: Generate device fingerprint
 const generateDeviceFingerprint = (request) => {
   // Use only stable headers for device identification (exclude IP address)
@@ -992,9 +1064,11 @@ exports.resendLoginOTP = async (request, reply) => {
 // SAML Callback Handler (Lane 2)
 exports.samlCallback = async (request, reply) => {
   try {
+    return exports.samlCallbackV2(request, reply);
 
-    // Passport strategies populate user
-    const user = request.user;
+    // Passport validates WatchGuard authentication and returns the SAML identity.
+    const samlIdentity = request.user;
+    const samlSubject = typeof samlIdentity?.samlSubject === 'string' ? samlIdentity.samlSubject.trim() : '';
 
     if (!user) {
       console.error("❌ No user returned from SAML strategy");
@@ -1064,6 +1138,256 @@ exports.samlCallback = async (request, reply) => {
   }
 };
 
+
+
+
+exports.samlCallbackV2 = async (request, reply) => {
+  try {
+    const samlIdentity = request.user;
+    const samlSubject = typeof samlIdentity?.samlSubject === 'string' ? samlIdentity.samlSubject.trim() : '';
+
+    if (!samlSubject) {
+      console.error("No SAML subject returned from SAML strategy");
+      return reply.redirect(`${getDashboardUrl()}/access-rejected`);
+    }
+
+    const dashboardUrl = getDashboardUrl();
+    const boundApproval = await getSamlBoundApproval(samlSubject);
+
+    if (boundApproval && isApprovedSamlAdminUser(boundApproval.user, boundApproval)) {
+      const token = createAdminSessionToken(boundApproval.user);
+      setAdminSessionCookie(reply, token);
+      return reply.redirect(`${dashboardUrl}/login-callback?token=${token}&type=saml`);
+    }
+
+    if (process.env.SAML_EMAIL_BINDING_REQUIRED === 'false') {
+      return reply.redirect(`${dashboardUrl}/access-rejected`);
+    }
+
+    const session = createSamlAccessSession({
+      samlSubject,
+      samlNameIdFormat: samlIdentity.samlNameIdFormat || null,
+    });
+
+    return reply.redirect(`${dashboardUrl}/complete-access-verification?session=${encodeURIComponent(session)}`);
+  } catch (error) {
+    console.error("SAML Callback Error:", error);
+    return reply.redirect(`${getDashboardUrl()}/login?error=server_error`);
+  }
+};
+
+exports.submitSamlAccessEmail = async (request, reply) => {
+  try {
+    const { session, email } = request.body || {};
+    const samlSession = verifySamlAccessSession(session);
+    const normalizedEmail = normalizeAlpaEmail(email);
+
+    if (!samlSession) {
+      return reply.status(401).send({ success: false, message: "Verification session expired. Please sign in with SSO again." });
+    }
+
+    if (!normalizedEmail || !isAlpaEmail(normalizedEmail)) {
+      return sendAccessDenied(reply);
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      include: { samlApproval: true },
+    });
+
+    if (!user || !isApprovedSamlAdminUser(user, user.samlApproval)) {
+      return sendAccessDenied(reply);
+    }
+
+    const linkedApproval = await prisma.samlApproval.findFirst({
+      where: {
+        samlSubject: samlSession.samlSubject,
+        userId: { not: user.id },
+      },
+      select: { id: true },
+    });
+
+    if (linkedApproval) {
+      return sendAccessDenied(reply);
+    }
+
+    if (user.samlApproval.samlSubject && user.samlApproval.samlSubject !== samlSession.samlSubject) {
+      return sendAccessDenied(reply);
+    }
+
+    const verificationToken = crypto.randomUUID();
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.loginVerification.deleteMany({
+        where: { userId: user.id, verified: false },
+      });
+
+      await tx.loginVerification.create({
+        data: {
+          userId: user.id,
+          email: normalizedEmail,
+          otp,
+          otpExpiry,
+          deviceFingerprint: `saml:${verificationToken}`,
+          verified: false,
+        },
+      });
+
+      await tx.samlApproval.update({
+        where: { userId: user.id },
+        data: {
+          samlPendingSubject: samlSession.samlSubject,
+          samlNameIdFormat: samlSession.samlNameIdFormat || null,
+          samlVerificationToken: verificationToken,
+          samlVerificationExpiresAt: otpExpiry,
+        },
+      });
+    });
+
+    const emailResult = await sendOTPEmail(normalizedEmail, otp, user.name, "ALPA Access Verification");
+
+    if (!emailResult.success) {
+      return reply.status(500).send({
+        success: false,
+        message: "Failed to send verification email. Please try again.",
+      });
+    }
+
+    return reply.status(200).send({
+      success: true,
+      message: "Verification code sent.",
+      session,
+      email: normalizedEmail,
+    });
+  } catch (error) {
+    console.error("SAML access email error:", error);
+    return reply.status(500).send({ success: false, message: "Failed to start access verification." });
+  }
+};
+
+exports.verifySamlAccessOTP = async (request, reply) => {
+  try {
+    const { session, otp } = request.body || {};
+    const samlSession = verifySamlAccessSession(session);
+    const submittedOtp = String(otp || '').trim();
+
+    if (!samlSession) {
+      return reply.status(401).send({ success: false, message: "Verification session expired. Please sign in with SSO again." });
+    }
+
+    if (submittedOtp.length !== 6) {
+      return reply.status(400).send({ success: false, message: "A valid 6-digit OTP is required." });
+    }
+
+    const approval = await prisma.samlApproval.findFirst({
+      where: {
+        samlPendingSubject: samlSession.samlSubject,
+        samlVerificationToken: { not: null },
+      },
+      include: { user: true },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    if (!approval || !isApprovedSamlAdminUser(approval.user, approval)) {
+      return sendAccessDenied(reply);
+    }
+
+    if (!approval.samlVerificationExpiresAt || new Date() > approval.samlVerificationExpiresAt) {
+      await prisma.samlApproval.update({
+        where: { userId: approval.userId },
+        data: {
+          samlPendingSubject: null,
+          samlVerificationToken: null,
+          samlVerificationExpiresAt: null,
+        },
+      });
+      return reply.status(400).send({ success: false, message: "OTP has expired. Please request a new code." });
+    }
+
+    const verification = await prisma.loginVerification.findFirst({
+      where: {
+        userId: approval.userId,
+        email: approval.user.email,
+        deviceFingerprint: `saml:${approval.samlVerificationToken}`,
+        verified: false,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!verification) {
+      return reply.status(404).send({ success: false, message: "Verification session expired. Please sign in with SSO again." });
+    }
+
+    if (new Date() > verification.otpExpiry) {
+      await prisma.loginVerification.delete({ where: { id: verification.id } });
+      return reply.status(400).send({ success: false, message: "OTP has expired. Please request a new code." });
+    }
+
+    if (verification.otp !== submittedOtp) {
+      return reply.status(400).send({ success: false, message: "Invalid OTP. Please check and try again." });
+    }
+
+    const boundElsewhere = await prisma.samlApproval.findFirst({
+      where: {
+        samlSubject: samlSession.samlSubject,
+        userId: { not: approval.userId },
+      },
+      select: { id: true },
+    });
+
+    if (boundElsewhere) {
+      return sendAccessDenied(reply);
+    }
+
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      await tx.loginVerification.delete({ where: { id: verification.id } });
+
+      await tx.samlApproval.update({
+        where: { userId: approval.userId },
+        data: {
+          samlSubject: samlSession.samlSubject,
+          samlNameIdFormat: samlSession.samlNameIdFormat || approval.samlNameIdFormat,
+          samlEmailVerified: true,
+          samlBindingCompleted: true,
+          samlBoundAt: new Date(),
+          samlPendingSubject: null,
+          samlVerificationToken: null,
+          samlVerificationExpiresAt: null,
+        },
+      });
+
+      return tx.user.update({
+        where: { id: approval.userId },
+        data: { emailVerified: true, isVerified: true },
+      });
+    });
+
+    const token = createAdminSessionToken(updatedUser);
+    setAdminSessionCookie(reply, token);
+
+    return reply.status(200).send({
+      success: true,
+      message: "Access verified successfully.",
+      token,
+      role: updatedUser.role,
+      user: {
+        id: updatedUser.id,
+        uid: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        mobile: updatedUser.phone,
+        role: updatedUser.role,
+        emailVerified: updatedUser.emailVerified,
+        createdAt: updatedUser.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error("SAML access OTP error:", error);
+    return reply.status(500).send({ success: false, message: "Failed to verify access." });
+  }
+};
 
 
 

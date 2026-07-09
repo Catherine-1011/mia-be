@@ -989,6 +989,14 @@ model SamlApproval {
   id              String             @id @default(cuid())
   userId          String             @unique
   status          SamlApprovalStatus @default(PENDING)
+  samlSubject     String?            @unique @map("saml_subject")
+  samlNameIdFormat String?           @map("saml_name_id_format")
+  samlEmailVerified Boolean          @default(false) @map("saml_email_verified")
+  samlBindingCompleted Boolean       @default(false) @map("saml_binding_completed")
+  samlBoundAt     DateTime?          @map("saml_bound_at")
+  samlPendingSubject String?         @map("saml_pending_subject")
+  samlVerificationToken String?      @unique @map("saml_verification_token")
+  samlVerificationExpiresAt DateTime? @map("saml_verification_expires_at")
   approvedBy      String?            @map("approved_by")
   approvedAt      DateTime?          @map("approved_at")
   rejectedBy      String?            @map("rejected_by")
@@ -1007,5 +1015,7 @@ model SamlApproval {
   @@index([status])
   @@index([createdAt])
   @@index([archivedAt])
+  @@index([samlPendingSubject])
+  @@index([samlVerificationExpiresAt])
   @@map("saml_approvals")
 }

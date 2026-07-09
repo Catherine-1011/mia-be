@@ -131,7 +131,7 @@ async function adminRoutes(fastify, options) {
   fastify.get("/coupons/active", adminController.getActiveCoupons);
 
   // Admin only: full coupon list + management
-  fastify.get("/coupons",                                    adminController.getAllCoupons);
+  fastify.get("/coupons",             { preHandler: adminAuth }, adminController.getAllCoupons);
   fastify.post("/coupons",            { preHandler: adminAuth }, adminController.createCoupon);
   fastify.put("/coupons/:id",         { preHandler: adminAuth }, adminController.updateCoupon);
 

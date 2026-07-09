@@ -2,6 +2,19 @@ const prisma = require("../config/prisma");
 const jwt = require("jsonwebtoken");
 const { isBlacklisted } = require("../utils/tokenDenylist");
 
+const SAML_PASSWORD = 'SAML_MANAGED_ACCOUNT_NO_PASSWORD';
+
+const isSamlManagedAdminBlocked = (user) => (
+  user &&
+  user.password === SAML_PASSWORD &&
+  ['ADMIN', 'SUPER_ADMIN'].includes(user.role) &&
+  (
+    !user.samlApproval ||
+    user.samlApproval.status !== 'APPROVED' ||
+    !user.samlApproval.samlBindingCompleted
+  )
+);
+
 // Authenticate Seller (JWT-based with Prisma)
 exports.authenticateSeller = async (request, reply) => {
   try {
@@ -129,7 +142,8 @@ exports.authenticateUser = async (request, reply) => {
 
       // Check if user exists
       const user = await prisma.user.findUnique({
-        where: { id: userId }
+        where: { id: userId },
+        include: { samlApproval: true },
       });
 
       if (!user) {
@@ -144,6 +158,14 @@ exports.authenticateUser = async (request, reply) => {
         return reply.status(403).send({
           success: false,
           message: "Account has been deactivated. Please contact support."
+        });
+      }
+
+      if (isSamlManagedAdminBlocked(user)) {
+        return reply.status(403).send({
+          success: false,
+          message: "Your account is pending approval. Please contact the Super Admin.",
+          samlStatus: user.samlApproval?.status || 'PENDING',
         });
       }
 
@@ -244,14 +266,12 @@ exports.isAdmin = async (request, reply) => {
       }
 
       // SAML approval gate — block unapproved SAML users (SUPER_ADMIN always bypasses)
-      if (user.password === 'SAML_MANAGED_ACCOUNT_NO_PASSWORD' && user.role !== 'SUPER_ADMIN') {
-        if (!user.samlApproval || user.samlApproval.status !== 'APPROVED') {
+      if (isSamlManagedAdminBlocked(user)) {
           return reply.status(403).send({
             success: false,
             message: "Your account is pending approval. Please contact the Super Admin.",
             samlStatus: user.samlApproval?.status || 'PENDING',
           });
-        }
       }
 
       // Attach user to request
@@ -305,7 +325,7 @@ exports.authenticateSellerOrAdmin = async (request, reply) => {
 
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        include: { sellerProfile: true }
+        include: { sellerProfile: true, samlApproval: true }
       });
 
       if (!user) {
@@ -316,6 +336,14 @@ exports.authenticateSellerOrAdmin = async (request, reply) => {
         return reply.status(403).send({
           success: false,
           message: 'Account has been deactivated. Please contact support.'
+        });
+      }
+
+      if (isSamlManagedAdminBlocked(user)) {
+        return reply.status(403).send({
+          success: false,
+          message: 'Your account is pending approval. Please contact the Super Admin.',
+          samlStatus: user.samlApproval?.status || 'PENDING',
         });
       }
 

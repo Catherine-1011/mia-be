@@ -5,6 +5,8 @@ const { log: auditLog, extractRequestMeta, ENTITY_TYPES, AUDIT_ACTIONS } = requi
 const { sendSuperAdminCreatedSamlAdminEmail } = require('../utils/emailService');
 
 const SAML_PASSWORD = 'SAML_MANAGED_ACCOUNT_NO_PASSWORD';
+const ALPA_EMAIL_DOMAIN = '@alpa.asn.au';
+const ALLOWED_CREATE_STATUSES = new Set(['PENDING', 'APPROVED', 'BLOCKED', 'ARCHIVED']);
 
 const samlUserSelect = {
   id: true,
@@ -16,9 +18,11 @@ const samlUserSelect = {
 
 exports.createSamlUser = async (request, reply) => {
   try {
-    const { name, email } = request.body || {};
+    const { name, email, role, status } = request.body || {};
     const normalizedName = typeof name === 'string' ? name.trim() : '';
     const normalizedEmail = typeof email === 'string' ? email.toLowerCase().trim() : '';
+    const normalizedRole = role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'ADMIN';
+    const normalizedStatus = ALLOWED_CREATE_STATUSES.has(status) ? status : 'APPROVED';
 
     if (!normalizedName) {
       return reply.status(400).send({ success: false, message: 'Full name is required' });
@@ -26,6 +30,10 @@ exports.createSamlUser = async (request, reply) => {
 
     if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       return reply.status(400).send({ success: false, message: 'A valid email address is required' });
+    }
+
+    if (!normalizedEmail.endsWith(ALPA_EMAIL_DOMAIN)) {
+      return reply.status(400).send({ success: false, message: 'Official ALPA email must end with @alpa.asn.au' });
     }
 
     const existingUser = await prisma.user.findUnique({
@@ -42,20 +50,25 @@ exports.createSamlUser = async (request, reply) => {
         data: {
           name: normalizedName,
           email: normalizedEmail,
-          role: 'ADMIN',
+          role: normalizedRole,
           password: SAML_PASSWORD,
-          isVerified: true,
-          emailVerified: true,
+          isVerified: false,
+          emailVerified: false,
         },
         select: samlUserSelect,
       });
 
+      const now = new Date();
       const approval = await tx.samlApproval.create({
         data: {
           userId: user.id,
-          status: 'APPROVED',
-          approvedBy: request.user.userId,
-          approvedAt: new Date(),
+          status: normalizedStatus,
+          approvedBy: normalizedStatus === 'APPROVED' ? request.user.userId : null,
+          approvedAt: normalizedStatus === 'APPROVED' ? now : null,
+          blockedBy: normalizedStatus === 'BLOCKED' ? request.user.userId : null,
+          blockedAt: normalizedStatus === 'BLOCKED' ? now : null,
+          archivedBy: normalizedStatus === 'ARCHIVED' ? request.user.userId : null,
+          archivedAt: normalizedStatus === 'ARCHIVED' ? now : null,
         },
         include: { user: { select: samlUserSelect } },
       });
@@ -67,7 +80,7 @@ exports.createSamlUser = async (request, reply) => {
       entityType: ENTITY_TYPES.SAML_APPROVAL,
       entityId: created.user.id,
       action: AUDIT_ACTIONS.SAML_USER_CREATED,
-      newData: { status: 'APPROVED', role: 'ADMIN', email: normalizedEmail, name: normalizedName },
+      newData: { status: normalizedStatus, role: normalizedRole, email: normalizedEmail, name: normalizedName },
       ...extractRequestMeta(request),
       reason: 'SAML admin allowlist record created by Super Admin',
     });

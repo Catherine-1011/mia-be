@@ -4,8 +4,6 @@ const fs = require("fs");
 const path = require("path");
 const prisma = require("./prisma");
 
-const SAML_PASSWORD = 'SAML_MANAGED_ACCOUNT_NO_PASSWORD';
-
 // TEMPORARY DEBUG HELPER — remove once the SAML email root cause is confirmed.
 // Masks values so we can see shape/format without dumping full PII to logs.
 function maskSamlValue(value) {
@@ -99,39 +97,18 @@ module.exports = function (app) {
           console.log('🧪 [SAML_DEBUG_PROFILE] masked profile info:', JSON.stringify(extractSamlDebugInfo(profile), null, 2));
         }
 
-        const email = (profile.email || profile.nameID || '').toLowerCase().trim();
-        
-        if (!email) {
-          return done(new Error("No email returned from SAML Provider"), null);
+        const samlSubject = typeof profile.nameID === 'string' ? profile.nameID.trim() : '';
+
+        if (!samlSubject) {
+          return done(new Error("No SAML NameID returned from SAML Provider"), null);
         }
 
-        // Allowlist-first SAML: only locally pre-authorized admins may continue.
-        const user = await prisma.user.findUnique({
-          where: { email },
-          include: { samlApproval: true },
+        return done(null, {
+          samlSubject,
+          samlNameIdFormat: profile.nameIDFormat || null,
+          samlProfileEmail: typeof profile.email === 'string' ? profile.email.toLowerCase().trim() : null,
+          samlAuthenticatedAt: new Date().toISOString(),
         });
-
-        if (!user) {
-          console.warn(`[SAML] Unauthorized SAML admin login attempt for unknown email: ${email}`);
-          return done(null, false, { message: 'Unauthorized SAML admin' });
-        }
-
-        if (user.password !== SAML_PASSWORD) {
-          console.warn(`[SAML] Unauthorized SAML admin type for email: ${email}`);
-          return done(null, false, { message: 'Unauthorized admin type' });
-        }
-
-        if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
-          console.warn(`[SAML] Non-admin SAML login attempt for email: ${email}`);
-          return done(null, false, { message: 'Admin role required' });
-        }
-
-        if (user.role !== 'SUPER_ADMIN' && (!user.samlApproval || user.samlApproval.status !== 'APPROVED')) {
-          console.warn(`[SAML] Admin access denied for email: ${email}; status: ${user.samlApproval?.status || 'NONE'}`);
-          return done(null, false, { message: 'Admin access denied' });
-        }
-
-        return done(null, user);
       } catch (err) {
         console.error("❌ SAML Auth Error:", err);
         return done(err, null);

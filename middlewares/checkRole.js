@@ -1,3 +1,28 @@
+const prisma = require("../config/prisma");
+
+const SAML_PASSWORD = 'SAML_MANAGED_ACCOUNT_NO_PASSWORD';
+
+async function samlAdminAllowed(request) {
+  const userId = request.user?.userId || request.user?.uid || request.user?.sellerId;
+  const role = request.user?.role;
+
+  if (!userId || !['ADMIN', 'SUPER_ADMIN'].includes(role)) return true;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { samlApproval: true },
+  });
+
+  if (!user) return false;
+  if (user.password !== SAML_PASSWORD) return true;
+
+  return !!(
+    user.samlApproval &&
+    user.samlApproval.status === 'APPROVED' &&
+    user.samlApproval.samlBindingCompleted
+  );
+}
+
 module.exports = function checkRole(allowedRoles) {
   return async (request, reply) => {
     try {
@@ -24,6 +49,14 @@ module.exports = function checkRole(allowedRoles) {
           success: false,
           error: "Unauthorized access",
           message: `Required role: ${rolesArray.join(' or ')}, but got: ${userRole}`
+        });
+      }
+
+      if (!await samlAdminAllowed(request)) {
+        return reply.status(403).send({
+          success: false,
+          error: "Unauthorized access",
+          message: "Your account is pending approval. Please contact the Super Admin.",
         });
       }
 

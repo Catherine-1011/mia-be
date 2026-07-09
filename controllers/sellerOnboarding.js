@@ -505,7 +505,7 @@ exports.resendOTP = async (request, reply) => {
         where: { id: sellerId }
       });
     } else {
-      const normalizedEmail = email.toLowerCase();
+      const normalizedEmail = email.trim().toLowerCase();
       pending = await prisma.pendingRegistration.findUnique({
         where: { email: normalizedEmail }
       });
@@ -514,7 +514,7 @@ exports.resendOTP = async (request, reply) => {
     if (!pending) {
       return reply.status(404).send({
         success: false,
-        message: "No pending registration found"
+        message: "Your verification session has expired. Please go back and submit again to receive a new code."
       });
     }
 
@@ -1561,7 +1561,7 @@ exports.submitSellerOnboarding = async (request, reply) => {
       }
     }
 
-    const normalizedEmail = email.toLowerCase();
+    const normalizedEmail = email.trim().toLowerCase();
 
     // Check if already fully registered
     const existingUser = await prisma.user.findUnique({
@@ -1700,7 +1700,7 @@ exports.verifyAndSubmit = async (request, reply) => {
       });
     }
 
-    const normalizedEmail = email.toLowerCase();
+    const normalizedEmail = email.trim().toLowerCase();
 
     const pending = await prisma.pendingRegistration.findUnique({
       where: { email: normalizedEmail }

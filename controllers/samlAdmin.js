@@ -21,7 +21,7 @@ exports.createSamlUser = async (request, reply) => {
     const { name, email, role, status } = request.body || {};
     const normalizedName = typeof name === 'string' ? name.trim() : '';
     const normalizedEmail = typeof email === 'string' ? email.toLowerCase().trim() : '';
-    const normalizedRole = role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'ADMIN';
+    const normalizedRole = 'ADMIN';
     const normalizedStatus = ALLOWED_CREATE_STATUSES.has(status) ? status : 'APPROVED';
 
     if (!normalizedName) {
@@ -34,6 +34,10 @@ exports.createSamlUser = async (request, reply) => {
 
     if (!normalizedEmail.endsWith(ALPA_EMAIL_DOMAIN)) {
       return reply.status(400).send({ success: false, message: 'Official ALPA email must end with @alpa.asn.au' });
+    }
+
+    if (role && role !== 'ADMIN') {
+      return reply.status(400).send({ success: false, message: 'Only ADMIN users can be created from the dashboard' });
     }
 
     const existingUser = await prisma.user.findUnique({

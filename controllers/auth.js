@@ -60,13 +60,13 @@ const getSamlBoundApproval = async (samlSubject) => prisma.samlApproval.findFirs
   where: {
     samlSubject,
     samlBindingCompleted: true,
-    samlEmailVerified: true,
   },
   include: { user: true },
 });
 
 const isApprovedSamlAdminUser = (user, approval) => {
   if (!user || !approval) return false;
+  if (user.isDeleted) return false;
   if (user.password !== SAML_PASSWORD) return false;
   if (!['ADMIN', 'SUPER_ADMIN'].includes(user.role)) return false;
   if (approval.status !== 'APPROVED') return false;
@@ -1215,54 +1215,107 @@ exports.submitSamlAccessEmail = async (request, reply) => {
       return sendAccessDenied(reply);
     }
 
-    const verificationToken = crypto.randomUUID();
-    const otp = generateOTP();
-    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-
-    await prisma.$transaction(async (tx) => {
-      await tx.loginVerification.deleteMany({
-        where: { userId: user.id, verified: false },
+    const bindingResult = await prisma.$transaction(async (tx) => {
+      const freshUser = await tx.user.findUnique({
+        where: { id: user.id },
+        include: { samlApproval: true },
       });
 
-      await tx.loginVerification.create({
+      if (!freshUser || !isApprovedSamlAdminUser(freshUser, freshUser.samlApproval)) {
+        const error = new Error(SAML_ACCESS_DENIED_MESSAGE);
+        error.statusCode = 403;
+        throw error;
+      }
+
+      const freshApproval = freshUser.samlApproval;
+
+      const boundElsewhere = await tx.samlApproval.findFirst({
+        where: {
+          samlSubject: samlSession.samlSubject,
+          userId: { not: freshUser.id },
+        },
+        select: { id: true },
+      });
+
+      if (boundElsewhere) {
+        const error = new Error(SAML_ACCESS_DENIED_MESSAGE);
+        error.statusCode = 409;
+        throw error;
+      }
+
+      if (freshApproval.samlBindingCompleted) {
+        if (freshApproval.samlSubject !== samlSession.samlSubject) {
+          const error = new Error(SAML_ACCESS_DENIED_MESSAGE);
+          error.statusCode = 409;
+          throw error;
+        }
+
+        return freshUser;
+      }
+
+      if (freshApproval.samlSubject && freshApproval.samlSubject !== samlSession.samlSubject) {
+        const error = new Error(SAML_ACCESS_DENIED_MESSAGE);
+        error.statusCode = 409;
+        throw error;
+      }
+
+      const binding = await tx.samlApproval.updateMany({
+        where: {
+          userId: freshUser.id,
+          status: 'APPROVED',
+          samlBindingCompleted: false,
+          samlSubject: null,
+        },
         data: {
-          userId: user.id,
-          email: normalizedEmail,
-          otp,
-          otpExpiry,
-          deviceFingerprint: `saml:${verificationToken}`,
-          verified: false,
+          samlSubject: samlSession.samlSubject,
+          samlNameIdFormat: samlSession.samlNameIdFormat || freshApproval.samlNameIdFormat,
+          samlEmailVerified: false,
+          samlBindingCompleted: true,
+          samlBoundAt: new Date(),
+          samlPendingSubject: null,
+          samlVerificationToken: null,
+          samlVerificationExpiresAt: null,
         },
       });
 
-      await tx.samlApproval.update({
-        where: { userId: user.id },
-        data: {
-          samlPendingSubject: samlSession.samlSubject,
-          samlNameIdFormat: samlSession.samlNameIdFormat || null,
-          samlVerificationToken: verificationToken,
-          samlVerificationExpiresAt: otpExpiry,
-        },
-      });
+      if (binding.count !== 1) {
+        const error = new Error(SAML_ACCESS_DENIED_MESSAGE);
+        error.statusCode = 409;
+        throw error;
+      }
+
+      return freshUser;
     });
 
-    const emailResult = await sendOTPEmail(normalizedEmail, otp, user.name, "ALPA Access Verification");
-
-    if (!emailResult.success) {
-      return reply.status(500).send({
-        success: false,
-        message: "Failed to send verification email. Please try again.",
-      });
-    }
+    const token = createAdminSessionToken(bindingResult);
+    setAdminSessionCookie(reply, token);
+    const redirectUrl = `${getDashboardUrl()}/login-callback?token=${encodeURIComponent(token)}&type=saml`;
 
     return reply.status(200).send({
       success: true,
-      message: "Verification code sent.",
-      session,
-      email: normalizedEmail,
+      message: "Access verified successfully.",
+      token,
+      role: bindingResult.role,
+      redirectUrl,
+      user: {
+        id: bindingResult.id,
+        uid: bindingResult.id,
+        name: bindingResult.name,
+        email: bindingResult.email,
+        mobile: bindingResult.phone,
+        role: bindingResult.role,
+        emailVerified: bindingResult.emailVerified,
+        createdAt: bindingResult.createdAt,
+      },
     });
   } catch (error) {
     console.error("SAML access email error:", error);
+    if (error.statusCode === 403 || error.statusCode === 409 || error.code === 'P2002') {
+      return reply.status(error.statusCode || 409).send({
+        success: false,
+        message: SAML_ACCESS_DENIED_MESSAGE,
+      });
+    }
     return reply.status(500).send({ success: false, message: "Failed to start access verification." });
   }
 };

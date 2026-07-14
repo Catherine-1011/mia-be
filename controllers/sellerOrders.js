@@ -9,6 +9,7 @@ const {
   TERMINAL_STATUSES
 } = require("../utils/orderStatusRules");
 const { calculateSellerPayout } = require("../utils/commissionCalculator");
+const { invalidateCache } = require('../utils/cacheInvalidation');
 
 const { 
   generateSalesReportCSV,
@@ -1574,6 +1575,9 @@ exports.bulkUpdateStock = async (request, reply) => {
       });
     }
 
+    if (results.some((result) => result.success)) {
+      await invalidateCache('products');
+    }
     return reply.status(200).send({
       success: true,
       message: "Bulk stock update completed",

@@ -8,6 +8,7 @@ const { uploadToCloudinary } = require("../config/cloudinary");
 const fs = require('fs');
 const path = require('path');
 const { pipeline } = require('stream/promises');
+const { invalidateCache } = require('../utils/cacheInvalidation');
 
 const STRIPE_DESCRIPTION_MAX_LENGTH = 255;
 
@@ -242,6 +243,7 @@ exports.scanLowStockProducts = async (request, reply) => {
       results.push({ productId: product.id, title: product.title, stock: Number(product.stock) });
     }
 
+    await invalidateCache('products');
     return reply.status(200).send({
       success: true,
       message: `Scan complete. ${results.length} low-stock product(s) deactivated and sellers notified.`,
@@ -2492,6 +2494,9 @@ exports.toggleSellerActiveStatus = async (request, reply) => {
         // Don't fail the deactivation if email fails to send
       }
 
+      if (deactivatedProducts.count > 0) {
+        await invalidateCache('products');
+      }
       return reply.status(200).send({
         success: true,
         message: `Seller account deactivated successfully. ${deactivatedProducts.count} active products have been deactivated. Notification email sent to seller.`,
@@ -3068,6 +3073,7 @@ exports.createCoupon = async (request, reply) => {
       reason:       `Coupon "${coupon.code}" created by admin`,
     });
 
+    await invalidateCache('coupons');
     reply.status(201).send({ success: true, message: 'Coupon created successfully', coupon });
   } catch (error) {
     console.error('Create coupon error:', error);
@@ -3222,6 +3228,7 @@ exports.updateCoupon = async (request, reply) => {
       reason:       `Coupon "${updatedCoupon.code}" updated by admin`,
     });
 
+    await invalidateCache('coupons');
     reply.send({ success: true, message: 'Coupon updated successfully', coupon: updatedCoupon });
   } catch (error) {
     console.error('Update coupon error:', error);
@@ -3271,6 +3278,7 @@ exports.softDeleteCoupon = async (request, reply) => {
       reason:       reason || `Coupon "${existingCoupon.code}" moved to recycle bin`,
     });
 
+    await invalidateCache('coupons');
     reply.send({
       success: true,
       message: `Coupon "${existingCoupon.code}" moved to recycle bin`,
@@ -3324,6 +3332,7 @@ exports.restoreCoupon = async (request, reply) => {
       reason:       `Coupon "${existingCoupon.code}" restored from recycle bin`,
     });
 
+    await invalidateCache('coupons');
     reply.send({
       success: true,
       message: `Coupon "${existingCoupon.code}" has been restored`,
@@ -3371,6 +3380,7 @@ exports.hardDeleteCoupon = async (request, reply) => {
 
     await prisma.coupon.delete({ where: { id } });
 
+    await invalidateCache('coupons');
     reply.send({
       success: true,
       message: `Coupon "${existingCoupon.code}" has been permanently deleted. Audit logs are retained.`,
@@ -4034,6 +4044,7 @@ exports.approveProduct = async (request, reply) => {
       WHERE id = ${productId}
     `;
 
+    await invalidateCache('products');
     reply.send({
       success: true,
       message: "Product approved successfully",
@@ -4133,6 +4144,7 @@ exports.rejectProduct = async (request, reply) => {
       console.error(`❌ [rejectProduct] Seller email still not found for sellerId=${product.sellerId} — email skipped`);
     }
 
+    await invalidateCache('products');
     reply.send({
       success: true,
       message: "Product rejected successfully",
@@ -4202,6 +4214,7 @@ exports.activateProduct = async (request, reply) => {
         }
       }).catch(err => console.error('Seller lookup error (activate email):', err.message));
 
+    await invalidateCache('products');
     reply.send({ success: true, message: 'Product activated successfully' });
   } catch (error) {
     console.error('Activate product error:', error);
@@ -4269,6 +4282,7 @@ exports.deactivateProduct = async (request, reply) => {
         }
       }).catch(err => console.error('Seller lookup error (deactivate email):', err.message));
 
+    await invalidateCache('products');
     reply.send({ success: true, message: 'Product deactivated successfully' });
   } catch (error) {
     console.error('Deactivate product error:', error);
@@ -4316,6 +4330,7 @@ exports.bulkApproveProducts = async (request, reply) => {
       ...extractRequestMeta(request),
     });
 
+    await invalidateCache('products');
     reply.send({
       success: true,
       message: `${result.count} products approved successfully`,
@@ -4576,6 +4591,7 @@ exports.permanentlyDeleteProduct = async (request, reply) => {
 
     await prisma.product.delete({ where: { id: productId } });
 
+    await invalidateCache('products');
     return reply.send({
       success: true,
       message: 'Product permanently deleted. This action cannot be undone.'

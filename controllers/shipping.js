@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const { INTERNATIONAL_ZONES, lookupZone } = require('../utils/internationalShipping');
+const { invalidateCache } = require('../utils/cacheInvalidation');
 
 /**
  * PUBLIC - Get all international shipping zones with their countries
@@ -115,6 +116,7 @@ const createShippingMethod = async (request, reply) => {
       }
     });
 
+    await invalidateCache('checkout');
     return reply.status(201).send({
       success: true,
       message: "Shipping method created successfully",
@@ -257,6 +259,7 @@ const updateShippingMethod = async (request, reply) => {
       }
     });
 
+    await invalidateCache('checkout');
     return reply.status(200).send({
       success: true,
       message: "Shipping method updated successfully",
@@ -296,6 +299,7 @@ const deleteShippingMethod = async (request, reply) => {
       where: { id }
     });
 
+    await invalidateCache('checkout');
     return reply.status(200).send({
       success: true,
       message: "Shipping method deleted successfully"
@@ -334,6 +338,7 @@ const toggleShippingMethodStatus = async (request, reply) => {
       data: { isActive: !shippingMethod.isActive }
     });
 
+    await invalidateCache('checkout');
     return reply.status(200).send({
       success: true,
       message: `Shipping method ${updatedMethod.isActive ? 'activated' : 'deactivated'} successfully`,

@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const { invalidateCache } = require('../utils/cacheInvalidation');
 
 /**
  * ADMIN ONLY - Create a new GST setting
@@ -54,6 +55,7 @@ const createGST = async (request, reply) => {
       }
     });
 
+    await invalidateCache('checkout');
     return reply.status(201).send({
       success: true,
       message: "GST setting created successfully",
@@ -250,6 +252,7 @@ const updateGST = async (request, reply) => {
       }
     });
 
+    await invalidateCache('checkout');
     return reply.status(200).send({
       success: true,
       message: "GST setting updated successfully",
@@ -297,6 +300,7 @@ const deleteGST = async (request, reply) => {
       where: { id }
     });
 
+    await invalidateCache('checkout');
     return reply.status(200).send({
       success: true,
       message: "GST setting deleted successfully"
@@ -343,6 +347,7 @@ const toggleGSTStatus = async (request, reply) => {
       data: { isActive: !gst.isActive }
     });
 
+    await invalidateCache('checkout');
     return reply.status(200).send({
       success: true,
       message: `GST setting ${updatedGST.isActive ? 'activated' : 'deactivated'} successfully`,
@@ -394,6 +399,7 @@ const setDefaultGST = async (request, reply) => {
       }
     });
 
+    await invalidateCache('checkout');
     return reply.status(200).send({
       success: true,
       message: "GST setting set as default successfully",

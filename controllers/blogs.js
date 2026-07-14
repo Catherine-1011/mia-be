@@ -1,5 +1,6 @@
 const prisma = require("../config/prisma");
 const { uploadToCloudinary } = require("../config/cloudinary");
+const { invalidateCache } = require("../utils/cacheInvalidation");
 
 // Helper: generate slug from title
 const generateSlug = (title) =>
@@ -102,6 +103,7 @@ exports.createBlog = async (request, reply) => {
       },
     });
 
+    await invalidateCache("blogs");
     return reply.status(201).send({ success: true, message: "Blog created", blog });
   } catch (error) {
     console.error("Create blog error:", error);
@@ -163,6 +165,7 @@ exports.updateBlog = async (request, reply) => {
       },
     });
 
+    await invalidateCache("blogs");
     return reply.status(200).send({ success: true, message: "Blog updated", blog: updated });
   } catch (error) {
     console.error("Update blog error:", error);
@@ -184,6 +187,7 @@ exports.deleteBlog = async (request, reply) => {
 
     await prisma.blog.delete({ where: { id } });
 
+    await invalidateCache("blogs");
     return reply.status(200).send({ success: true, message: "Blog deleted" });
   } catch (error) {
     console.error("Delete blog error:", error);
@@ -210,6 +214,7 @@ exports.togglePublish = async (request, reply) => {
       data: { status: newStatus },
     });
 
+    await invalidateCache("blogs");
     return reply.status(200).send({
       success: true,
       message: `Blog is now ${newStatus.toLowerCase()}`,

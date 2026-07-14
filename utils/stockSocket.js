@@ -80,6 +80,19 @@ function broadcastStockUpdate(productId, newStock, isActive = true) {
 }
 
 /**
+ * Notify connected storefront clients that a public data cache is stale.
+ * This event is advisory only and never participates in database mutations.
+ */
+function broadcastCacheInvalidation(scope) {
+  if (!_io) return;
+
+  _io.emit('cache:invalidate', {
+    scope,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+/**
  * Returns the raw Socket.io server instance (use sparingly).
  * @returns {import('socket.io').Server|null}
  */
@@ -87,4 +100,4 @@ function getIO() {
   return _io;
 }
 
-module.exports = { initStockSocket, broadcastStockUpdate, getIO };
+module.exports = { initStockSocket, broadcastStockUpdate, broadcastCacheInvalidation, getIO };

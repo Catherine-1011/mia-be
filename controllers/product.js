@@ -1,5 +1,6 @@
 const prisma = require("../config/prisma");
 const { Prisma } = require('@prisma/client');
+const { invalidateCache } = require('../utils/cacheInvalidation');
 const {
   notifySellerProductStatusChange,
   notifySellerLowStock,
@@ -510,6 +511,7 @@ exports.addProduct = async (request, reply) => {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
+    await invalidateCache('products');
     return reply.status(200).send({ 
       success: true, 
       message: "Product added successfully",
@@ -1244,6 +1246,7 @@ exports.updateProduct = async (request, reply) => {
     const resolvedFeaturedImage = featuredImageUrl !== undefined ? featuredImageUrl : product.featuredImage;
     const { images: _imgs, ...productFields } = updatedProduct;
 
+    await invalidateCache('products');
     return reply.status(200).send({
       success: true,
       message: userRole === "SELLER" && newStatus === "PENDING" ? 
@@ -1334,6 +1337,7 @@ exports.deleteProduct = async (request, reply) => {
       });
     }
 
+    await invalidateCache('products');
     return reply.status(200).send({
       success: true,
       message: "Product moved to Recycle Bin. It can be restored from there.",
@@ -1443,6 +1447,7 @@ exports.restoreProduct = async (request, reply) => {
       });
     }
 
+    await invalidateCache('products');
     return reply.status(200).send({
       success: true,
       message: userRole === "ADMIN"
@@ -1725,6 +1730,7 @@ exports.deactivateMyProduct = async (request, reply) => {
         }
       }).catch(err => console.error('Admin lookup error (deactivate email):', err.message));
 
+    await invalidateCache('products');
     return reply.send({ success: true, message: 'Product deactivated successfully.' });
   } catch (error) {
     console.error('Seller deactivate product error:', error);
@@ -1814,6 +1820,7 @@ exports.submitProductForReview = async (request, reply) => {
       }).catch(err => console.error('Seller submit-review confirm email error:', err.message));
     }
 
+    await invalidateCache('products');
     return reply.send({
       success: true,
       message: 'Product submitted for review. An admin will review and approve it shortly.'
@@ -1949,6 +1956,7 @@ exports.updateVariant = async (request, reply) => {
       }
     }
 
+    await invalidateCache('products');
     return reply.status(200).send({
       success: true,
       message: 'Variant updated successfully',
@@ -2066,6 +2074,7 @@ exports.toggleVariantStatus = async (request, reply) => {
       ).catch(err => console.error('notifySellerVariantStatusChange error (non-fatal):', err.message));
     }
 
+    await invalidateCache('products');
     return reply.status(200).send({
       success: true,
       message: `Variant ${newIsActive ? 'activated' : 'deactivated'} successfully`,
@@ -2281,6 +2290,7 @@ exports.bulkSaveVariants = async (request, reply) => {
     // Auto-reactivate product if it now has stock
     await autoReactivateIfStocked(productId);
 
+    await invalidateCache('products');
     return reply.status(200).send({
       success: true,
       message: `${savedVariants.length} variant(s) saved successfully`,

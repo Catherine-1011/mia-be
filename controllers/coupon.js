@@ -2,6 +2,7 @@
 
 const prisma = require('../config/prisma');
 const { log: auditLog, extractRequestMeta, AUDIT_ACTIONS, ENTITY_TYPES } = require('../utils/auditLogger');
+const { invalidateCache } = require('../utils/cacheInvalidation');
 
 // ── Role helpers ──────────────────────────────────────────────────────────────
 const isAdminRole  = (role) => role === 'ADMIN' || role === 'SUPER_ADMIN';
@@ -176,6 +177,7 @@ exports.createSellerCoupon = async (request, reply) => {
       reason:       `Seller coupon "${coupon.code}" created by ${actor.role.toLowerCase()} ${actor.userId}`
     });
 
+    await invalidateCache('coupons');
     return reply.status(201).send({ success: true, message: 'Seller coupon created successfully', coupon });
   } catch (error) {
     console.error('Create seller coupon error:', error);
@@ -359,6 +361,7 @@ exports.updateSellerCoupon = async (request, reply) => {
       reason:       `Seller coupon "${updated.code}" updated by ${actor.role.toLowerCase()} ${actor.userId}`
     });
 
+    await invalidateCache('coupons');
     return reply.send({ success: true, message: 'Coupon updated successfully', coupon: updated });
   } catch (error) {
     console.error('Update seller coupon error:', error);
@@ -402,6 +405,7 @@ exports.softDeleteSellerCoupon = async (request, reply) => {
       reason:       reason || `Seller coupon "${existing.code}" moved to recycle bin`
     });
 
+    await invalidateCache('coupons');
     return reply.send({
       success: true,
       message: `Coupon "${existing.code}" moved to recycle bin`,
@@ -448,6 +452,7 @@ exports.restoreSellerCoupon = async (request, reply) => {
       reason:       `Seller coupon "${existing.code}" restored from recycle bin`
     });
 
+    await invalidateCache('coupons');
     return reply.send({ success: true, message: `Coupon "${existing.code}" has been restored`, coupon: restored });
   } catch (error) {
     console.error('Restore seller coupon error:', error);
@@ -491,6 +496,7 @@ exports.hardDeleteSellerCoupon = async (request, reply) => {
 
     await prisma.sellerCoupon.delete({ where: { id } });
 
+    await invalidateCache('coupons');
     return reply.send({
       success: true,
       message: `Coupon "${existing.code}" has been permanently deleted. Audit logs are retained.`,

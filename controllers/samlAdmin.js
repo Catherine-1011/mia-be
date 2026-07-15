@@ -90,24 +90,32 @@ exports.createSamlUser = async (request, reply) => {
     });
 
     try {
-      const creator = await prisma.user.findUnique({
-        where: { id: request.user.userId },
-        select: { email: true, name: true },
-      });
+      const [creator, superAdmins] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: request.user.userId },
+          select: { email: true, name: true },
+        }),
+        prisma.user.findMany({
+          where: { role: 'SUPER_ADMIN' },
+          select: { email: true, name: true },
+        }),
+      ]);
 
-      if (creator?.email) {
-        await sendSuperAdminCreatedSamlAdminEmail(creator.email, creator.name, {
-          newAdminName: created.user.name,
-          newAdminEmail: created.user.email,
-          role: created.user.role,
-          status: created.approval.status,
-          createdAt: created.user.createdAt,
-          createdByName: creator.name,
-          createdByEmail: creator.email,
-        });
+      for (const admin of superAdmins) {
+        if (admin.email) {
+          await sendSuperAdminCreatedSamlAdminEmail(admin.email, admin.name, {
+            newAdminName: created.user.name,
+            newAdminEmail: created.user.email,
+            role: created.user.role,
+            status: created.approval.status,
+            createdAt: created.user.createdAt,
+            createdByName: creator?.name,
+            createdByEmail: creator?.email,
+          });
+        }
       }
     } catch (emailError) {
-      console.error('[SAML Admin] Failed to notify creator about new admin:', emailError.message);
+      console.error('[SAML Admin] Failed to notify super admins about new admin:', emailError.message);
     }
 
     return reply.status(201).send({

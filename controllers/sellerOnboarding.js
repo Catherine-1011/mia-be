@@ -4,6 +4,7 @@ const { abnLookup } = require("../utils/abnLookup");
 const { uploadToCloudinary } = require("../config/cloudinary");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 const fs = require('fs').promises;
 const os = require('os');
 const path = require('path');
@@ -12,9 +13,11 @@ const { notifyAdminNewSellerApplication, notifyBankChangeRequested } = require("
 
 // Helper function to generate seller JWT token
 const generateSellerToken = (userId) => {
-  return jwt.sign({ userId, userType: "seller", role: "SELLER" }, process.env.JWT_SECRET, {
-    expiresIn: "30d"
-  });
+  return jwt.sign(
+    { userId, userType: "seller", role: "SELLER", jti: crypto.randomUUID() },
+    process.env.JWT_SECRET,
+    { expiresIn: "30d" }
+  );
 };
 
 // Helper function to determine which step data is missing

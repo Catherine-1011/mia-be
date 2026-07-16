@@ -332,14 +332,16 @@ app.register(require("@fastify/cookie"));
 // Use a direct 32-byte key (base64) stored in SESSION_KEY — avoids the
 // crypto_pwhash (Argon2) key-derivation step that requires 256 MB RAM at startup.
 // Generate a new key with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+if (!process.env.SESSION_KEY) {
+  throw new Error("SESSION_KEY environment variable is required");
+}
 app.register(require("@fastify/secure-session"), {
-  key: Buffer.from(
-    process.env.SESSION_KEY || "4tkuZPbyzruDHKSenHxO4NaY/Hr46aKUumAG8aziX2Y=",
-    "base64"
-  ),
+  key: Buffer.from(process.env.SESSION_KEY, "base64"),
   cookie: {
     path: "/",
     httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
   },
 });
 

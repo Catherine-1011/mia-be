@@ -12,6 +12,9 @@ const SAML_ACCESS_PURPOSE = 'saml_access_verification';
 const SAML_ACCESS_SESSION_TTL_SECONDS = 10 * 60;
 const SAML_ACCESS_DENIED_MESSAGE = 'You are not authorized to access this dashboard.\nPlease contact your administrator.';
 
+const ONE_HOUR_SECONDS = 60 * 60;
+const SEVEN_DAYS_SECONDS = 7 * 24 * 60 * 60;
+
 const normalizeAlpaEmail = (email) => (typeof email === 'string' ? email.toLowerCase().trim() : '');
 
 const isAlpaEmail = (email) => normalizeAlpaEmail(email).endsWith(ALPA_EMAIL_DOMAIN);
@@ -29,7 +32,7 @@ const setAdminSessionCookie = (reply, token) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 1000,
+    maxAge: ONE_HOUR_SECONDS,
     path: '/'
   });
 };
@@ -236,12 +239,12 @@ exports.login = async (request, reply) => {
     
     // Default Session Configuration (Lane 1: External)
     let sessionDuration = "7d";
-    let cookieMaxAge = 7 * 24 * 60 * 60 * 1000;
+    let cookieMaxAge = SEVEN_DAYS_SECONDS;
     
     // Override for Lane 2: Internal Staff
     if (isInternalStaff) {
        sessionDuration = "60m";
-       cookieMaxAge = 60 * 60 * 1000;
+       cookieMaxAge = ONE_HOUR_SECONDS;
     }
 
 
@@ -308,7 +311,7 @@ exports.login = async (request, reply) => {
 
       reply.setCookie('session_token', token, {
         httpOnly: true,
-        secure: false,
+        secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
         maxAge: cookieMaxAge,
         path: '/'
@@ -803,7 +806,7 @@ exports.logout = async (request, reply) => {
     // Clear the session cookie
     reply.clearCookie('session_token', {
       httpOnly: true,
-      secure: false,
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/'
     });
@@ -922,9 +925,9 @@ exports.verifyLoginOTP = async (request, reply) => {
     // Set secure session cookie
     reply.setCookie('session_token', token, {
       httpOnly: true,
-      secure: false,
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: SEVEN_DAYS_SECONDS, // 7 days
       path: '/'
     });
 
@@ -1111,7 +1114,7 @@ exports.samlCallback = async (request, reply) => {
 
     // Lane 2: Internal Admin Session -> 60 Minutes (Strict Requirement)
     const sessionDuration = "60m";
-    const cookieMaxAge = 60 * 60 * 1000;
+    const cookieMaxAge = ONE_HOUR_SECONDS;
 
     const token = jwt.sign(
       { userId: user.id, uid: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
@@ -1141,6 +1144,19 @@ exports.samlCallback = async (request, reply) => {
 
 
 
+/**
+ * Creates a short-lived (60 s) single-use SSO ticket for an admin user.
+ * The ticket ID is a UUID stored in sso_tickets; the JWT is never exposed in the URL.
+ */
+const createAdminSsoTicket = async (userId) => {
+  // Remove expired tickets for this user before creating a new one
+  await prisma.ssoTicket.deleteMany({
+    where: { userId, expiresAt: { lt: new Date() } }
+  });
+  const expiresAt = new Date(Date.now() + 60 * 1000); // 60 seconds
+  return prisma.ssoTicket.create({ data: { userId, expiresAt } });
+};
+
 exports.samlCallbackV2 = async (request, reply) => {
   try {
     const samlIdentity = request.user;
@@ -1155,9 +1171,8 @@ exports.samlCallbackV2 = async (request, reply) => {
     const boundApproval = await getSamlBoundApproval(samlSubject);
 
     if (boundApproval && isApprovedSamlAdminUser(boundApproval.user, boundApproval)) {
-      const token = createAdminSessionToken(boundApproval.user);
-      setAdminSessionCookie(reply, token);
-      return reply.redirect(`${dashboardUrl}/login-callback?token=${token}&type=saml`);
+      const ticket = await createAdminSsoTicket(boundApproval.user.id);
+      return reply.redirect(`${dashboardUrl}/login-callback?ticket=${ticket.id}&type=saml`);
     }
 
     if (process.env.SAML_EMAIL_BINDING_REQUIRED === 'false') {
@@ -1287,14 +1302,12 @@ exports.submitSamlAccessEmail = async (request, reply) => {
       return freshUser;
     });
 
-    const token = createAdminSessionToken(bindingResult);
-    setAdminSessionCookie(reply, token);
-    const redirectUrl = `${getDashboardUrl()}/login-callback?token=${encodeURIComponent(token)}&type=saml`;
+    const ticket = await createAdminSsoTicket(bindingResult.id);
+    const redirectUrl = `${getDashboardUrl()}/login-callback?ticket=${ticket.id}&type=saml`;
 
     return reply.status(200).send({
       success: true,
       message: "Access verified successfully.",
-      token,
       role: bindingResult.role,
       redirectUrl,
       user: {
@@ -1782,31 +1795,31 @@ exports.exchangeTicket = async (request, reply) => {
       return reply.status(404).send({ success: false, message: 'User not found' });
     }
 
-    // Guard: only Sellers and Customers — Admin uses SAML
-    if (!['SELLER', 'CUSTOMER'].includes(user.role)) {
+    // Determine session duration by role
+    const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(user.role);
+    const isSso = ['SELLER', 'CUSTOMER'].includes(user.role);
+
+    if (!isAdmin && !isSso) {
       return reply.status(403).send({
         success: false,
-        message: 'Only Sellers and Customers can exchange tickets'
+        message: 'Ticket exchange not available for this account type'
       });
     }
 
-    // Issue a fresh 7-day JWT for the Dashboard
-    const token = jwt.sign(
-      { userId: user.id, uid: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    // Issue a fresh JWT with role-appropriate duration
+    const token = isAdmin
+      ? createAdminSessionToken(user)  // 60 minutes for admin
+      : jwt.sign(
+          { userId: user.id, uid: user.id, email: user.email, role: user.role, jti: crypto.randomUUID() },
+          process.env.JWT_SECRET,
+          { expiresIn: '7d' }
+        );
 
-    // Cross-domain cookie:
-    //   - httpOnly: false so the Dashboard JS (localStorage / js-cookie) can also read it
-    //   - SameSite: None + Secure: true required for cross-origin credentialed requests in prod
-    reply.setCookie('session_token', token, {
-      httpOnly: false,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
-      path: '/'
-    });
+    // For admin: set a short-lived httpOnly session cookie.
+    // For seller/customer: token is returned in the response body only (Bearer-token architecture).
+    if (isAdmin) {
+      setAdminSessionCookie(reply, token);
+    }
 
     const userResponse = {
       id: user.id,
@@ -1818,7 +1831,6 @@ exports.exchangeTicket = async (request, reply) => {
       emailVerified: user.emailVerified,
       createdAt: user.createdAt
     };
-
 
     // Response shape the Dashboard /login-callback page expects:
     // { token, role, user }

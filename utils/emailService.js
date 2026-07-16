@@ -5195,8 +5195,8 @@ const sendSuperAdminCreatedSamlAdminEmail = async (adminEmail, adminName, { newA
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:640px;margin:0 auto;background:#fff;border:1px solid #EDD8CC;border-radius:10px;overflow:hidden;">
         <div style="background:#5A1E12;color:#fff;padding:24px 28px;">
-          <h2 style="margin:0;font-size:22px;">New Admin Created</h2>
-          <p style="margin:8px 0 0;color:#F0D0C8;font-size:14px;">A SAML admin was added to the local dashboard allowlist.</p>
+          <h2 style="margin:0;font-size:22px;">Admin Creation Alert</h2>
+          <p style="margin:8px 0 0;color:#F0D0C8;font-size:14px;">A new admin has been successfully added to the access list.</p>
         </div>
         <div style="padding:28px;">
           <p style="margin:0 0 20px;">Hi ${adminName || 'Super Admin'},</p>

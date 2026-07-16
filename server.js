@@ -299,19 +299,8 @@ app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, 
 });
 
 // Register CORS
-// Explicit allowlist — add any new frontend origin here
-const ALLOWED_ORIGINS = [
-                                          // Website (customer/seller facing)
-                                         // Dashboard (seller/admin portal)
-  'http://localhost:3000',               // Local dev — website
-  'http://localhost:3001',               // Local dev — dashboard
-  'http://localhost:3002',
-  'https://usa.authpoint.watchguard.com',
-  'https://madeinarnhemland.com.au',
-  'https://dashboard.madeinarnhemland.com.au',
-  'https://www.madeinarnhemland.com.au',
-              
-];
+// Approved origins are maintained in config/allowedOrigins.js — edit there only.
+const { ALLOWED_ORIGINS } = require('./config/allowedOrigins');
 
 app.register(require("@fastify/cors"), {
   origin: (origin, cb) => {

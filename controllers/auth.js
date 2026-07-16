@@ -5,6 +5,7 @@ const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const { generateOTP, sendOTPEmail } = require("../utils/emailService");
 const { addToBlacklist, isBlacklisted } = require("../utils/tokenDenylist");
+const { ALLOWED_ORIGINS } = require("../config/allowedOrigins");
 
 const SAML_PASSWORD = 'SAML_MANAGED_ACCOUNT_NO_PASSWORD';
 const ALPA_EMAIL_DOMAIN = '@alpa.asn.au';
@@ -772,6 +773,38 @@ exports.resetPassword = async (request, reply) => {
 // LOGOUT - Clear session cookie and denylist the JWT so SSO tickets can no longer be created
 exports.logout = async (request, reply) => {
   try {
+
+    // --- Origin / CSRF validation (narrowly scoped to logout only) ---
+    // Logout is the only route that is cookie-authenticated without an explicit
+    // Authorization header being required, so it needs its own CSRF guard.
+    //
+    // Logic:
+    //   Origin present  → must be in the approved allowlist, else 403.
+    //   Origin absent + Bearer present → allow (non-browser / trusted client).
+    //   Origin absent + no Bearer → reject (cookie-only request; indistinguishable
+    //                               from a cross-site POST by an attacker).
+    const originHeader = request.headers.origin;
+    const hasBearerToken =
+      typeof request.headers.authorization === 'string' &&
+      request.headers.authorization.startsWith('Bearer ');
+
+    if (originHeader !== undefined) {
+      let normalizedOrigin;
+      try {
+        normalizedOrigin = new URL(originHeader).origin;
+      } catch (_) {
+        return reply.status(403).send({ success: false, error: 'Invalid Origin header' });
+      }
+      if (!ALLOWED_ORIGINS.includes(normalizedOrigin)) {
+        return reply.status(403).send({ success: false, error: 'Origin not allowed' });
+      }
+    } else if (!hasBearerToken) {
+      // No Origin and no Bearer token: the request cannot be distinguished from
+      // a cross-site POST.  All active browser clients send an Origin, so this
+      // branch only blocks attacker-controlled forms, not real clients.
+      return reply.status(403).send({ success: false, error: 'Origin header required for cookie-authenticated requests' });
+    }
+    // --- End Origin / CSRF validation ---
 
     // Extract token from Authorization header OR session cookie
     const authHeader = request.headers.authorization;

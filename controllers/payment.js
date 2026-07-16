@@ -316,6 +316,9 @@ exports.createPaymentIntent = async (request, reply) => {
     }
 
     // Create Stripe PaymentIntent
+    // on_behalf_of is incompatible with automatic_payment_methods (Stripe silently
+    // resolves to zero payment methods, blanking the PaymentElement). When routing
+    // on behalf of a connected account, pin the method types to 'card' instead.
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
       currency: "aud",
@@ -325,7 +328,9 @@ exports.createPaymentIntent = async (request, reply) => {
         cartId: cart.id,
         chargeType: Object.keys(directChargeParams).length ? 'direct' : 'platform',
       },
-      automatic_payment_methods: { enabled: true },
+      ...(directChargeParams.on_behalf_of
+        ? { payment_method_types: ['card'] }
+        : { automatic_payment_methods: { enabled: true } }),
       ...directChargeParams,
     });
 
@@ -1524,6 +1529,9 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     }
 
     // Create Stripe PaymentIntent
+    // on_behalf_of is incompatible with automatic_payment_methods (Stripe silently
+    // resolves to zero payment methods, blanking the PaymentElement). When routing
+    // on behalf of a connected account, pin the method types to 'card' instead.
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
       currency: "aud",
@@ -1533,7 +1541,9 @@ exports.createGuestPaymentIntent = async (request, reply) => {
         customerEmail,
         chargeType: Object.keys(guestDirectChargeParams).length ? 'direct' : 'platform',
       },
-      automatic_payment_methods: { enabled: true },
+      ...(guestDirectChargeParams.on_behalf_of
+        ? { payment_method_types: ['card'] }
+        : { automatic_payment_methods: { enabled: true } }),
       ...guestDirectChargeParams,
     });
 

@@ -41,6 +41,16 @@ const USE_DIRECT_CHARGES_FOR_SINGLE_SELLER = true;
 
 const STRIPE_DESCRIPTION_MAX_LENGTH = 255;
 
+function logStripeApiError(error) {
+  console.error("[STRIPE TEST] Stripe API error", {
+    type: error?.type,
+    code: error?.code,
+    message: error?.message,
+    requestId: error?.requestId,
+    statusCode: error?.statusCode,
+  });
+}
+
 function truncateStripeDescription(value) {
   const text = String(value || "").replace(/\s+/g, " ").trim();
   if (text.length <= STRIPE_DESCRIPTION_MAX_LENGTH) return text;
@@ -315,6 +325,14 @@ exports.createPaymentIntent = async (request, reply) => {
       }
     }
 
+    console.log("[STRIPE TEST] Payment creation started", {
+      mode: process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") ? "test" : "not-test",
+      orderId: displayId,
+      sellerCount: sellerItemsMap.size,
+      amount: amountInCents,
+      currency: "aud",
+    });
+
     // Create Stripe PaymentIntent
     // on_behalf_of is incompatible with automatic_payment_methods (Stripe silently
     // resolves to zero payment methods, blanking the PaymentElement). When routing
@@ -332,6 +350,16 @@ exports.createPaymentIntent = async (request, reply) => {
         ? { payment_method_types: ['card'] }
         : { automatic_payment_methods: { enabled: true } }),
       ...directChargeParams,
+    });
+
+    console.log("[STRIPE TEST] Payment object created", {
+      objectType: paymentIntent.object,
+      id: paymentIntent.id,
+      status: paymentIntent.status,
+      livemode: paymentIntent.livemode,
+      amount: paymentIntent.amount,
+      connectedAccountId: paymentIntentStripeAccountId,
+      requestId: paymentIntent.lastResponse?.requestId || null,
     });
 
     // Build shippingAddress JSON with order summary
@@ -491,6 +519,7 @@ exports.createPaymentIntent = async (request, reply) => {
       },
     });
   } catch (error) {
+    logStripeApiError(error);
     console.error("❌ createPaymentIntent error:", error);
     return reply.status(500).send({
       success: false,
@@ -534,6 +563,15 @@ exports.confirmPayment = async (request, reply) => {
     // connected account, so fall back to that account if platform lookup fails.
     const { paymentIntent } = await retrievePaymentIntentForOrder(paymentIntentId, order);
 
+    console.log("[STRIPE TEST] Payment confirmation verified", {
+      orderId: order.id,
+      paymentIntentId: paymentIntent.id,
+      chargeId: paymentIntent.latest_charge || null,
+      status: paymentIntent.status,
+      livemode: paymentIntent.livemode,
+      requestId: paymentIntent.lastResponse?.requestId || null,
+    });
+
     if (paymentIntent.status !== "succeeded") {
       return reply.status(400).send({
         success: false,
@@ -565,6 +603,7 @@ exports.confirmPayment = async (request, reply) => {
       paymentStatus: "PAID",
     });
   } catch (error) {
+    logStripeApiError(error);
     console.error("❌ confirmPayment error:", error);
     return reply.status(500).send({
       success: false,
@@ -588,11 +627,19 @@ exports.stripeWebhook = async (request, reply) => {
     // request.rawBody is the raw Buffer set by the scoped content-type parser
     event = stripe.webhooks.constructEvent(request.rawBody, sig, webhookSecret);
   } catch (err) {
+    logStripeApiError(err);
     console.error("❌ Stripe webhook signature verification failed:", err.message);
     return reply.status(400).send({ error: `Webhook Error: ${err.message}` });
   }
 
   try {
+    console.log("[STRIPE TEST] Webhook received", {
+      eventId: event.id,
+      eventType: event.type,
+      livemode: event.livemode,
+      account: event.account || null,
+      objectId: event.data?.object?.id || null,
+    });
     switch (event.type) {
       case "payment_intent.succeeded": {
         const pi = event.data.object;
@@ -1265,6 +1312,17 @@ async function handlePaymentSucceeded(paymentIntentId) {
           });
 
 
+          console.log("[STRIPE TEST] Seller transfer created", {
+            orderId: order.id,
+            sellerId: sid,
+            connectedAccountId: sellerProfile.stripeAccountId,
+            transferId: transfer.id,
+            amount: transfer.amount,
+            livemode: transfer.livemode,
+            sourceTransaction: transfer.source_transaction || null,
+            requestId: transfer.lastResponse?.requestId || null,
+          });
+
           await stripe.transfers.update(transfer.id, {
             description: payoutTransactionDescription,
           });
@@ -1309,6 +1367,7 @@ async function handlePaymentSucceeded(paymentIntentId) {
             `;
           }
         } catch (transferErr) {
+          logStripeApiError(transferErr);
           console.error(`❌ Stripe transfer failed for seller ${sid} (non-fatal):`, transferErr.message);
         }
       })();
@@ -1528,6 +1587,14 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       }
     }
 
+    console.log("[STRIPE TEST] Payment creation started", {
+      mode: process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") ? "test" : "not-test",
+      orderId: displayId,
+      sellerCount: guestSellerMap.size,
+      amount: amountInCents,
+      currency: "aud",
+    });
+
     // Create Stripe PaymentIntent
     // on_behalf_of is incompatible with automatic_payment_methods (Stripe silently
     // resolves to zero payment methods, blanking the PaymentElement). When routing
@@ -1545,6 +1612,16 @@ exports.createGuestPaymentIntent = async (request, reply) => {
         ? { payment_method_types: ['card'] }
         : { automatic_payment_methods: { enabled: true } }),
       ...guestDirectChargeParams,
+    });
+
+    console.log("[STRIPE TEST] Payment object created", {
+      objectType: paymentIntent.object,
+      id: paymentIntent.id,
+      status: paymentIntent.status,
+      livemode: paymentIntent.livemode,
+      amount: paymentIntent.amount,
+      connectedAccountId: guestPaymentIntentStripeAccountId,
+      requestId: paymentIntent.lastResponse?.requestId || null,
     });
 
     // Build shippingAddress JSON with order summary
@@ -1707,6 +1784,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       },
     });
   } catch (error) {
+    logStripeApiError(error);
     console.error("❌ createGuestPaymentIntent error:", error);
     return reply.status(500).send({
       success: false,

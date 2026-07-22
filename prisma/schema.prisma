@@ -32,6 +32,7 @@ model User {
   notifications                   Notification[]
   orderNotifications              OrderNotification[]
   sellerOrders                    Order[]             @relation("SellerOrders")
+  sellerPaymentRecords            OrderPaymentRecord[] @relation("SellerPaymentRecords")
   orders                          Order[]
   payoutRequests                  PayoutRequest[]
   products                        Product[]
@@ -278,6 +279,7 @@ model Order {
   commissionEarned      CommissionEarned[]
   items                 OrderItem[]
   orderNotifications    OrderNotification[]
+  paymentRecords        OrderPaymentRecord[]
   seller                User?               @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: SetNull)
   user                  User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
   subOrders             SubOrder[]
@@ -287,6 +289,38 @@ model Order {
   @@index([status])
   @@index([overallStatus])
   @@map("orders")
+}
+
+model OrderPaymentRecord {
+  id                     String        @id @default(cuid())
+  orderId                String        @map("order_id")
+  sellerId               String?       @map("seller_id")
+  paymentFlow            PaymentFlow   @default(LEGACY_OR_UNKNOWN) @map("payment_flow")
+  stripeAccountId        String?       @map("stripe_account_id")
+  stripePaymentIntentId  String        @map("stripe_payment_intent_id")
+  stripeChargeId         String?       @map("stripe_charge_id")
+  stripeApplicationFeeId String?       @map("stripe_application_fee_id")
+  currency               String        @default("aud")
+  grossAmount            Int           @map("gross_amount")
+  commissionBase         Int           @map("commission_base")
+  applicationFeeAmount   Int           @map("application_fee_amount")
+  gstAmount              Int           @default(0) @map("gst_amount")
+  shippingAmount         Int           @default(0) @map("shipping_amount")
+  paymentStatus          PaymentStatus @default(PENDING) @map("payment_status")
+  refundStatus           RefundStatus  @default(NONE) @map("refund_status")
+  disputeStatus          DisputeStatus @default(NONE) @map("dispute_status")
+  createdAt              DateTime      @default(now()) @map("created_at")
+  updatedAt              DateTime      @updatedAt @map("updated_at")
+  order                  Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  seller                 User?         @relation("SellerPaymentRecords", fields: [sellerId], references: [id], onDelete: SetNull)
+
+  @@unique([stripePaymentIntentId])
+  @@index([orderId])
+  @@index([sellerId])
+  @@index([paymentFlow])
+  @@index([stripeAccountId])
+  @@index([stripeChargeId])
+  @@map("order_payment_records")
 }
 
 model SubOrder {
@@ -846,6 +880,27 @@ enum PaymentStatus {
   PAID
   FAILED
   REFUNDED
+}
+
+enum PaymentFlow {
+  DIRECT_CHARGE
+  DESTINATION_CHARGE
+  SEPARATE_CHARGE_AND_TRANSFER
+  LEGACY_OR_UNKNOWN
+}
+
+enum RefundStatus {
+  NONE
+  PARTIAL
+  FULL
+  FAILED
+}
+
+enum DisputeStatus {
+  NONE
+  OPEN
+  WON
+  LOST
 }
 
 enum TicketStatus {

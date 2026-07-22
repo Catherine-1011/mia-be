@@ -22,7 +22,7 @@ const {
   sendOrderConfirmationEmail,
   sendFinanceOrderInvoiceEmail,
   sendDisputeAlertEmail,
-  sendSellerPayoutTransferEmail,
+  sendSellerPaymentReceivedEmail,
 } = require("../utils/emailService");
 const {
   notifyAdminNewOrder,
@@ -30,31 +30,324 @@ const {
 } = require("./notification");
 const { createOrderNotification } = require("./orderNotification");
 const { createCommissionEarned, getCommissionForSeller, getDefaultCommission } = require("./commission");
-const { calculateSellerPayout } = require("../utils/commissionCalculator");
+const {
+  calculateSellerPayout,
+  calculateAlpaCommission,
+} = require("../utils/commissionCalculator");
+const {
+  READINESS_MESSAGES: DIRECT_CHARGE_READINESS_MESSAGES,
+  checkSellerPaymentReadiness,
+} = require("../utils/sellerPaymentReadiness");
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// Keep checkout PaymentIntents on the platform account so the frontend can
-// confirm them with the platform publishable key. Single-seller orders still
-// route funds to the seller through Connect destination charges.
+// New single-seller checkout uses true Direct Charges: the PaymentIntent is
+// created on the seller's connected account with ALPA's application fee.
 const USE_DIRECT_CHARGES_FOR_SINGLE_SELLER = true;
 
 const STRIPE_DESCRIPTION_MAX_LENGTH = 255;
-
-const DIRECT_CHARGE_READINESS_MESSAGES = {
-  SELLER_LOOKUP_FAILED: "Seller payment setup could not be verified. Please try again or contact support.",
-  STRIPE_NOT_CONNECTED: "This seller has not connected Stripe yet. Please checkout with another seller or try again later.",
-  CHARGES_DISABLED: "This seller's Stripe account is not ready to accept payments yet.",
-  PAYOUTS_DISABLED: "This seller's Stripe payout setup is incomplete. Please try again later.",
-  CARD_PAYMENTS_INACTIVE: "This seller's Stripe account is not ready for card payments yet.",
-  ACCOUNT_RESTRICTED: "This seller's Stripe account requires additional verification before checkout can continue.",
-};
+const STRIPE_WEBHOOK_PROCESSING_TIMEOUT_MS =
+  Number(process.env.STRIPE_WEBHOOK_PROCESSING_TIMEOUT_MS || 10 * 60 * 1000);
 
 const MIXED_SELLER_CHECKOUT_MESSAGE =
   "Your cart contains products from multiple sellers. Please complete checkout for one seller at a time.";
 
 function moneyToMinorUnits(value) {
   return Math.round(Number(value || 0) * 100);
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function hashOperationPayload(value) {
+  return crypto.createHash("sha256").update(stableStringify(value)).digest("hex");
+}
+
+function normalizeGuestItemsForOperation(items) {
+  return [...items]
+    .map((item) => ({
+      productId: item.productId,
+      variantId: item.variantId || null,
+      quantity: Number(item.quantity),
+    }))
+    .sort((a, b) => `${a.productId}:${a.variantId}`.localeCompare(`${b.productId}:${b.variantId}`));
+}
+
+function checkoutOperationKey({ scope, subjectId, sellerId, amountInCents, requestHash, attemptNumber = 1 }) {
+  return `payment:create:${scope}:${subjectId}:${sellerId || "seller"}:${amountInCents}:${requestHash.slice(0, 20)}:${attemptNumber}`;
+}
+
+async function claimApiOperation({ operationKey, operationType, requestHash, attemptNumber = 1 }) {
+  try {
+    const created = await prisma.apiIdempotencyOperation.create({
+      data: { operationKey, operationType, requestHash, attemptNumber, status: "STARTED" },
+    });
+    return { ...created, claimedNew: true };
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) throw error;
+  }
+
+  const existing = await prisma.apiIdempotencyOperation.findUnique({ where: { operationKey } });
+  if (!existing) throw new Error(`Idempotency operation disappeared: ${operationKey}`);
+  if (existing.requestHash !== requestHash) {
+    const error = new Error("Idempotency operation key conflict");
+    error.statusCode = 409;
+    throw error;
+  }
+  return { ...existing, claimedNew: false };
+}
+
+async function markApiOperationCompleted({ operationKey, stripePaymentIntentId, orderId }) {
+  if (!prisma.apiIdempotencyOperation?.update) return;
+  await prisma.apiIdempotencyOperation.update({
+    where: { operationKey },
+    data: {
+      status: "COMPLETED",
+      stripePaymentIntentId,
+      orderId,
+      lastError: null,
+    },
+  });
+}
+
+async function markApiOperationFailed({ operationKey, error }) {
+  if (!prisma.apiIdempotencyOperation?.update) return;
+  await prisma.apiIdempotencyOperation.update({
+    where: { operationKey },
+    data: {
+      status: "FAILED",
+      lastError: error?.stack || error?.message || String(error),
+    },
+  });
+}
+
+function isUniqueConstraintError(error) {
+  return error?.code === "P2002";
+}
+
+function extractPaymentIntentIdFromStripeEvent(event) {
+  const object = event?.data?.object || {};
+  if (event?.type?.startsWith("payment_intent.")) return object.id || null;
+  if (event?.type?.startsWith("charge.") && !event.type.startsWith("charge.dispute.")) {
+    return object.payment_intent || null;
+  }
+  if (event?.type?.startsWith("charge.dispute.")) {
+    return object.payment_intent || null;
+  }
+  return null;
+}
+
+function disputeStatusFromStripe(dispute) {
+  if (dispute?.status === "won") return "WON";
+  if (dispute?.status === "lost") return "LOST";
+  return "OPEN";
+}
+
+async function retrieveDisputeCharge({ chargeId, stripeAccountId }) {
+  if (!chargeId) return null;
+  return stripe.charges.retrieve(
+    chargeId,
+    stripeAccountId ? { stripeAccount: stripeAccountId } : undefined,
+  );
+}
+
+async function findDisputedPaymentRecord({ paymentIntentId, stripeAccountId }) {
+  if (!paymentIntentId) return null;
+  const paymentRecord = await prisma.orderPaymentRecord.findUnique({
+    where: { stripePaymentIntentId: paymentIntentId },
+    include: {
+      order: { include: { user: { select: { email: true } } } },
+      seller: { select: { email: true, name: true } },
+    },
+  });
+
+  if (!paymentRecord) return null;
+  if (stripeAccountId && paymentRecord.stripeAccountId !== stripeAccountId) {
+    console.warn(
+      `Stripe dispute account mismatch for PaymentIntent ${paymentIntentId}: event account ${stripeAccountId}, stored account ${paymentRecord.stripeAccountId || "platform"}`
+    );
+    return null;
+  }
+
+  return paymentRecord;
+}
+
+async function reverseHistoricalTransfersForDispute({ orderId, disputeId }) {
+  const commissionsToReverse = await prisma.$queryRaw`
+    SELECT id, stripe_transfer_id
+    FROM commission_earned
+    WHERE order_id               = ${orderId}
+      AND stripe_transfer_id     IS NOT NULL
+      AND stripe_transfer_status = 'transferred'
+  `;
+
+  for (const rec of commissionsToReverse) {
+    try {
+      await stripe.transfers.createReversal(
+        rec.stripe_transfer_id,
+        {
+          metadata: { reason: "chargeback_dispute", orderId, disputeId },
+        },
+        {
+          idempotencyKey: `dispute-reversal:${disputeId}:${rec.id}`,
+        },
+      );
+      await prisma.$executeRaw`
+        UPDATE commission_earned
+        SET stripe_transfer_status = 'reversed',
+            status                 = 'CANCELLED'::"CommissionStatus",
+            updated_at             = NOW()
+        WHERE id = ${rec.id}
+      `;
+    } catch (reverseErr) {
+      console.error(`Transfer reversal failed for dispute (commissionId: ${rec.id}):`, reverseErr.message);
+      throw reverseErr;
+    }
+  }
+}
+
+async function handleChargeDisputeEvent(event) {
+  const dispute = event.data.object;
+  const stripeAccountId = event.account || null;
+  const chargeId = dispute.charge;
+  const disputedCharge = await retrieveDisputeCharge({ chargeId, stripeAccountId });
+  const paymentIntentId = dispute.payment_intent || disputedCharge?.payment_intent || null;
+  const paymentRecord = await findDisputedPaymentRecord({ paymentIntentId, stripeAccountId });
+  const disputeStatus = disputeStatusFromStripe(dispute);
+
+  if (!paymentRecord) {
+    console.warn(
+      `Stripe dispute ${dispute.id} could not be matched to a payment record for PaymentIntent ${paymentIntentId || "unknown"}`
+    );
+    return;
+  }
+
+  await prisma.orderPaymentRecord.update({
+    where: { id: paymentRecord.id },
+    data: {
+      stripeDisputeId: dispute.id,
+      disputeStatus,
+      paymentStatus: disputeStatus === "LOST" ? "FAILED" : paymentRecord.paymentStatus,
+    },
+  });
+
+  if (event.type === "charge.dispute.created") {
+    await prisma.order.updateMany({
+      where: { id: paymentRecord.orderId },
+      data: { paymentStatus: "DISPUTED" },
+    });
+
+    if (paymentRecord.paymentFlow !== "DIRECT_CHARGE") {
+      await reverseHistoricalTransfersForDispute({ orderId: paymentRecord.orderId, disputeId: dispute.id });
+    }
+
+    const adminEmail = process.env.FINANCE_EMAIL_RECEIVER || "ritikkashyap013@gmail.com";
+    await sendDisputeAlertEmail({
+      adminEmail,
+      adminName: "Admin",
+      disputeId: dispute.id,
+      amount: dispute.amount,
+      currency: dispute.currency,
+      reason: dispute.reason,
+      orderId: paymentRecord.order?.id || paymentRecord.orderId,
+      orderDisplayId: paymentRecord.order?.displayId || null,
+      chargeId,
+      customerEmail: disputedCharge?.billing_details?.email || paymentRecord.order?.user?.email || null,
+    });
+
+    if (paymentRecord.sellerId) {
+      await createOrderNotification(paymentRecord.orderId, paymentRecord.sellerId, "PAYMENT_DISPUTED", "HIGH", {
+        message: `Payment dispute ${dispute.id} opened for order ${paymentRecord.order?.displayId || paymentRecord.orderId}`,
+        notes: dispute.reason || null,
+      });
+    }
+  }
+
+  if (event.type === "charge.dispute.closed") {
+    const disputeWon = dispute.status === "won";
+    await prisma.order.updateMany({
+      where: { id: paymentRecord.orderId },
+      data: {
+        status: disputeWon ? "CONFIRMED" : "CANCELLED",
+        paymentStatus: disputeWon ? "PAID" : "REFUNDED",
+      },
+    });
+  }
+}
+
+async function claimStripeWebhookEvent(event) {
+  const staleBefore = new Date(Date.now() - STRIPE_WEBHOOK_PROCESSING_TIMEOUT_MS);
+  const paymentIntentId = extractPaymentIntentIdFromStripeEvent(event);
+  const eventData = {
+    eventId: event.id,
+    eventType: event.type,
+    stripeAccountId: event.account || null,
+    paymentIntentId,
+    status: "RECEIVED",
+  };
+
+  try {
+    await prisma.stripeWebhookEvent.create({ data: eventData });
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) throw error;
+  }
+
+  const claimed = await prisma.stripeWebhookEvent.updateMany({
+    where: {
+      eventId: event.id,
+      OR: [
+        { status: { in: ["RECEIVED", "FAILED"] } },
+        { status: "PROCESSING", updatedAt: { lt: staleBefore } },
+      ],
+    },
+    data: {
+      status: "PROCESSING",
+      attemptCount: { increment: 1 },
+      lastError: null,
+      stripeAccountId: event.account || null,
+      paymentIntentId,
+    },
+  });
+
+  if (claimed.count === 1) return { shouldProcess: true, status: "PROCESSING" };
+
+  const existing = await prisma.stripeWebhookEvent.findUnique({
+    where: { eventId: event.id },
+    select: { status: true, updatedAt: true },
+  });
+
+  return {
+    shouldProcess: false,
+    status: existing?.status || "UNKNOWN",
+    stale: existing?.status === "PROCESSING" && existing.updatedAt < staleBefore,
+  };
+}
+
+async function markStripeWebhookEventProcessed(eventId) {
+  await prisma.stripeWebhookEvent.update({
+    where: { eventId },
+    data: {
+      status: "PROCESSED",
+      processedAt: new Date(),
+      lastError: null,
+    },
+  });
+}
+
+async function markStripeWebhookEventFailed(eventId, error) {
+  await prisma.stripeWebhookEvent.update({
+    where: { eventId },
+    data: {
+      status: "FAILED",
+      lastError: error?.stack || error?.message || String(error),
+      processedAt: null,
+    },
+  });
 }
 
 function buildDirectChargePaymentRecordData({
@@ -65,6 +358,9 @@ function buildDirectChargePaymentRecordData({
   itemTotal,
   shippingAmount,
   payout,
+  commission,
+  grossAmountCents,
+  gstAmountCents,
   paymentStatus = "PENDING",
 }) {
   return {
@@ -74,15 +370,63 @@ function buildDirectChargePaymentRecordData({
     stripeAccountId,
     stripePaymentIntentId,
     currency: "aud",
-    grossAmount: moneyToMinorUnits(Number(itemTotal || 0) + Number(shippingAmount || 0)),
-    commissionBase: payout?.productValueExGST != null ? moneyToMinorUnits(payout.productValueExGST) : moneyToMinorUnits(itemTotal),
-    applicationFeeAmount: payout?.commissionAmountCents ?? moneyToMinorUnits(payout?.commissionAmount),
-    gstAmount: payout?.gstAmount != null ? moneyToMinorUnits(payout.gstAmount) : 0,
+    grossAmount: grossAmountCents ?? moneyToMinorUnits(Number(itemTotal || 0) + Number(shippingAmount || 0)),
+    commissionBase: commission?.commissionBase ?? moneyToMinorUnits(itemTotal),
+    applicationFeeAmount: commission?.applicationFeeAmount ?? 0,
+    gstAmount: gstAmountCents ?? (payout?.gstAmount != null ? moneyToMinorUnits(payout.gstAmount) : 0),
     shippingAmount: moneyToMinorUnits(shippingAmount),
     paymentStatus,
     refundStatus: "NONE",
     disputeStatus: "NONE",
   };
+}
+
+function buildPaymentCompletionOutboxRows({ order, paymentIntentId, sellerIds }) {
+  const basePayload = {
+    orderId: order.id,
+    displayId: order.displayId || order.id,
+    paymentIntentId,
+  };
+
+  const rows = [
+    {
+      orderId: order.id,
+      stripePaymentIntentId: paymentIntentId,
+      type: "CUSTOMER_CONFIRMATION",
+      payload: {
+        ...basePayload,
+        customerEmail: order.customerEmail || null,
+        customerName: order.customerName || null,
+      },
+    },
+    {
+      orderId: order.id,
+      stripePaymentIntentId: paymentIntentId,
+      type: "FINANCE_INVOICE",
+      payload: basePayload,
+    },
+    {
+      orderId: order.id,
+      stripePaymentIntentId: paymentIntentId,
+      type: "ADMIN_NEW_ORDER_NOTIFICATION",
+      payload: basePayload,
+    },
+  ];
+
+  rows.push({
+    orderId: order.id,
+    stripePaymentIntentId: paymentIntentId,
+    type: "SELLER_NEW_ORDER_NOTIFICATION",
+    payload: { ...basePayload, sellerIds },
+  });
+  rows.push({
+    orderId: order.id,
+    stripePaymentIntentId: paymentIntentId,
+    type: "SELLER_PAYMENT_NOTIFICATION",
+    payload: { ...basePayload, sellerIds },
+  });
+
+  return rows;
 }
 
 function directChargeReadinessError(code, detail = null) {
@@ -93,62 +437,12 @@ function directChargeReadinessError(code, detail = null) {
   return error;
 }
 
-function accountIsRestricted(account) {
-  const requirements = account?.requirements || {};
-  return Boolean(
-    requirements.disabled_reason ||
-    (Array.isArray(requirements.currently_due) && requirements.currently_due.length > 0)
-  );
-}
-
-async function requireDirectChargeReadySeller(sellerId) {
-  let sellerProfile;
-  try {
-    sellerProfile = await prisma.sellerProfile.findUnique({
-      where:  { userId: sellerId },
-      select: {
-        stripeAccountId: true,
-        stripeChargesEnabled: true,
-        stripePayoutsEnabled: true,
-      },
-    });
-  } catch (err) {
-    throw directChargeReadinessError("SELLER_LOOKUP_FAILED", err.message);
-  }
-
-  if (!sellerProfile?.stripeAccountId) {
-    throw directChargeReadinessError("STRIPE_NOT_CONNECTED");
-  }
-  if (!sellerProfile.stripeChargesEnabled) {
-    throw directChargeReadinessError("CHARGES_DISABLED");
-  }
-  if (!sellerProfile.stripePayoutsEnabled) {
-    throw directChargeReadinessError("PAYOUTS_DISABLED");
-  }
-
-  let account;
-  try {
-    account = await stripe.accounts.retrieve(sellerProfile.stripeAccountId);
-  } catch (err) {
-    throw directChargeReadinessError("SELLER_LOOKUP_FAILED", err.message);
-  }
-
-  if (account && account.charges_enabled === false) {
-    throw directChargeReadinessError("CHARGES_DISABLED");
-  }
-  if (account && account.payouts_enabled === false) {
-    throw directChargeReadinessError("PAYOUTS_DISABLED");
-  }
-  if (account?.capabilities?.card_payments && account.capabilities.card_payments !== "active") {
-    throw directChargeReadinessError("CARD_PAYMENTS_INACTIVE");
-  }
-  if (accountIsRestricted(account)) {
-    throw directChargeReadinessError("ACCOUNT_RESTRICTED");
-  }
-
+async function requireDirectChargeReadySeller(sellerId, currency = "aud") {
+  const readiness = await checkSellerPaymentReadiness({ prisma, stripe, sellerId, currency });
+  if (!readiness.ready) throw directChargeReadinessError(readiness.reason, readiness.detail);
   return {
-    stripeAccountId: sellerProfile.stripeAccountId,
-    account,
+    stripeAccountId: readiness.stripeAccountId,
+    account: readiness.account,
   };
 }
 
@@ -187,7 +481,7 @@ function buildSellerTransactionDescription({
   customerEmail,
   items = [],
   amount,
-  label = "Seller payout",
+  label = "Seller transfer",
   platformFee = null,
   gstAmount = null,
   shippingAmount = null,
@@ -288,6 +582,7 @@ async function retrievePaymentIntentForOrder(paymentIntentId, order) {
 // Body: { shippingAddress, shippingMethodId, gstId, country, city, zipCode, state, mobileNumber }
 // ─────────────────────────────────────────────────────────────────────────────
 exports.createPaymentIntent = async (request, reply) => {
+  let checkoutApiOperationKey = null;
   try {
     const userId = request.user.userId;
     const {
@@ -376,8 +671,8 @@ exports.createPaymentIntent = async (request, reply) => {
     // Stripe expects amount in smallest currency unit (cents for AUD)
     const amountInCents = Math.round(totalAmount * 100);
 
-    // Build per-seller map BEFORE creating PaymentIntent so we can use
-    // Direct Charges (application_fee + transfer_data) for single-seller orders
+    // Build per-seller map before creating the PaymentIntent so single-seller
+    // checkout can use a Direct Charge with application_fee_amount.
     const sellerItemsMap = new Map();
     for (const item of cart.items) {
       const sid = item.product.sellerId;
@@ -393,7 +688,7 @@ exports.createPaymentIntent = async (request, reply) => {
       });
     }
     const displayId = await generateDisplayId();
-    const destinationPaymentDescription = buildSellerTransactionDescription({
+    const checkoutPaymentDescription = buildSellerTransactionDescription({
       order: { id: displayId, displayId },
       customerName: user.isDeleted ? 'Deleted User' : user.name,
       customerEmail: user.email,
@@ -405,38 +700,94 @@ exports.createPaymentIntent = async (request, reply) => {
     // Single-seller: true Direct Charge — PaymentIntent created on the seller's
     // connected Stripe account. Stripe deducts its fee from that account. ALPA
     // receives application_fee_amount as its 10% commission.
-    // Multi-seller: platform Separate Charges + Transfers — one PaymentIntent on
-    // the platform account, then one transfer per seller after payment succeeds.
-    // Stripe fee is retrieved from balance_transaction and deducted proportionally.
+    // Multi-seller checkout is rejected above. The platform-owned Separate
+    // Charges and Transfers code below is legacy-only for historical payments.
     let directChargeParams = {};
     let paymentIntentStripeAccountId = null;
     let directChargePaymentRecord = null;
+    let singleSellerIdForOperation = null;
     
     if (!isMultiSeller && USE_DIRECT_CHARGES_FOR_SINGLE_SELLER) {
       const [singleSellerId] = sellerItemsMap.keys();
+      singleSellerIdForOperation = singleSellerId;
       const { stripeAccountId } = await requireDirectChargeReadySeller(singleSellerId);
-      // Calculate commission (application fee) for this seller
-      const sellerCommission   = await getCommissionForSeller(singleSellerId);
-      const resolvedCommission = sellerCommission || (await getDefaultCommission());
-      const commissionRatePct  = resolvedCommission ? parseFloat(resolvedCommission.value) : 10;
       const itemTotal = cart.items.reduce((s, i) => s + Number(i.productVariant?.price ?? i.product.price) * i.quantity, 0);
       const perSellerShipping  = parseFloat(cartCalculations.shippingCost);
-      const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
+      const eligibleSubtotalCents = moneyToMinorUnits(cartCalculations.subtotalExGST);
+      const commission = calculateAlpaCommission({
+        eligibleProductSubtotalCents: eligibleSubtotalCents,
+        currency: "aud",
+      });
       // True Direct Charge: PaymentIntent is created on the seller's connected account.
       // Stripe automatically deducts its processing fee from the seller's balance.
       // ALPA's commission flows as application_fee_amount.
       // No transfer_data or on_behalf_of required.
       paymentIntentStripeAccountId = stripeAccountId;
       directChargeParams = {
-        application_fee_amount: payout.commissionAmountCents,
+        application_fee_amount: commission.applicationFeeAmount,
       };
       directChargePaymentRecord = {
         sellerId: singleSellerId,
         stripeAccountId,
         itemTotal,
         shippingAmount: perSellerShipping,
-        payout,
+        commission,
+        grossAmountCents: amountInCents,
+        gstAmountCents: moneyToMinorUnits(cartCalculations.gstAmount),
       };
+    }
+
+    const checkoutRequestHash = hashOperationPayload({
+      userId,
+      cartId: cart.id,
+      amountInCents,
+      sellerId: singleSellerIdForOperation,
+      shippingMethodId: shippingMethodId || null,
+      gstId: gstId || null,
+      isInternational,
+      effectiveIntlCountry,
+      items: cart.items.map((item) => ({
+        productId: item.product.id,
+        variantId: item.variantId || null,
+        quantity: item.quantity,
+      })),
+    });
+    checkoutApiOperationKey = checkoutOperationKey({
+      scope: "user",
+      subjectId: `${userId}:${cart.id}`,
+      sellerId: singleSellerIdForOperation,
+      amountInCents,
+      requestHash: checkoutRequestHash,
+    });
+    const checkoutOperation = await claimApiOperation({
+      operationKey: checkoutApiOperationKey,
+      operationType: "PAYMENT_INTENT_CREATE",
+      requestHash: checkoutRequestHash,
+      attemptNumber: 1,
+    });
+    if (checkoutOperation.status === "COMPLETED" && checkoutOperation.stripePaymentIntentId) {
+      const existingOrder = checkoutOperation.orderId
+        ? await prisma.order.findUnique({ where: { id: checkoutOperation.orderId } })
+        : await prisma.order.findFirst({ where: { stripePaymentIntentId: checkoutOperation.stripePaymentIntentId } });
+      const existingPaymentIntent = await stripe.paymentIntents.retrieve(
+        checkoutOperation.stripePaymentIntentId,
+        paymentIntentStripeAccountId ? { stripeAccount: paymentIntentStripeAccountId } : undefined,
+      );
+      return reply.status(200).send({
+        success: true,
+        clientSecret: existingPaymentIntent.client_secret,
+        paymentIntentId: existingPaymentIntent.id,
+        orderId: existingOrder?.id || checkoutOperation.orderId,
+        displayId: existingOrder?.displayId,
+        idempotent: true,
+      });
+    }
+    if (!checkoutOperation.claimedNew && checkoutOperation.status === "STARTED") {
+      return reply.status(202).send({
+        success: true,
+        status: "PAYMENT_CREATION_IN_PROGRESS",
+        idempotent: true,
+      });
     }
 
     console.log("[STRIPE TEST] Payment creation started", {
@@ -457,7 +808,7 @@ exports.createPaymentIntent = async (request, reply) => {
       {
         amount: amountInCents,
         currency: "aud",
-        description: destinationPaymentDescription,
+        description: checkoutPaymentDescription,
         metadata: {
           userId,
           cartId: cart.id,
@@ -469,7 +820,7 @@ exports.createPaymentIntent = async (request, reply) => {
       {
         // Idempotency key: prevents duplicate PaymentIntents if the request
         // is retried (network error, double-tap, etc.).
-        idempotencyKey: `pi_${cart.id}_${userId}_${amountInCents}`,
+        idempotencyKey: checkoutApiOperationKey,
         ...(paymentIntentStripeAccountId && { stripeAccount: paymentIntentStripeAccountId }),
       },
     );
@@ -630,6 +981,12 @@ exports.createPaymentIntent = async (request, reply) => {
     });
     }
 
+    await markApiOperationCompleted({
+      operationKey: checkoutApiOperationKey,
+      stripePaymentIntentId: paymentIntent.id,
+      orderId: order.id,
+    });
+
     return reply.status(200).send({
       success: true,
       clientSecret: paymentIntent.client_secret,
@@ -653,6 +1010,11 @@ exports.createPaymentIntent = async (request, reply) => {
       },
     });
   } catch (error) {
+    if (checkoutApiOperationKey) {
+      try {
+        await markApiOperationFailed({ operationKey: checkoutApiOperationKey, error });
+      } catch (_) { /* best effort */ }
+    }
     if (error?.statusCode === 409 && error?.code) {
       console.warn("[STRIPE TEST] Direct Charge readiness blocked checkout", {
         code: error.code,
@@ -725,27 +1087,29 @@ exports.confirmPayment = async (request, reply) => {
     }
 
     // Idempotency — if already confirmed, just return success
+    // The verified Stripe webhook is authoritative for permanent completion.
+    // Frontend confirmation only reports that Stripe accepted/submitted payment.
     if (order.paymentStatus === "PAID") {
       return reply.status(200).send({
         success: true,
-        message: "Payment already confirmed",
+        message: "Payment already confirmed by Stripe webhook",
         orderId: order.id,
         displayId: order.displayId,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        stripeStatus: paymentIntent.status,
       });
     }
 
-    // Deduct stock, clear cart, mark PAID, send confirmation email, notify admins.
-    // handlePaymentSucceeded is the single source of truth — works for webhook,
-    // logged-in confirm, and guest confirm paths without duplication.
-    await handlePaymentSucceeded(paymentIntentId);
-
-    return reply.status(200).send({
+    return reply.status(202).send({
       success: true,
-      message: "Payment confirmed and order placed successfully",
+      message: "Payment submitted. Awaiting secure confirmation from Stripe.",
       orderId: order.id,
       displayId: order.displayId,
-      status: "CONFIRMED",
-      paymentStatus: "PAID",
+      status: "AWAITING_WEBHOOK_CONFIRMATION",
+      paymentStatus: order.paymentStatus,
+      stripeStatus: paymentIntent.status,
+      awaitingWebhook: true,
     });
   } catch (error) {
     logStripeApiError(error);
@@ -778,6 +1142,15 @@ exports.stripeWebhook = async (request, reply) => {
   }
 
   try {
+    const claim = await claimStripeWebhookEvent(event);
+    if (!claim.shouldProcess) {
+      return reply.status(200).send({
+        received: true,
+        duplicate: claim.status === "PROCESSED",
+        processing: claim.status === "PROCESSING",
+      });
+    }
+
     console.log("[STRIPE TEST] Webhook received", {
       eventId: event.id,
       eventType: event.type,
@@ -833,6 +1206,12 @@ exports.stripeWebhook = async (request, reply) => {
         const charge = event.data.object;
         const piId   = charge.payment_intent;
         if (!piId) break;
+        const webhookRefundStatus =
+          Number(charge.amount_refunded || 0) >= Number(charge.amount || 0) ? 'FULL' : 'PARTIAL';
+        await prisma.orderPaymentRecord.updateMany({
+          where: { stripePaymentIntentId: piId },
+          data: { refundStatus: webhookRefundStatus },
+        });
 
         // chargeType is stored on the PaymentIntent metadata (not charge metadata)
         let chargeType = 'platform';
@@ -882,9 +1261,11 @@ exports.stripeWebhook = async (request, reply) => {
 
         for (const rec of commissionsToReverse) {
           try {
-            await stripe.transfers.createReversal(rec.stripe_transfer_id, {
-              metadata: { reason: "order_refunded", orderId: refundedOrder.id },
-            });
+            await stripe.transfers.createReversal(
+              rec.stripe_transfer_id,
+              { metadata: { reason: "order_refunded", orderId: refundedOrder.id } },
+              { idempotencyKey: `refund-webhook-reversal:${event.id}:${rec.id}` },
+            );
             await prisma.$executeRaw`
               UPDATE commission_earned
               SET stripe_transfer_status = 'reversed',
@@ -899,63 +1280,15 @@ exports.stripeWebhook = async (request, reply) => {
         break;
       }
       case "charge.dispute.created": {
-        const dispute = event.data.object;
-        const chargeId = dispute.charge;
-        const disputedCharge = chargeId ? await stripe.charges.retrieve(chargeId) : null;
-        const piId = disputedCharge?.payment_intent || null;
-
-        // Look up the order
-        let disputedOrder = null;
-        if (piId) {
-          disputedOrder = await prisma.order.findFirst({
-            where: { stripePaymentIntentId: piId },
-            include: { user: { select: { email: true } } }
-          });
-        }
-
-        const adminEmail = process.env.FINANCE_EMAIL_RECEIVER || 'ritikkashyap013@gmail.com';
-        await sendDisputeAlertEmail({
-          adminEmail,
-          adminName: 'Admin',
-          disputeId: dispute.id,
-          amount: dispute.amount,
-          currency: dispute.currency,
-          reason: dispute.reason,
-          orderId: disputedOrder?.id || null,
-          orderDisplayId: disputedOrder?.displayId || null,
-          chargeId,
-          customerEmail: disputedCharge?.billing_details?.email || disputedOrder?.user?.email || null,
-        });
-
+        await handleChargeDisputeEvent(event);
+        break;
+      }
+      case "charge.dispute.updated": {
+        await handleChargeDisputeEvent(event);
         break;
       }
       case "charge.dispute.closed": {
-        // Dispute resolved — update order status based on outcome.
-        // Disputes on Direct Charges belong to the seller's connected account;
-        // event.account identifies which connected account raised the event.
-        const dispute = event.data.object;
-        const disputeChargeId = dispute.charge;
-        let disputePiId = null;
-        try {
-          const disputedCharge = disputeChargeId
-            ? await stripe.charges.retrieve(
-                disputeChargeId,
-                event.account ? { stripeAccount: event.account } : undefined,
-              )
-            : null;
-          disputePiId = disputedCharge?.payment_intent || null;
-        } catch (_) { /* non-fatal */ }
-
-        if (disputePiId) {
-          const disputeWon = dispute.status === 'won';
-          await prisma.order.updateMany({
-            where: { stripePaymentIntentId: disputePiId },
-            data: {
-              status:        disputeWon ? 'CONFIRMED' : 'CANCELLED',
-              paymentStatus: disputeWon ? 'PAID'      : 'REFUNDED',
-            },
-          });
-        }
+        await handleChargeDisputeEvent(event);
         break;
       }
       case "account.updated": {
@@ -976,9 +1309,17 @@ exports.stripeWebhook = async (request, reply) => {
       default:
     }
 
+    await markStripeWebhookEventProcessed(event.id);
     return reply.status(200).send({ received: true });
   } catch (error) {
     console.error("❌ Webhook handler error:", error);
+    if (event?.id) {
+      try {
+        await markStripeWebhookEventFailed(event.id, error);
+      } catch (markError) {
+        console.error("Failed to mark Stripe webhook event FAILED:", markError.message);
+      }
+    }
     return reply.status(500).send({ error: "Webhook processing failed" });
   }
 };
@@ -1106,6 +1447,7 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
     ...(order.items || []),
     ...(order.subOrders?.flatMap(sub => sub.items) || [])
   ];
+  const completionSellerIds = [...new Set(allItems.map(i => i.product?.sellerId).filter(Boolean))];
 
   const cart = order.userId
     ? await prisma.cart.findUnique({ where: { userId: order.userId } })
@@ -1146,6 +1488,15 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
       where: { id: order.id },
       data: { status: "CONFIRMED" },
     });
+
+    await tx.paymentCompletionOutbox.createMany({
+      data: buildPaymentCompletionOutboxRows({
+        order,
+        paymentIntentId,
+        sellerIds: completionSellerIds,
+      }),
+      skipDuplicates: true,
+    });
   });
 
 
@@ -1153,6 +1504,7 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
   // Uses order.customerEmail which is always stored at order-creation time for
   // both guest and logged-in orders, so this works for every payment path
   // (webhook, /confirm, /guest/confirm) without any extra lookup.
+  const paymentCompletionNotificationsQueued = true;
   const toEmail = order.customerEmail;
   const toName  = order.customerName || 'Customer';
   const orderDetailsForEmail = {
@@ -1217,10 +1569,10 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
     console.error('Invoice PDF generation error (non-blocking):', pdfErr.message);
   }
 
-  if (toEmail) {
+  if (!paymentCompletionNotificationsQueued && toEmail) {
     sendOrderConfirmationEmail(toEmail, toName, orderDetailsForEmail, invoicePDFBuffer)
       .catch((e) => console.error('Email error (non-blocking):', e.message));
-  } else {
+  } else if (!paymentCompletionNotificationsQueued) {
     console.warn(`⚠️  No customerEmail on order ${order.id} — confirmation email skipped`);
   }
 
@@ -1235,7 +1587,7 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
       }
     });
 
-    if (invoiceOrderRecord) {
+    if (!paymentCompletionNotificationsQueued && invoiceOrderRecord) {
       const invoiceShape = {
         ...invoiceOrderRecord,
         customerName:  (invoiceOrderRecord.user?.isDeleted ? 'Deleted User' : invoiceOrderRecord.user?.name) || invoiceOrderRecord.customerName,
@@ -1258,7 +1610,7 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
   }));
   const productTitles = allItems.map(i => i.product?.title).filter(Boolean);
 
-  notifyAdminNewOrder(order.id, {
+  if (!paymentCompletionNotificationsQueued) notifyAdminNewOrder(order.id, {
     customerName: toName,
     sellerName:   sellerDisplayNames.join(', ') || 'Unknown',
     totalAmount:  Number(order.totalAmount).toFixed(2),
@@ -1268,7 +1620,7 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
   }).catch((e) => console.error('Admin notification error (non-blocking):', e.message));
 
   // Send Super Admin Copy of Order Confirmation
-  prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } })
+  if (!paymentCompletionNotificationsQueued) prisma.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { email: true, name: true } })
     .then(admins => {
       for (const admin of admins) {
         if (admin.email) {
@@ -1306,16 +1658,16 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
       customerEmail: order.customerEmail,
       items: sellerItems,
       amount: payout.sellerTotalPayout,
-      label: "Seller payout",
+      label: "Legacy seller transfer",
       platformFee: payout.commissionAmount,
       gstAmount: payout.gstAmount,
       shippingAmount: payout.shippingAmount,
     });
-    createOrderNotification(order.id, sid, 'ORDER_PROCESSING', 'HIGH', {
+    if (!paymentCompletionNotificationsQueued) createOrderNotification(order.id, sid, 'ORDER_PROCESSING', 'HIGH', {
       message: `New order received from ${toName}`,
       notes: `${itemCount} item(s), Total: $${itemTotal.toFixed(2)}`
     }).catch((e) => console.error('SLA notification error (non-blocking):', e.message));
-    notifySellerNewOrder(sid, order.id, {
+    if (!paymentCompletionNotificationsQueued) notifySellerNewOrder(sid, order.id, {
       customerName: toName,
       totalAmount: itemTotal.toFixed(2),
       itemCount,
@@ -1323,7 +1675,7 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
     }).catch((e) => console.error('Seller in-app notification error (non-blocking):', e.message));
 
     // Send Seller Email Notification
-    prisma.user.findUnique({ where: { id: sid }, select: { email: true, name: true, sellerProfile: { select: { storeName: true, businessName: true } } } })
+    if (!paymentCompletionNotificationsQueued) prisma.user.findUnique({ where: { id: sid }, select: { email: true, name: true, sellerProfile: { select: { storeName: true, businessName: true } } } })
       .then(seller => {
         if (seller && seller.email) {
           const sellerSubOrder = order.subOrders && order.subOrders.find(sub => sub.sellerId === sid || sub.seller?.id === sid);
@@ -1392,9 +1744,12 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
       customerEmail:  order.customerEmail,
       customerId:     order.userId || null,
       sellerName:     sellerDisplayNames[sellerIdSet.indexOf(sid)] || null,
-    }).catch((e) => { console.error('Commission earned error (non-blocking):', e.message); return null; });
+    });
+    if (!commissionEarnedId) {
+      throw new Error(`Commission earned record was not created for seller ${sid}`);
+    }
 
-    // ── Stripe Payout ───────────────────────────────────────────────────────
+    // ── Direct Charge or legacy seller transfer settlement ──────────────────
     // Direct Charge orders: Stripe already routed funds to the seller and
     // collected ALPA's application fee automatically — no manual transfer needed.
     // Legacy platform-owned orders: retain transfer creation for historical
@@ -1416,7 +1771,7 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
       // Direct Charge: Stripe handled seller settlement automatically.
       // Do not create seller transfers in this branch. If an old Stripe object
       // exposes a related transfer, only enrich metadata for reconciliation.
-      (async () => {
+      await (async () => {
         try {
           if (latestChargeId) {
             const stripeAccountOptions = retrievedPaymentIntentStripeAccountId
@@ -1472,13 +1827,13 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
         where: { id: sid },
         select: { email: true, name: true },
       });
-      if (sellerUser?.email) {
-        sendSellerPayoutTransferEmail(sellerUser.email, sellerUser.name || 'Seller', {
+      if (!paymentCompletionNotificationsQueued && sellerUser?.email) {
+        sendSellerPaymentReceivedEmail(sellerUser.email, sellerUser.name || 'Seller', {
           orderId:        order.id,
           orderDisplayId: order.displayId || order.id,
           amount:         itemTotal,
           currency:       'AUD',
-        }).catch((e) => console.error('sendSellerPayoutTransferEmail error:', e.message));
+        }).catch((e) => console.error('sendSellerPaymentReceivedEmail error:', e.message));
       }
     } else {
       // Legacy platform-owned settlement path.
@@ -1487,7 +1842,7 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
       // require seller transfers. New checkout must not enter this branch.
       // Commission: Preserved — 10% on GST-exclusive price, shipping excluded.
       // ──────────────────────────────────────────────────────────────────────────
-      (async () => {
+      await (async () => {
         try {
           const sellerProfile = await prisma.sellerProfile.findUnique({
             where:  { userId: sid },
@@ -1504,7 +1859,7 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
           const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
 
           if (payout.sellerTotalPayoutCents <= 0) {
-            console.warn(`⚠️  Seller ${sid} payout would be ≤ $0 — transfer skipped`);
+            console.warn(`Seller ${sid} transfer amount would be <= $0 - legacy transfer skipped`);
             return;
           }
 
@@ -1524,31 +1879,34 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
             customerEmail: order.customerEmail,
             items: sellerItems,
             amount: payout.sellerTotalPayout,
-            label: "Seller payout",
+            label: "Legacy seller transfer",
             platformFee: payout.commissionAmount,
             gstAmount: payout.gstAmount,
             shippingAmount: payout.shippingAmount,
           });
 
-          const transfer = await stripe.transfers.create({
-            amount:      finalTransferCents,
-            currency:    "aud",
-            destination: sellerProfile.stripeAccountId,
-            ...(latestChargeId && { source_transaction: latestChargeId }),
-            description: payoutTransactionDescription,
-            metadata: {
-              ...sellerStripeMetadata,
-              sellerId:            sid,
-              commissionAmount:    payout.commissionAmount.toString(),
-              commissionRate:      payout.commissionRatePct.toString(),
-              gstAmount:           payout.gstAmount.toString(),
-              shippingAmount:      payout.shippingAmount.toString(),
-              sellerTotalPayout:   payout.sellerTotalPayout.toString(),
-              productValueExGST:   payout.productValueExGST.toString(),
-              stripeFeeDeducted:   (sellerStripeFeeShare / 100).toFixed(2),
-              finalTransferAmount: (finalTransferCents / 100).toFixed(2),
+          const transfer = await stripe.transfers.create(
+            {
+              amount:      finalTransferCents,
+              currency:    "aud",
+              destination: sellerProfile.stripeAccountId,
+              ...(latestChargeId && { source_transaction: latestChargeId }),
+              description: payoutTransactionDescription,
+              metadata: {
+                ...sellerStripeMetadata,
+                sellerId:            sid,
+                commissionAmount:    payout.commissionAmount.toString(),
+                commissionRate:      payout.commissionRatePct.toString(),
+                gstAmount:           payout.gstAmount.toString(),
+                shippingAmount:      payout.shippingAmount.toString(),
+                sellerTotalPayout:   payout.sellerTotalPayout.toString(),
+                productValueExGST:   payout.productValueExGST.toString(),
+                stripeFeeDeducted:   (sellerStripeFeeShare / 100).toFixed(2),
+                finalTransferAmount: (finalTransferCents / 100).toFixed(2),
+              },
             },
-          });
+            { idempotencyKey: `transfer:create:${order.id}:${sid}:${commissionEarnedId}` },
+          );
 
 
           console.log("[STRIPE TEST] Seller transfer created", {
@@ -1587,13 +1945,13 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
           // Notify seller by email (non-blocking)
           const sellerEmail = sellerProfile.user?.email;
           const sellerName  = sellerProfile.user?.name || sellerDisplayNames[sellerIdSet.indexOf(sid)] || 'Seller';
-          if (sellerEmail) {
-            sendSellerPayoutTransferEmail(sellerEmail, sellerName, {
+          if (!paymentCompletionNotificationsQueued && sellerEmail) {
+            sendSellerPaymentReceivedEmail(sellerEmail, sellerName, {
               orderId:        order.id,
               orderDisplayId: order.displayId || order.id,
               amount:         payout.sellerTotalPayout,
               currency:       'AUD',
-            }).catch((e) => console.error('sendSellerPayoutTransferEmail error:', e.message));
+            }).catch((e) => console.error('sendSellerPaymentReceivedEmail error:', e.message));
           }
 
           if (commissionEarnedId) {
@@ -1624,6 +1982,7 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
 //         shippingMethodId, gstId, country, city, zipCode, state, mobileNumber, couponCode }
 // ─────────────────────────────────────────────────────────────────────────────
 exports.createGuestPaymentIntent = async (request, reply) => {
+  let guestCheckoutApiOperationKey = null;
   try {
     const {
       items,
@@ -1790,7 +2149,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       });
     }
     const displayId = await generateDisplayId();
-    const guestDestinationPaymentDescription = buildSellerTransactionDescription({
+    const guestCheckoutPaymentDescription = buildSellerTransactionDescription({
       order: { id: displayId, displayId },
       customerName,
       customerEmail,
@@ -1802,29 +2161,89 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     let guestDirectChargeParams = {};
     let guestPaymentIntentStripeAccountId = null;
     let guestDirectChargePaymentRecord = null;
+    let guestSingleSellerIdForOperation = null;
     if (!guestIsMultiSeller && USE_DIRECT_CHARGES_FOR_SINGLE_SELLER) {
       const [singleSellerId] = guestSellerMap.keys();
+      guestSingleSellerIdForOperation = singleSellerId;
       const { stripeAccountId } = await requireDirectChargeReadySeller(singleSellerId);
-      const sellerCommission   = await getCommissionForSeller(singleSellerId);
-      const resolvedCommission = sellerCommission || (await getDefaultCommission());
-      const commissionRatePct  = resolvedCommission ? parseFloat(resolvedCommission.value) : 10;
       const itemTotal = cartItems.reduce((s, i) => s + (i.productVariant ? Number(i.productVariant.price) : Number(i.product.price)) * i.quantity, 0);
       const perSellerShipping  = parseFloat(cartCalculations.shippingCost);
-      const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
+      const eligibleSubtotalCents = Math.max(
+        0,
+        moneyToMinorUnits(cartCalculations.subtotalExGST) - moneyToMinorUnits(discountAmount),
+      );
+      const commission = calculateAlpaCommission({
+        eligibleProductSubtotalCents: eligibleSubtotalCents,
+        currency: "aud",
+      });
       // True Direct Charge: PaymentIntent is created on the seller's connected account.
       // Stripe automatically deducts its processing fee from the seller's balance.
       // ALPA's commission flows as application_fee_amount.
       guestPaymentIntentStripeAccountId = stripeAccountId;
       guestDirectChargeParams = {
-        application_fee_amount: payout.commissionAmountCents,
+        application_fee_amount: commission.applicationFeeAmount,
       };
       guestDirectChargePaymentRecord = {
         sellerId: singleSellerId,
         stripeAccountId,
         itemTotal,
         shippingAmount: perSellerShipping,
-        payout,
+        commission,
+        grossAmountCents: amountInCents,
+        gstAmountCents: moneyToMinorUnits(cartCalculations.gstAmount),
       };
+    }
+
+    const normalizedGuestEmail = customerEmail.trim().toLowerCase();
+    const guestCheckoutRequestHash = hashOperationPayload({
+      customerEmail: normalizedGuestEmail,
+      customerPhone,
+      amountInCents,
+      sellerId: guestSingleSellerIdForOperation,
+      shippingMethodId: shippingMethodId || null,
+      gstId: gstId || null,
+      isInternational,
+      effectiveIntlCountry,
+      couponCode: couponCode || null,
+      items: normalizeGuestItemsForOperation(items),
+    });
+    guestCheckoutApiOperationKey = checkoutOperationKey({
+      scope: "guest",
+      subjectId: normalizedGuestEmail,
+      sellerId: guestSingleSellerIdForOperation,
+      amountInCents,
+      requestHash: guestCheckoutRequestHash,
+    });
+    const guestCheckoutOperation = await claimApiOperation({
+      operationKey: guestCheckoutApiOperationKey,
+      operationType: "PAYMENT_INTENT_CREATE",
+      requestHash: guestCheckoutRequestHash,
+      attemptNumber: 1,
+    });
+    if (guestCheckoutOperation.status === "COMPLETED" && guestCheckoutOperation.stripePaymentIntentId) {
+      const existingOrder = guestCheckoutOperation.orderId
+        ? await prisma.order.findUnique({ where: { id: guestCheckoutOperation.orderId } })
+        : await prisma.order.findFirst({ where: { stripePaymentIntentId: guestCheckoutOperation.stripePaymentIntentId } });
+      const existingPaymentIntent = await stripe.paymentIntents.retrieve(
+        guestCheckoutOperation.stripePaymentIntentId,
+        guestPaymentIntentStripeAccountId ? { stripeAccount: guestPaymentIntentStripeAccountId } : undefined,
+      );
+      return reply.status(200).send({
+        success: true,
+        clientSecret: existingPaymentIntent.client_secret,
+        paymentIntentId: existingPaymentIntent.id,
+        stripeAccountId: guestPaymentIntentStripeAccountId,
+        orderId: existingOrder?.id || guestCheckoutOperation.orderId,
+        displayId: existingOrder?.displayId,
+        idempotent: true,
+      });
+    }
+    if (!guestCheckoutOperation.claimedNew && guestCheckoutOperation.status === "STARTED") {
+      return reply.status(202).send({
+        success: true,
+        status: "PAYMENT_CREATION_IN_PROGRESS",
+        idempotent: true,
+      });
     }
 
     console.log("[STRIPE TEST] Payment creation started", {
@@ -1842,7 +2261,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       {
         amount: amountInCents,
         currency: "aud",
-        description: guestDestinationPaymentDescription,
+        description: guestCheckoutPaymentDescription,
         metadata: {
           isGuest: "true",
           customerEmail,
@@ -1855,7 +2274,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
         // Idempotency key: prevents duplicate PaymentIntents on retry.
         // Uses displayId (generated just above) so retries for the same guest session
         // are stable even without a persistent cartId.
-        idempotencyKey: `pi_guest_${displayId}_${customerEmail}_${amountInCents}`,
+        idempotencyKey: guestCheckoutApiOperationKey,
         ...(guestPaymentIntentStripeAccountId && { stripeAccount: guestPaymentIntentStripeAccountId }),
       },
     );
@@ -2016,6 +2435,12 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     });
     }
 
+    await markApiOperationCompleted({
+      operationKey: guestCheckoutApiOperationKey,
+      stripePaymentIntentId: paymentIntent.id,
+      orderId: order.id,
+    });
+
     return reply.status(200).send({
       success: true,
       clientSecret: paymentIntent.client_secret,
@@ -2042,6 +2467,11 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       },
     });
   } catch (error) {
+    if (guestCheckoutApiOperationKey) {
+      try {
+        await markApiOperationFailed({ operationKey: guestCheckoutApiOperationKey, error });
+      } catch (_) { /* best effort */ }
+    }
     if (error?.statusCode === 409 && error?.code) {
       console.warn("[STRIPE TEST] Direct Charge readiness blocked guest checkout", {
         code: error.code,
@@ -2134,28 +2564,29 @@ exports.confirmGuestPayment = async (request, reply) => {
     }
 
     // Idempotency guard
+    // The verified Stripe webhook is authoritative for permanent completion.
+    // Guest confirmation only reports that Stripe accepted/submitted payment.
     if (order.paymentStatus === "PAID") {
       return reply.status(200).send({
         success: true,
-        message: "Payment already confirmed",
+        message: "Payment already confirmed by Stripe webhook",
         orderId: order.id,
         displayId: order.displayId,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        stripeStatus: paymentIntent.status,
       });
     }
 
-    // Deduct stock, clear cart, mark PAID, send confirmation email, notify admins.
-    // handlePaymentSucceeded is the single source of truth — works for webhook,
-    // logged-in confirm, and guest confirm paths without duplication.
-    await handlePaymentSucceeded(paymentIntentId);
-
-
-    return reply.status(200).send({
+    return reply.status(202).send({
       success: true,
-      message: "Guest payment confirmed and order placed successfully",
+      message: "Payment submitted. Awaiting secure confirmation from Stripe.",
       orderId: order.id,
       displayId: order.displayId,
-      status: "CONFIRMED",
-      paymentStatus: "PAID",
+      status: "AWAITING_WEBHOOK_CONFIRMATION",
+      paymentStatus: order.paymentStatus,
+      stripeStatus: paymentIntent.status,
+      awaitingWebhook: true,
     });
   } catch (error) {
     console.error("❌ confirmGuestPayment error:", error);
@@ -2215,3 +2646,4 @@ exports.getGuestPaymentStatus = async (request, reply) => {
     });
   }
 };
+

@@ -1529,7 +1529,7 @@ exports.submitSellerOnboarding = async (request, reply) => {
 
     // Validate required fields
     // Bank details (bankName, accountName, bsb, accountNumber) are NOT required here
-    // — they are collected by Stripe Connect during seller payout onboarding.
+    // - they are collected by Stripe Connect during seller bank payout onboarding.
     // KYC documents are also NOT required here — Stripe handles identity verification.
     const missingFields = [];
     if (!businessName) missingFields.push("businessName");

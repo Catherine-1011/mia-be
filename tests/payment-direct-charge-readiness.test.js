@@ -47,10 +47,11 @@ function makeCartWithSellerCount(sellerCount = 1) {
   };
 }
 
-function makePrisma({ sellerProfile, sellerLookupError = null, sellerCount = 1, missingProductIds = [], paymentRecordCreateError = null } = {}) {
+function makePrisma({ sellerProfile, sellerLookupError = null, sellerCount = 1, missingProductIds = [], paymentRecordCreateError = null, coupon = null } = {}) {
   const prisma = {
     _orderCreateCalls: [],
     _orderPaymentRecordCreateCalls: [],
+    _apiOperations: new Map(),
     _subOrderCreateCalls: [],
     _orderItemCreateManyCalls: [],
     _productUpdateCalls: [],
@@ -108,7 +109,7 @@ function makePrisma({ sellerProfile, sellerLookupError = null, sellerCount = 1, 
       findUnique: async () => null,
     },
     coupon: {
-      findUnique: async () => null,
+      findUnique: async () => coupon,
     },
     order: {
       findUnique: async () => null,
@@ -141,6 +142,25 @@ function makePrisma({ sellerProfile, sellerLookupError = null, sellerCount = 1, 
         return { id: "payment_record_1", ...args.data };
       },
     },
+    apiIdempotencyOperation: {
+      create: async ({ data }) => {
+        if (prisma._apiOperations.has(data.operationKey)) {
+          const error = new Error("Unique constraint failed");
+          error.code = "P2002";
+          throw error;
+        }
+        const row = { id: `aio_${prisma._apiOperations.size + 1}`, ...data };
+        prisma._apiOperations.set(data.operationKey, row);
+        return row;
+      },
+      findUnique: async ({ where }) => prisma._apiOperations.get(where.operationKey) || null,
+      update: async ({ where, data }) => {
+        const row = prisma._apiOperations.get(where.operationKey);
+        if (!row) throw new Error("operation not found");
+        Object.assign(row, data);
+        return row;
+      },
+    },
     $transaction: async (callback) => callback(prisma),
   };
   return prisma;
@@ -149,7 +169,10 @@ function makePrisma({ sellerProfile, sellerLookupError = null, sellerCount = 1, 
 function loadPaymentController({ prisma, stripeAccount }) {
   const stripeMock = {
     accounts: {
-      retrieve: async () => stripeAccount,
+      retrieve: async () => {
+        if (stripeAccount instanceof Error) throw stripeAccount;
+        return stripeAccount;
+      },
     },
     paymentIntents: {
       createCalls: [],
@@ -249,7 +272,7 @@ function loadPaymentController({ prisma, stripeAccount }) {
         sendOrderConfirmationEmail: async () => {},
         sendFinanceOrderInvoiceEmail: async () => {},
         sendDisputeAlertEmail: async () => {},
-        sendSellerPayoutTransferEmail: async () => {},
+        sendSellerPaymentReceivedEmail: async () => {},
       };
     }
     return originalLoad(request, parent, isMain);
@@ -304,6 +327,30 @@ async function callCreateGuestPaymentIntent(controller) {
   return reply;
 }
 
+async function callCreateGuestPaymentIntentWithCoupon(controller, couponCode) {
+  const reply = makeReply();
+  await controller.createGuestPaymentIntent(
+    {
+      body: {
+        items: [{ productId: "prod_1", quantity: 1 }],
+        customerName: "Guest Buyer",
+        customerEmail: "guest@example.com",
+        customerPhone: "0400000000",
+        shippingAddress: { addressLine: "1 Test St" },
+        shippingMethodId: "ship_1",
+        country: "Australia",
+        city: "Sydney",
+        state: "NSW",
+        zipCode: "2000",
+        mobileNumber: "0400000000",
+        couponCode,
+      },
+    },
+    reply,
+  );
+  return reply;
+}
+
 async function callCreateGuestPaymentIntentWithSellerCount(controller, sellerCount) {
   const reply = makeReply();
   await controller.createGuestPaymentIntent(
@@ -351,6 +398,14 @@ async function callCreateGuestPaymentIntentWithItems(controller, items) {
     reply,
   );
   return reply;
+}
+
+function assertBlockedBeforeStripe(reply, stripeMock, prisma, code) {
+  assert.equal(reply.statusCode, 409);
+  assert.equal(reply.payload.code, code);
+  assert.equal(stripeMock.paymentIntents.createCalls.length, 0);
+  assert.equal(prisma._orderCreateCalls.length, 0);
+  assert.equal(prisma._orderPaymentRecordCreateCalls.length, 0);
 }
 
 function assertNoFinancialOrOrderSideEffects({ stripeMock, prisma }) {
@@ -417,6 +472,188 @@ test("valid seller creates Direct Charge with connected-account request options"
   assert.equal(record.paymentStatus, "PENDING");
   assert.equal(record.refundStatus, "NONE");
   assert.equal(record.disputeStatus, "NONE");
+});
+
+test("same logged-in checkout retry reuses one PaymentIntent and payment record", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_ready",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_ready",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+    },
+  });
+
+  const first = await callCreatePaymentIntent(controller);
+  const retry = await callCreatePaymentIntent(controller);
+
+  assert.equal(first.statusCode, 200);
+  assert.equal(retry.statusCode, 200);
+  assert.equal(retry.payload.idempotent, true);
+  assert.equal(stripeMock.paymentIntents.createCalls.length, 1);
+  assert.equal(prisma._orderPaymentRecordCreateCalls.length, 1);
+  assert.match(stripeMock.paymentIntents.createCalls[0].options.idempotencyKey, /^payment:create:user:/);
+});
+
+test("failed PaymentIntent checkout retry reuses existing PaymentIntent safely", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_ready",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_ready",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+    },
+  });
+  stripeMock.paymentIntents.retrieve = async () => ({
+    id: "pi_123",
+    status: "requires_payment_method",
+    client_secret: "pi_123_secret_retry",
+  });
+
+  const first = await callCreatePaymentIntent(controller);
+  const retry = await callCreatePaymentIntent(controller);
+
+  assert.equal(first.statusCode, 200);
+  assert.equal(retry.statusCode, 200);
+  assert.equal(retry.payload.idempotent, true);
+  assert.equal(retry.payload.paymentIntentId, "pi_123");
+  assert.equal(retry.payload.clientSecret, "pi_123_secret_retry");
+  assert.equal(stripeMock.paymentIntents.createCalls.length, 1);
+  assert.equal(prisma._orderPaymentRecordCreateCalls.length, 1);
+});
+
+test("duplicate failed-payment retry creates no duplicate PaymentIntent", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_ready",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_ready",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+    },
+  });
+  stripeMock.paymentIntents.retrieve = async () => ({
+    id: "pi_123",
+    status: "requires_payment_method",
+    client_secret: "pi_123_secret_retry",
+  });
+
+  await callCreatePaymentIntent(controller);
+  const retryA = await callCreatePaymentIntent(controller);
+  const retryB = await callCreatePaymentIntent(controller);
+
+  assert.equal(retryA.statusCode, 200);
+  assert.equal(retryB.statusCode, 200);
+  assert.equal(stripeMock.paymentIntents.createCalls.length, 1);
+  assert.equal(prisma._orderPaymentRecordCreateCalls.length, 1);
+});
+
+test("different legitimate checkout request identity creates a different PaymentIntent", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_guest_ready",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+    coupon: {
+      code: "SAVE20",
+      isActive: true,
+      expiresAt: new Date(Date.now() + 86400000),
+      usageLimit: null,
+      discountType: "fixed",
+      discountValue: 20,
+      minCartValue: null,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_guest_ready",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+    },
+  });
+
+  const first = await callCreateGuestPaymentIntent(controller);
+  const second = await callCreateGuestPaymentIntentWithCoupon(controller, "SAVE20");
+
+  assert.equal(first.statusCode, 200);
+  assert.equal(second.statusCode, 200);
+  assert.equal(stripeMock.paymentIntents.createCalls.length, 2);
+  assert.notEqual(
+    stripeMock.paymentIntents.createCalls[0].options.idempotencyKey,
+    stripeMock.paymentIntents.createCalls[1].options.idempotencyKey,
+  );
+});
+
+test("client cannot override logged-in checkout idempotency identity", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_ready",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_ready",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+    },
+  });
+  const reply = makeReply();
+
+  await controller.createPaymentIntent(
+    {
+      user: { userId: "user_1" },
+      body: {
+        shippingAddress: { addressLine: "1 Test St" },
+        shippingMethodId: "ship_1",
+        country: "Australia",
+        city: "Sydney",
+        state: "NSW",
+        zipCode: "2000",
+        mobileNumber: "0400000000",
+        idempotencyKey: "client_supplied_key",
+      },
+    },
+    reply,
+  );
+
+  assert.equal(reply.statusCode, 200);
+  assert.notEqual(stripeMock.paymentIntents.createCalls[0].options.idempotencyKey, "client_supplied_key");
+  assert.match(stripeMock.paymentIntents.createCalls[0].options.idempotencyKey, /^payment:create:user:/);
 });
 
 test("missing stripeAccountId blocks checkout with no platform fallback", async () => {
@@ -488,6 +725,190 @@ test("Stripe charges disabled blocks checkout with no platform fallback", async 
   assert.equal(prisma._orderCreateCalls.length, 0);
 });
 
+test("DB payouts disabled blocks checkout with no platform fallback", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_payouts_disabled",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: false,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({ prisma, stripeAccount: null });
+
+  const reply = await callCreatePaymentIntent(controller);
+
+  assertBlockedBeforeStripe(reply, stripeMock, prisma, "PAYOUTS_DISABLED");
+});
+
+test("Stripe payouts disabled blocks checkout with no platform fallback", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_stripe_payouts_disabled",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_stripe_payouts_disabled",
+      charges_enabled: true,
+      payouts_enabled: false,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+      country: "AU",
+    },
+  });
+
+  const reply = await callCreatePaymentIntent(controller);
+
+  assertBlockedBeforeStripe(reply, stripeMock, prisma, "PAYOUTS_DISABLED");
+});
+
+test("card payments inactive blocks checkout with no platform fallback", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_card_inactive",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_card_inactive",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "inactive" },
+      requirements: { currently_due: [] },
+      country: "AU",
+    },
+  });
+
+  const reply = await callCreatePaymentIntent(controller);
+
+  assertBlockedBeforeStripe(reply, stripeMock, prisma, "CAPABILITY_INACTIVE");
+});
+
+test("requirements currently due block checkout with no platform fallback", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_requirements_due",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_requirements_due",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: ["company.tax_id"] },
+      country: "AU",
+    },
+  });
+
+  const reply = await callCreatePaymentIntent(controller);
+
+  assertBlockedBeforeStripe(reply, stripeMock, prisma, "VERIFICATION_REQUIRED");
+});
+
+test("restricted account blocks checkout with no platform fallback", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_restricted",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_restricted",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [], disabled_reason: "requirements.past_due" },
+      country: "AU",
+    },
+  });
+
+  const reply = await callCreatePaymentIntent(controller);
+
+  assertBlockedBeforeStripe(reply, stripeMock, prisma, "ACCOUNT_RESTRICTED");
+});
+
+test("unsupported Stripe account country blocks checkout with no platform fallback", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_us",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_us",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+      country: "US",
+    },
+  });
+
+  const reply = await callCreatePaymentIntent(controller);
+
+  assertBlockedBeforeStripe(reply, stripeMock, prisma, "UNSUPPORTED_COUNTRY");
+});
+
+test("unsupported Stripe account currency blocks checkout with no platform fallback", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_currency",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_currency",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+      country: "AU",
+      settings: { card_payments: { supported_currencies: ["usd"] } },
+    },
+  });
+
+  const reply = await callCreatePaymentIntent(controller);
+
+  assertBlockedBeforeStripe(reply, stripeMock, prisma, "UNSUPPORTED_CURRENCY");
+});
+
+test("Stripe API unavailable fails safely before PaymentIntent", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_api_down",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: new Error("stripe unavailable"),
+  });
+
+  const reply = await callCreatePaymentIntent(controller);
+
+  assertBlockedBeforeStripe(reply, stripeMock, prisma, "SELLER_LOOKUP_FAILED");
+});
+
 test("seller lookup failure blocks checkout with no platform fallback", async () => {
   const prisma = makePrisma({
       sellerLookupError: new Error("database unavailable"),
@@ -553,6 +974,79 @@ test("valid guest seller creates Direct Charge with connected-account request op
   assert.equal(record.applicationFeeAmount, 1000);
   assert.equal(record.gstAmount, 1000);
   assert.equal(record.shippingAmount, 1000);
+});
+
+test("same guest checkout retry reuses one PaymentIntent and payment record", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_guest_ready",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_guest_ready",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+    },
+  });
+
+  const first = await callCreateGuestPaymentIntent(controller);
+  const retry = await callCreateGuestPaymentIntent(controller);
+
+  assert.equal(first.statusCode, 200);
+  assert.equal(retry.statusCode, 200);
+  assert.equal(retry.payload.idempotent, true);
+  assert.equal(stripeMock.paymentIntents.createCalls.length, 1);
+  assert.equal(prisma._orderPaymentRecordCreateCalls.length, 1);
+  assert.match(stripeMock.paymentIntents.createCalls[0].options.idempotencyKey, /^payment:create:guest:/);
+});
+
+test("guest Direct Charge application fee and payment record use discounted product subtotal", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_guest_ready",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+    coupon: {
+      code: "SAVE20",
+      isActive: true,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      usageLimit: null,
+      usageCount: 0,
+      minCartValue: null,
+      discountType: "fixed",
+      discountValue: 20,
+      maxDiscount: null,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_guest_ready",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+    },
+  });
+
+  const reply = await callCreateGuestPaymentIntentWithCoupon(controller, "SAVE20");
+
+  assert.equal(reply.statusCode, 200);
+  const call = stripeMock.paymentIntents.createCalls[0];
+  assert.equal(call.body.application_fee_amount, 800);
+  const record = prisma._orderPaymentRecordCreateCalls[0].data;
+  assert.equal(record.commissionBase, 8000);
+  assert.equal(record.applicationFeeAmount, 800);
+  assert.equal(record.grossAmount, 10000);
+  assert.equal(record.shippingAmount, 1000);
+  assert.equal(record.gstAmount, 1000);
 });
 
 test("guest missing stripeAccountId blocks checkout and creates no order or PaymentIntent", async () => {
@@ -622,6 +1116,31 @@ test("guest Stripe charges disabled blocks checkout and creates no order or Paym
   assert.equal(reply.payload.code, "CHARGES_DISABLED");
   assert.equal(stripeMock.paymentIntents.createCalls.length, 0);
   assert.equal(prisma._orderCreateCalls.length, 0);
+});
+
+test("guest checkout uses shared readiness service for Stripe payout disabled", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_guest_payouts_disabled",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_guest_payouts_disabled",
+      charges_enabled: true,
+      payouts_enabled: false,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+      country: "AU",
+    },
+  });
+
+  const reply = await callCreateGuestPaymentIntent(controller);
+
+  assertBlockedBeforeStripe(reply, stripeMock, prisma, "PAYOUTS_DISABLED");
 });
 
 test("guest seller lookup failure blocks checkout and creates no order or PaymentIntent", async () => {

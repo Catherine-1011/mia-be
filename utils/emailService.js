@@ -4797,10 +4797,10 @@ const sendNewsletterSubscriptionAlertEmail = async ({ subscribedEmail, subscribe
   return sendWithFallback(msg, 'Newsletter Admin Alert');
 };
 
-// ─── Seller: Stripe payout transfer sent notification ────────────────────────
-// Sent when a Stripe transfer is successfully created for the seller after
-// a customer order is paid.
-const sendSellerPayoutTransferEmail = async (sellerEmail, sellerName, { orderId, orderDisplayId, amount, currency = 'AUD' } = {}) => {
+// ─── Seller: payment received notification ──────────────────────────────────
+// Sent after a verified payment completion. Direct Charge orders do not create
+// a Stripe Transfer; seller funds are on the connected account charge.
+const sendSellerPaymentReceivedEmail = async (sellerEmail, sellerName, { orderId, orderDisplayId, amount, currency = 'AUD' } = {}) => {
   if (isDevelopmentMode) {
     return { success: true };
   }
@@ -4811,7 +4811,7 @@ const sendSellerPayoutTransferEmail = async (sellerEmail, sellerName, { orderId,
   const msg = {
     to: sellerEmail,
     from: { email: senderEmail, name: senderName },
-    subject: `💸 Payment Transferred, Order ${orderDisplayId}`,
+    subject: `Payment received, order ${orderDisplayId}`,
     html: `
       <!DOCTYPE html>
       <html>
@@ -4824,14 +4824,14 @@ const sendSellerPayoutTransferEmail = async (sellerEmail, sellerName, { orderId,
               <tr>
                 <td bgcolor="#5A1E12" style="background-color:#5A1E12;padding:28px 40px;border-radius:12px 12px 0 0;text-align:center;">
                   <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">Made in Arnhem Land</h1>
-                  <p style="margin:6px 0 0;color:#F0D0C8;font-size:14px;">Payout Transfer Notification</p>
+                  <p style="margin:6px 0 0;color:#F0D0C8;font-size:14px;">Payment Received Notification</p>
                 </td>
               </tr>
               <!-- Body -->
               <tr>
                 <td bgcolor="#ffffff" style="background-color:#ffffff;padding:36px 40px;">
                   <p style="margin:0 0 16px;color:#3D1009;font-size:16px;font-weight:700;">Hi ${sellerName},</p>
-                  <p style="margin:0 0 20px;color:#555;font-size:15px;line-height:1.7;">A payment has been transferred to your Stripe account for a completed order.</p>
+                  <p style="margin:0 0 20px;color:#555;font-size:15px;line-height:1.7;">A customer payment has been received for a completed order.</p>
 
                   <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F0FAF0" style="background-color:#F0FAF0;margin-bottom:28px"><tr><td bgcolor="#F0FAF0" style="background-color:#F0FAF0;padding:20px 24px;border-left:4px solid #2E7D32">
                     <table width="100%" cellpadding="0" cellspacing="0">
@@ -4840,19 +4840,19 @@ const sendSellerPayoutTransferEmail = async (sellerEmail, sellerName, { orderId,
                         <td style="color:#3D1009;font-size:14px;font-weight:700;text-align:right;">${orderDisplayId}</td>
                       </tr>
                       <tr>
-                        <td style="color:#555;font-size:14px;padding:6px 0;">Amount Transferred</td>
+                        <td style="color:#555;font-size:14px;padding:6px 0;">Order Amount</td>
                         <td style="color:#2E7D32;font-size:18px;font-weight:700;text-align:right;">${amountFormatted}</td>
                       </tr>
                     </table>
                   </td></tr></table>
 
-                  <p style="margin:0 0 20px;color:#555;font-size:13px;line-height:1.6;">The funds have been sent to your Stripe Express account. Depending on your payout schedule, they will arrive in your bank account accordingly. You can view full details in your Stripe dashboard.</p>
+                  <p style="margin:0 0 20px;color:#555;font-size:13px;line-height:1.6;">You can view the payment details in your seller dashboard and Stripe dashboard. Bank payouts follow your Stripe payout schedule.</p>
 
                   <div style="text-align:center;margin-bottom:28px;">
                     <a href="${dashboardUrl}/sellerdashboard/payouts" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:14px 40px;text-decoration:none;border-radius:8px;font-size:15px;font-weight:700;">View My Earnings</a>
                   </div>
 
-                  <p style="margin:0;color:#888;font-size:13px;">Questions about your payout? Email <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;">sellers@madeinarnhemland.com.au</a></p>
+                  <p style="margin:0;color:#888;font-size:13px;">Questions about this payment? Email <a href="mailto:sellers@madeinarnhemland.com.au" style="color:#C4603A;">sellers@madeinarnhemland.com.au</a></p>
                 </td>
               </tr>
               <!-- Footer -->
@@ -4872,8 +4872,10 @@ const sendSellerPayoutTransferEmail = async (sellerEmail, sellerName, { orderId,
     `,
   };
 
-  return sendWithFallback(msg, 'Seller Payout Transfer Email');
+  return sendWithFallback(msg, 'Seller Payment Received Email');
 };
+
+const sendSellerPayoutTransferEmail = sendSellerPaymentReceivedEmail;
 
 // ─── Seller: Stripe onboarding complete / account fully approved ─────────────
 // Sent automatically when the connect webhook fires account.updated and
@@ -5278,6 +5280,7 @@ module.exports = {
   sendNewsletterCampaignEmail,
   sendDisputeAlertEmail,
   sendSellerStripeApprovedEmail,
+  sendSellerPaymentReceivedEmail,
   sendSellerPayoutTransferEmail,
   sendSellerAccountDeactivatedEmail,
   sendSuperAdminNewSamlAdminEmail,

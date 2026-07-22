@@ -281,6 +281,10 @@ const gstScheduler = require("./utils/gstReportScheduler");
 const { backfillOrderNotifications } = require("./controllers/orderNotification");
 const { Server: SocketIOServer } = require("socket.io");
 const { initStockSocket } = require("./utils/stockSocket");
+const {
+  startPaymentCompletionOutboxProcessor,
+  stopPaymentCompletionOutboxProcessor,
+} = require("./utils/paymentCompletionOutboxProcessor");
 
 const app = fastify({ 
   logger: process.env.NODE_ENV === 'production' ? false : true,
@@ -403,6 +407,7 @@ const PORT = parseInt(process.env.PORT) || 5000;
 // Graceful shutdown
 const closeGracefully = async (signal) => {
   console.log(`Received signal ${signal}, closing gracefully...`);
+  stopPaymentCompletionOutboxProcessor();
   await prisma.$disconnect();
   process.exit(0);
 };
@@ -439,6 +444,10 @@ app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
   setTimeout(() => {
     initializeLowStockScheduler();
   }, 7000); // Slight delay after SLA scheduler
+
+  setTimeout(() => {
+    startPaymentCompletionOutboxProcessor();
+  }, 9000);
 
   // Backfill order_notifications for any existing orders that don't have one
   setTimeout(async () => {

@@ -10,7 +10,7 @@ Backend API: https://backend.madeinarnhemland.com.au
 
 ## 1. Document Purpose
 
-This document explains how Stripe is used in the Made in Arnhem Land marketplace for seller onboarding, seller payouts, platform commission, transactions, refunds, cancellations, and operational review.
+This document explains how Stripe is used in the Made in Arnhem Land marketplace for seller onboarding, Direct Charge checkout, Stripe bank payouts, platform commission, transactions, refunds, cancellations, and operational review.
 
 The platform uses Stripe Connect with Standard connected accounts for sellers. This means each seller connects or creates their own Stripe account through Stripe, completes Stripe verification directly with Stripe, and can log in to Stripe using their own credentials.
 
@@ -145,7 +145,7 @@ Seller can see:
 
 The seller cannot see other sellers' Stripe accounts or platform-wide financial information.
 
-## 9. Payment and Payout Flow
+## 9. Payment and Settlement Flow
 
 When a customer places an order, Stripe processes the card/payment transaction.
 
@@ -155,9 +155,9 @@ The platform uses Stripe Connect routing so that:
 - The platform/admin receives the platform commission.
 - Stripe deducts Stripe processing/Connect fees as per Stripe policy.
 
-For a single-seller order, the system can route the payment to that seller’s connected account and apply the platform commission/application fee.
+For a single-seller order, new checkout uses a true Direct Charge: the PaymentIntent is created on the seller's connected Stripe account and ALPA receives its commission through `application_fee_amount`.
 
-For a multi-seller order, the platform records the parent order and seller sub-orders, then routes seller payouts/transfers for each seller portion while keeping marketplace commission records.
+New multi-seller checkout is not supported. Historical platform-owned multi-seller payments, where present, are treated as legacy Separate Charges and Transfers and may have Stripe Transfer records for seller settlement.
 
 The backend records Stripe IDs and transaction metadata so the order can be traced from the marketplace dashboard to Stripe.
 
@@ -172,10 +172,10 @@ Current implementation supports:
 - Commission earned per order.
 - Commission earned summary.
 - Commission status tracking.
-- Payout request tracking.
+- Stripe bank payout readiness tracking.
 - Admin commission review.
 
-The seller payout is calculated after platform commission. Stripe fees are handled by Stripe separately according to the connected account and transaction setup.
+Seller proceeds are calculated after platform commission. Stripe fees are handled by Stripe separately according to the connected account and transaction setup.
 
 ## 11. Stripe Fee Handling
 
@@ -199,7 +199,7 @@ Important refund behavior:
 - If a payment has already succeeded, a refund is issued back to the original payment method.
 - Stripe’s original processing fees are generally not returned by Stripe.
 - Refunds and fee treatment are subject to Stripe’s current policy.
-- If transfers were already made to sellers, the platform may need to reverse seller transfers or handle adjustment logic depending on the charge/transfer type and timing.
+- If legacy Stripe Transfers were already made to sellers, the platform may need to reverse those transfers or handle adjustment logic depending on the payment flow and timing.
 
 In this platform:
 
@@ -207,7 +207,7 @@ In this platform:
 - Admin reviews refund requests.
 - Admin can approve, reject, or complete refund requests.
 - Approved Stripe refunds are triggered through the backend where a Stripe payment exists.
-- Seller transfer reversal and commission cancellation are handled by backend logic/webhooks where applicable.
+- Legacy seller transfer reversal and commission cancellation are handled by backend logic/webhooks where applicable.
 - Customer refund status is communicated through the platform.
 
 ## 13. What Happens to Money on Refund
@@ -240,7 +240,7 @@ The backend records and uses:
 - PaymentIntent ID.
 - Transfer ID.
 - Commission amount.
-- Seller payout amount.
+- Seller proceeds amount.
 - Platform fee/commission amount.
 
 This allows admin to cross-check an order between:

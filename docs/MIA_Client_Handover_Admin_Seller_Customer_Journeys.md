@@ -124,7 +124,7 @@ Important behavior:
 
 - When a seller is marked inactive, seller products can be deactivated automatically.
 - Seller Stripe Connect status can be synced by admin.
-- Seller payout/bank change requests are reviewed by admin before changes are applied.
+- Stripe bank payout account change requests are reviewed by admin before changes are applied.
 
 ### 5.4 Product Management
 
@@ -234,7 +234,7 @@ Sellers can view refund requests related to their own orders, but admin controls
 
 ### 5.9 Commission and Payout Management
 
-Admin can configure commissions and monitor seller payout requests.
+Admin can configure commissions and monitor seller bank payout account requests.
 
 Admin commission capabilities include:
 
@@ -329,7 +329,7 @@ Seller onboarding supports the following process:
 - Store profile creation with store logo upload.
 - KYC document upload.
 - Bank details submission.
-- Stripe Connect OAuth setup for seller payouts.
+- Stripe Connect OAuth setup for Direct Charge checkout and Stripe bank payouts.
 - Seller submits application for review.
 - Admin reviews/approves seller as required.
 
@@ -365,7 +365,7 @@ Important seller onboarding notes:
 - Seller documents and store logos are uploaded as seller documents/media.
 - ABN can be validated before final submission.
 - Seller can resume onboarding if interrupted.
-- Stripe Connect is required for seller payouts.
+- Stripe Connect is required before sellers can accept Direct Charge checkout and receive Stripe bank payouts.
 - Sellers are told to complete Stripe setup before selling.
 - After verification, seller account activation allows product listing.
 
@@ -870,7 +870,7 @@ Before final handover, confirm the following items with the client:
 - Client understands how seller approval works.
 - Client understands how product approval works.
 - Client understands how refunds are reviewed and completed.
-- Client understands how seller payouts and Stripe Connect work.
+- Client understands how Direct Charge checkout, Stripe Connect, and Stripe bank payouts work.
 - Client knows where environment files are stored.
 - Client knows where the three codebases are located on the droplet.
 - Client has a process for requesting future updates.

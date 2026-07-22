@@ -130,10 +130,10 @@ Product Price (GST-included): $110.00
 GST Amount: $110 / 11 = $10.00
 Base Price (GST-excluded): $100.00
 Commission (10%): $100 × 0.10 = $10.00
-Seller Payout: $100 - $10 + $10 GST = $100.00
+Seller proceeds: $100 - $10 + $10 GST = $100.00
 ```
 
-The `calculateSellerPayout()` function handles this:
+The legacy `calculateSellerPayout()` helper handles seller-proceeds math for historical transfer settlement:
 - `productValueExGST`: Used for commission calculation only
 - Commission applied to `productValueExGST`, NOT total with shipping
 - GST is not subject to commission fees
@@ -152,7 +152,7 @@ Parent Order #1001
 └─ Shipping: Split between sellers
 ```
 
-Each sub-order generates its own transfer with correct metadata.
+Historical Separate Charges and Transfers sub-orders generate their own Stripe Transfer metadata.
 
 ---
 
@@ -180,7 +180,7 @@ Each sub-order generates its own transfer with correct metadata.
 - `buildSellerStripeOrderMetadata()`: Creates the base metadata (lines 100-115)
 - `buildSellerTransactionDescription()`: Creates Stripe description (lines 63-98)
 - `calculateSellerPayout()`: Calculates commission and payout amounts
-- `updateConnectedAccountDestinationPayment()`: Updates destination charge with metadata
+- `updateConnectedAccountDestinationPayment()`: Updates historical destination-payment metadata where a related Stripe object exists
 
 ## Breaking Changes
 None. Fixes preserve all existing logic and data structures.

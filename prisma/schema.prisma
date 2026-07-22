@@ -279,6 +279,7 @@ model Order {
   commissionEarned      CommissionEarned[]
   items                 OrderItem[]
   orderNotifications    OrderNotification[]
+  paymentCompletionJobs PaymentCompletionOutbox[]
   paymentRecords        OrderPaymentRecord[]
   seller                User?               @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: SetNull)
   user                  User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -309,6 +310,7 @@ model OrderPaymentRecord {
   paymentStatus          PaymentStatus @default(PENDING) @map("payment_status")
   refundStatus           RefundStatus  @default(NONE) @map("refund_status")
   disputeStatus          DisputeStatus @default(NONE) @map("dispute_status")
+  stripeDisputeId        String?       @map("stripe_dispute_id")
   createdAt              DateTime      @default(now()) @map("created_at")
   updatedAt              DateTime      @updatedAt @map("updated_at")
   order                  Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -320,7 +322,66 @@ model OrderPaymentRecord {
   @@index([paymentFlow])
   @@index([stripeAccountId])
   @@index([stripeChargeId])
+  @@index([stripeDisputeId])
   @@map("order_payment_records")
+}
+
+model StripeWebhookEvent {
+  id              String             @id @default(cuid())
+  eventId         String             @unique @map("event_id")
+  eventType       String             @map("event_type")
+  stripeAccountId String?            @map("stripe_account_id")
+  paymentIntentId String?            @map("payment_intent_id")
+  status          WebhookEventStatus @default(RECEIVED)
+  attemptCount    Int                @default(0) @map("attempt_count")
+  processedAt     DateTime?          @map("processed_at")
+  lastError       String?            @map("last_error")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([eventType])
+  @@index([stripeAccountId])
+  @@index([paymentIntentId])
+  @@map("stripe_webhook_events")
+}
+
+model PaymentCompletionOutbox {
+  id                    String                         @id @default(cuid())
+  orderId               String                         @map("order_id")
+  stripePaymentIntentId String?                        @map("stripe_payment_intent_id")
+  type                  PaymentCompletionOutboxType
+  payload               Json
+  status                PaymentCompletionOutboxStatus  @default(PENDING)
+  attemptCount          Int                            @default(0) @map("attempt_count")
+  lastError             String?                        @map("last_error")
+  createdAt             DateTime                       @default(now()) @map("created_at")
+  updatedAt             DateTime                       @updatedAt @map("updated_at")
+  order                 Order                          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, type])
+  @@index([status])
+  @@index([stripePaymentIntentId])
+  @@map("payment_completion_outbox")
+}
+
+model ApiIdempotencyOperation {
+  id                    String   @id @default(cuid())
+  operationKey          String   @unique @map("operation_key")
+  operationType         String   @map("operation_type")
+  requestHash           String   @map("request_hash")
+  status                String   @default("STARTED")
+  stripePaymentIntentId String?  @map("stripe_payment_intent_id")
+  orderId               String?  @map("order_id")
+  attemptNumber         Int      @default(1) @map("attempt_number")
+  lastError             String?  @map("last_error")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@index([operationType])
+  @@index([stripePaymentIntentId])
+  @@index([orderId])
+  @@map("api_idempotency_operations")
 }
 
 model SubOrder {
@@ -878,6 +939,7 @@ enum OrderStatus {
 enum PaymentStatus {
   PENDING
   PAID
+  DISPUTED
   FAILED
   REFUNDED
 }
@@ -901,6 +963,28 @@ enum DisputeStatus {
   OPEN
   WON
   LOST
+}
+
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum PaymentCompletionOutboxType {
+  CUSTOMER_CONFIRMATION
+  FINANCE_INVOICE
+  ADMIN_NEW_ORDER_NOTIFICATION
+  SELLER_NEW_ORDER_NOTIFICATION
+  SELLER_PAYMENT_NOTIFICATION
+}
+
+enum PaymentCompletionOutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
 }
 
 enum TicketStatus {

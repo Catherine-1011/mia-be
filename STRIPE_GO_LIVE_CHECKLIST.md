@@ -115,9 +115,9 @@ Before switching to live keys, verify these work in test mode:
 - [ ] Failed payment webhook cancels the order and restores stock
 - [ ] Seller can connect their Stripe account via OAuth
 - [ ] Connect webhook receives `account.updated` and syncs seller status
-- [ ] Refund processes correctly and reverses seller transfers
+- [ ] Direct Charge refund processes correctly and returns the application fee as required
 - [ ] Commission records are created after successful payment
-- [ ] Seller transfers are created after order payment
+- [ ] New checkout creates no Stripe Transfer; legacy Separate Charges and Transfers reversal is tested only for historical/platform-owned payments
 
 ---
 
@@ -130,7 +130,7 @@ Before switching to live keys, verify these work in test mode:
 5. **Redeploy** both backend and frontend
 6. **Test with a real card** — make a small purchase (e.g., $1 product)
 7. **Verify the webhook fires** — check Stripe Dashboard → Webhooks → see the event delivered
-8. **Verify seller transfer** — if the test order has a seller, check their Stripe balance
+8. **Verify Direct Charge settlement** - if the test order has a seller, check the connected account payment and ALPA application fee
 9. **Test a refund** — refund the test order, verify stock restores
 
 ---

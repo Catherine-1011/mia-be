@@ -16,6 +16,7 @@
  */
 
 const GST_DIVISOR = 1.10;
+const ALPA_COMMISSION_RATE_BPS = 1000; // 10.00%
 
 function round2(n) {
   return Math.round(n * 100) / 100;
@@ -71,4 +72,90 @@ function calculateSellerPayout(productPriceGSTInclusive, shippingAmount, commiss
   };
 }
 
-module.exports = { calculateSellerPayout };
+function toMinorUnits(value) {
+  return Math.round(Number(value || 0) * 100);
+}
+
+function normalizeCents(value) {
+  const cents = Number(value || 0);
+  if (!Number.isFinite(cents)) {
+    throw new Error("eligibleProductSubtotalCents must be a finite number");
+  }
+  return Math.max(0, Math.round(cents));
+}
+
+function calculateAlpaCommission({ eligibleProductSubtotalCents, currency = "aud" }) {
+  const commissionBase = normalizeCents(eligibleProductSubtotalCents);
+  return {
+    commissionBase,
+    applicationFeeAmount: Math.round((commissionBase * ALPA_COMMISSION_RATE_BPS) / 10000),
+    currency: String(currency || "aud").toLowerCase(),
+  };
+}
+
+function allocateOrderDiscountByLine({ lines, orderDiscountCents = 0 }) {
+  const normalizedLines = (lines || []).map((line, index) => ({
+    ...line,
+    index,
+    subtotalCents: normalizeCents(line.subtotalCents),
+  }));
+  const subtotalCents = normalizedLines.reduce((sum, line) => sum + line.subtotalCents, 0);
+  const discountCents = Math.min(normalizeCents(orderDiscountCents), subtotalCents);
+
+  if (subtotalCents === 0 || discountCents === 0) {
+    return normalizedLines.map((line) => ({
+      ...line,
+      allocatedDiscountCents: 0,
+      discountedSubtotalCents: line.subtotalCents,
+    }));
+  }
+
+  const allocations = normalizedLines.map((line) => {
+    const exact = (discountCents * line.subtotalCents) / subtotalCents;
+    const floor = Math.floor(exact);
+    return {
+      ...line,
+      allocatedDiscountCents: floor,
+      remainder: exact - floor,
+    };
+  });
+
+  let remaining = discountCents - allocations.reduce((sum, line) => sum + line.allocatedDiscountCents, 0);
+  allocations.sort((a, b) => b.remainder - a.remainder || a.index - b.index);
+  for (let i = 0; i < allocations.length && remaining > 0; i += 1) {
+    allocations[i].allocatedDiscountCents += 1;
+    remaining -= 1;
+  }
+
+  return allocations
+    .sort((a, b) => a.index - b.index)
+    .map(({ remainder, ...line }) => ({
+      ...line,
+      discountedSubtotalCents: Math.max(0, line.subtotalCents - line.allocatedDiscountCents),
+    }));
+}
+
+function calculateDiscountedEligibleSubtotalCents({ items, orderDiscountCents = 0 }) {
+  const lines = (items || []).map((item) => {
+    const quantity = Number(item.quantity || 0);
+    const unitCents = item.unitPriceCents != null
+      ? normalizeCents(item.unitPriceCents)
+      : toMinorUnits(item.unitPrice);
+    const productDiscountCents = item.productDiscountCents != null
+      ? normalizeCents(item.productDiscountCents)
+      : toMinorUnits(item.productDiscount || 0);
+    return {
+      subtotalCents: Math.max(0, unitCents * quantity - productDiscountCents),
+    };
+  });
+
+  return allocateOrderDiscountByLine({ lines, orderDiscountCents })
+    .reduce((sum, line) => sum + line.discountedSubtotalCents, 0);
+}
+
+module.exports = {
+  calculateSellerPayout,
+  calculateAlpaCommission,
+  allocateOrderDiscountByLine,
+  calculateDiscountedEligibleSubtotalCents,
+};

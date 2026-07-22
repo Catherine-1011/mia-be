@@ -55,29 +55,118 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // Called after an order is marked CANCELLED in the DB.
 // - If the PaymentIntent was never captured → cancels it (no charge to customer)
 // - If payment was already captured → issues a full refund with the cancellation reason as description
+async function getSeparateChargeCancellationTransfers(paymentRecord, displayId) {
+  const transferRows = await prisma.$queryRaw`
+    SELECT id, stripe_transfer_id
+    FROM commission_earned
+    WHERE order_id               = ${paymentRecord.orderId}
+      AND stripe_transfer_id     IS NOT NULL
+      AND stripe_transfer_status = 'transferred'
+  `;
+
+  if (!transferRows.length) {
+    console.error(`Stripe refund/cancel blocked for order #${displayId}: missing historical transfer identifiers`);
+    return [];
+  }
+
+  return transferRows;
+}
+
+async function reverseSeparateChargeCancellationTransfers(paymentRecord, displayId, transferRows) {
+  for (const rec of transferRows) {
+    await stripe.transfers.createReversal(
+      rec.stripe_transfer_id,
+      {
+        metadata: {
+          reason: 'order_cancelled',
+          orderId: paymentRecord.orderId,
+          orderPaymentRecordId: paymentRecord.id,
+        },
+      },
+      {
+        idempotencyKey: `refund-reversal:${paymentRecord.id}:cancel:${displayId}:${rec.id}`,
+      },
+    );
+    await prisma.$executeRaw`
+      UPDATE commission_earned
+      SET stripe_transfer_status = 'reversed',
+          status                 = 'CANCELLED'::"CommissionStatus",
+          updated_at             = NOW()
+      WHERE id = ${rec.id}
+    `;
+  }
+}
+
 async function triggerStripeRefund(paymentIntentId, reason, displayId) {
   if (!paymentIntentId) return;
   try {
-    const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
-    const desc = `Order ${displayId} cancelled — ${reason}`.slice(0, 255);
+    const paymentRecord = await prisma.orderPaymentRecord.findUnique({
+      where: { stripePaymentIntentId: paymentIntentId },
+    });
+    if (!paymentRecord) {
+      console.error(`Stripe refund/cancel blocked for order #${displayId}: missing payment record`);
+      return;
+    }
+
+    if (!paymentRecord.stripePaymentIntentId) {
+      console.error(`Stripe refund/cancel blocked for order #${displayId}: missing stored PaymentIntent`);
+      return;
+    }
+
+    if (paymentRecord.paymentFlow === 'DIRECT_CHARGE' && !paymentRecord.stripeAccountId) {
+      console.error(`Stripe refund/cancel blocked for order #${displayId}: missing stored Stripe account`);
+      return;
+    }
+
+    if (paymentRecord.paymentFlow === 'LEGACY_OR_UNKNOWN') {
+      console.error(`Stripe refund/cancel blocked for order #${displayId}: legacy or unknown payment flow requires manual review`);
+      return;
+    }
+
+    if (!['DIRECT_CHARGE', 'DESTINATION_CHARGE', 'SEPARATE_CHARGE_AND_TRANSFER'].includes(paymentRecord.paymentFlow)) {
+      console.error(`Stripe refund/cancel blocked for order #${displayId}: unsupported payment flow ${paymentRecord.paymentFlow || 'missing'}`);
+      return;
+    }
+
+    const accountOptions =
+      paymentRecord.paymentFlow === 'DIRECT_CHARGE'
+        ? { stripeAccount: paymentRecord.stripeAccountId }
+        : undefined;
+    const pi = await stripe.paymentIntents.retrieve(paymentRecord.stripePaymentIntentId, accountOptions);
 
     if (pi.status === 'succeeded') {
-      await stripe.refunds.create({
-        payment_intent: paymentIntentId,
-        reason: 'requested_by_customer',
-        metadata: { displayId, cancellationReason: reason.slice(0, 500) }
-      });
+      let separateChargeTransfers = null;
+      if (paymentRecord.paymentFlow === 'SEPARATE_CHARGE_AND_TRANSFER') {
+        separateChargeTransfers = await getSeparateChargeCancellationTransfers(paymentRecord, displayId);
+        if (!separateChargeTransfers.length) return;
+      }
+
+      await stripe.refunds.create(
+        {
+          payment_intent: paymentRecord.stripePaymentIntentId,
+          reason: 'requested_by_customer',
+          metadata: { displayId, cancellationReason: reason.slice(0, 500) },
+          ...(paymentRecord.paymentFlow === 'DIRECT_CHARGE' && { refund_application_fee: true }),
+          ...(paymentRecord.paymentFlow === 'DESTINATION_CHARGE' && { refund_application_fee: true, reverse_transfer: true }),
+        },
+        {
+          ...(accountOptions || {}),
+          idempotencyKey: `refund:${paymentRecord.id}:cancel:${displayId}`,
+        },
+      );
+      if (separateChargeTransfers) {
+        await reverseSeparateChargeCancellationTransfers(paymentRecord, displayId, separateChargeTransfers);
+      }
     } else if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(pi.status)) {
-      await stripe.paymentIntents.cancel(paymentIntentId);
-    } else {
+      await stripe.paymentIntents.cancel(paymentRecord.stripePaymentIntentId, {}, {
+        ...(accountOptions || {}),
+        idempotencyKey: `payment:cancel:${paymentRecord.id}`,
+      });
     }
   } catch (err) {
-    console.error(`⚠️  Stripe refund/cancel error for order #${displayId}:`, err.message);
+    console.error(`Stripe refund/cancel error for order #${displayId}:`, err.message);
   }
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ─── Low Stock Alert Helper ───────────────────────────────────────────────────
+}// ─── Low Stock Alert Helper ───────────────────────────────────────────────────
 // Checks each ordered product's stock after decrement.
 // If stock <= 2: deactivates the product and fires notification + email (non-blocking).
 const LOW_STOCK_THRESHOLD = 2;
@@ -746,6 +835,7 @@ exports.createOrder = async (request, reply) => {
         orderId: commissionOrderId,
         sellerId,
         orderValue: sellerData.totalAmount,
+        shippingAmount: parseFloat(cartCalculations.shippingCost),
         customerName: user.isDeleted ? 'Deleted User' : user.name,
         customerEmail: user.email,
         customerId: userId || null,

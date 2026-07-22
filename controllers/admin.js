@@ -12,6 +12,155 @@ const { invalidateCache } = require('../utils/cacheInvalidation');
 
 const STRIPE_DESCRIPTION_MAX_LENGTH = 255;
 
+function toRefundStatus(isFullRefund) {
+  return isFullRefund ? 'FULL' : 'PARTIAL';
+}
+
+function assertRefundableAmount({ refundAmountCents, paymentRecord }) {
+  const grossAmount = Number(paymentRecord.grossAmount || 0);
+  if (refundAmountCents <= 0) {
+    const error = new Error('Refund amount must be greater than zero');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (refundAmountCents > grossAmount) {
+    const error = new Error('Refund amount exceeds refundable balance');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (paymentRecord.refundStatus === 'FULL') {
+    const error = new Error('This payment has already been fully refunded');
+    error.statusCode = 409;
+    throw error;
+  }
+}
+
+function buildRefundError(message, statusCode = 409) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function requireStoredPaymentIntent(paymentRecord, flowName) {
+  if (!paymentRecord.stripePaymentIntentId) {
+    throw buildRefundError(`${flowName} refund blocked: missing stored PaymentIntent`);
+  }
+}
+
+async function getSeparateChargeTransfers(orderId) {
+  return prisma.$queryRaw`
+    SELECT id, stripe_transfer_id
+    FROM commission_earned
+    WHERE order_id               = ${orderId}
+      AND stripe_transfer_id     IS NOT NULL
+      AND stripe_transfer_status = 'transferred'
+  `;
+}
+
+async function reverseSeparateChargeTransfers({ order, ticket, paymentRecord, transferRows }) {
+  for (const rec of transferRows) {
+    await stripe.transfers.createReversal(
+      rec.stripe_transfer_id,
+      {
+        metadata: {
+          reason: 'order_refunded',
+          orderId: order.id,
+          ticketId: ticket.id,
+          orderPaymentRecordId: paymentRecord.id,
+        },
+      },
+      {
+        idempotencyKey: `refund-reversal:${paymentRecord.id}:${ticket.id}:${rec.id}`,
+      },
+    );
+    await prisma.$executeRaw`
+      UPDATE commission_earned
+      SET stripe_transfer_status = 'reversed',
+          status                 = 'CANCELLED'::"CommissionStatus",
+          updated_at             = NOW()
+      WHERE id = ${rec.id}
+    `;
+  }
+}
+
+async function createStripeRefundFromPaymentRecord({
+  order,
+  ticket,
+  paymentRecord,
+  refundAmountCents,
+  isFullRefund,
+  adminNote = '',
+}) {
+  if (!paymentRecord) {
+    const error = new Error('Missing payment record; automated refund is blocked for safety');
+    error.statusCode = 409;
+    throw error;
+  }
+
+  assertRefundableAmount({ refundAmountCents, paymentRecord });
+
+  const refundParams = {
+    payment_intent: paymentRecord.stripePaymentIntentId,
+    reason: 'requested_by_customer',
+    metadata: {
+      orderId: order.id,
+      ticketId: ticket.id,
+      orderPaymentRecordId: paymentRecord.id,
+      paymentFlow: paymentRecord.paymentFlow,
+      adminNote,
+    },
+  };
+
+  if (!isFullRefund) refundParams.amount = refundAmountCents;
+  const stripeOptions = {
+    idempotencyKey: `refund:${paymentRecord.id}:${ticket.id}`,
+  };
+
+  let separateChargeTransfers = null;
+
+  switch (paymentRecord.paymentFlow) {
+    case 'DIRECT_CHARGE':
+      if (!paymentRecord.stripeAccountId) {
+        throw buildRefundError('Direct Charge refund blocked: missing stored Stripe account');
+      }
+      requireStoredPaymentIntent(paymentRecord, 'Direct Charge');
+      // Stripe refunds the full application fee for full refunds and a proportional
+      // application fee amount for partial refunds when this flag is true.
+      refundParams.refund_application_fee = true;
+      stripeOptions.stripeAccount = paymentRecord.stripeAccountId;
+      break;
+    case 'DESTINATION_CHARGE':
+      requireStoredPaymentIntent(paymentRecord, 'Destination Charge');
+      refundParams.refund_application_fee = true;
+      refundParams.reverse_transfer = true;
+      break;
+    case 'SEPARATE_CHARGE_AND_TRANSFER':
+      requireStoredPaymentIntent(paymentRecord, 'Separate Charge and Transfer');
+      separateChargeTransfers = await getSeparateChargeTransfers(order.id);
+      if (!separateChargeTransfers.length) {
+        throw buildRefundError('Separate Charge and Transfer refund blocked: missing historical transfer identifiers');
+      }
+      break;
+    case 'LEGACY_OR_UNKNOWN':
+      throw buildRefundError('Legacy or unknown payment flow requires manual refund review');
+    default:
+      throw buildRefundError(`Unsupported payment flow for automated refund: ${paymentRecord.paymentFlow || 'missing'}`);
+  }
+
+  const stripeRefund = await stripe.refunds.create(refundParams, stripeOptions);
+
+  if (separateChargeTransfers) {
+    await reverseSeparateChargeTransfers({ order, ticket, paymentRecord, transferRows: separateChargeTransfers });
+  }
+
+  await prisma.orderPaymentRecord.update({
+    where: { id: paymentRecord.id },
+    data: { refundStatus: toRefundStatus(isFullRefund) },
+  });
+
+  return stripeRefund;
+}
+
 function truncateStripeDescription(value) {
   const text = String(value || "").replace(/\s+/g, " ").trim();
   if (text.length <= STRIPE_DESCRIPTION_MAX_LENGTH) return text;
@@ -23,7 +172,7 @@ function buildRetryTransferDescription({ order, customerName, customerEmail, ite
   const amountText = amount !== undefined && amount !== null ? ` | Amount A$${Number(amount).toFixed(2)}` : "";
   const customerBits = [customerName, customerEmail].filter(Boolean).join(" / ");
   return truncateStripeDescription(
-    `Order ${displayId} | Retry seller payout | Customer: ${customerBits || "N/A"} | Items: ${itemSummary || "Order items"}${amountText}`
+    `Order ${displayId} | Retry legacy seller transfer | Customer: ${customerBits || "N/A"} | Items: ${itemSummary || "Order items"}${amountText}`
   );
 }
 
@@ -2825,7 +2974,7 @@ exports.retrySellerTransfers = async (request, reply) => {
             sellerTotalPayout: payout.sellerTotalPayout.toString(),
             retried: "true",
           },
-        });
+        }, { idempotencyKey: `admin-transfer-retry:${row.id}` });
 
         await stripe.transfers.update(transfer.id, {
           description: retryDescription,
@@ -5914,6 +6063,7 @@ exports.updateRefundRequestStatus = async (request, reply) => {
         where: { id: ticket.orderId },
         include: {
           user:      { select: { id: true, name: true, email: true, isDeleted: true } },
+          paymentRecords: true,
           items:     { include: { product: { select: { id: true, sellerId: true, title: true, price: true } } } },
           subOrders: {
             include: {
@@ -5948,24 +6098,30 @@ exports.updateRefundRequestStatus = async (request, reply) => {
     let stripeRefundId = null;
     if (status === 'APPROVED' && order?.stripePaymentIntentId) {
       try {
-        const refundParams = {
-          payment_intent: order.stripePaymentIntentId,
-          reason:         'requested_by_customer',
-          metadata: {
-            orderId:   order.id,
-            ticketId:  ticket.id,
-            adminNote: message?.trim() || '',
-          },
-        };
-        // Partial refund — calculate amount only from the specific requested items
+        const paymentRecord = order.paymentRecords?.[0] || null;
+        if (!paymentRecord) {
+          return reply.status(409).send({
+            success: false,
+            message: 'Missing payment record; automated refund is blocked for safety.',
+          });
+        }
+
+        let refundAmountCents = Number(paymentRecord.grossAmount || 0);
         if (ticket.requestType !== 'REFUND' && ticketRequestedItems?.length) {
           const partialAmount = ticketRequestedItems.reduce(
             (sum, item) => sum + parseFloat(item.price || 0) * (item.quantity || 1), 0
           );
-          const amountCents = Math.round(partialAmount * 100);
-          if (amountCents > 0) refundParams.amount = amountCents;
+          refundAmountCents = Math.round(partialAmount * 100);
         }
-        const stripeRefund = await stripe.refunds.create(refundParams);
+
+        const stripeRefund = await createStripeRefundFromPaymentRecord({
+          order,
+          ticket,
+          paymentRecord,
+          refundAmountCents,
+          isFullRefund: ticket.requestType === 'REFUND',
+          adminNote: message?.trim() || '',
+        });
         stripeRefundId = stripeRefund.id;
       } catch (stripeErr) {
         console.error('Stripe refund failed:', stripeErr.message);
@@ -6173,6 +6329,8 @@ exports.toggleInternationalShipping = async (request, reply) => {
     return reply.status(500).send({ success: false, message: error.message });
   }
 };
+
+exports._createStripeRefundFromPaymentRecord = createStripeRefundFromPaymentRecord;
 
 
 

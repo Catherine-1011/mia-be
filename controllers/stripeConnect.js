@@ -19,12 +19,92 @@
  * 2. Add to .env:
  *    STRIPE_CLIENT_ID=ca_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
  */
+const crypto = require("crypto");
 
 const Stripe = require("stripe");
 const prisma = require("../config/prisma");
 const { sendSellerStripeApprovedEmail, sendDisputeAlertEmail } = require("../utils/emailService");
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+const STRIPE_WEBHOOK_PROCESSING_TIMEOUT_MS =
+  Number(process.env.STRIPE_WEBHOOK_PROCESSING_TIMEOUT_MS || 10 * 60 * 1000);
+
+function extractPaymentIntentIdFromStripeEvent(event) {
+  const object = event?.data?.object || {};
+  if (event?.type?.startsWith("payment_intent.")) return object.id || null;
+  if (event?.type?.startsWith("charge.") && !event.type.startsWith("charge.dispute.")) {
+    return object.payment_intent || null;
+  }
+  if (event?.type?.startsWith("charge.dispute.")) {
+    return object.payment_intent || null;
+  }
+  return null;
+}
+
+function isUniqueConstraintError(error) {
+  return error?.code === "P2002";
+}
+
+async function claimStripeWebhookEvent(event) {
+  const staleBefore = new Date(Date.now() - STRIPE_WEBHOOK_PROCESSING_TIMEOUT_MS);
+  const paymentIntentId = extractPaymentIntentIdFromStripeEvent(event);
+  try {
+    await prisma.stripeWebhookEvent.create({
+      data: {
+        eventId: event.id,
+        eventType: event.type,
+        stripeAccountId: event.account || null,
+        paymentIntentId,
+        status: "RECEIVED",
+      },
+    });
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) throw error;
+  }
+
+  const claimed = await prisma.stripeWebhookEvent.updateMany({
+    where: {
+      eventId: event.id,
+      OR: [
+        { status: { in: ["RECEIVED", "FAILED"] } },
+        { status: "PROCESSING", updatedAt: { lt: staleBefore } },
+      ],
+    },
+    data: {
+      status: "PROCESSING",
+      attemptCount: { increment: 1 },
+      lastError: null,
+      stripeAccountId: event.account || null,
+      paymentIntentId,
+    },
+  });
+
+  if (claimed.count === 1) return { shouldProcess: true };
+
+  const existing = await prisma.stripeWebhookEvent.findUnique({
+    where: { eventId: event.id },
+    select: { status: true },
+  });
+  return { shouldProcess: false, status: existing?.status || "PROCESSING" };
+}
+
+async function markStripeWebhookEventProcessed(eventId) {
+  await prisma.stripeWebhookEvent.update({
+    where: { eventId },
+    data: { status: "PROCESSED", processedAt: new Date(), lastError: null },
+  });
+}
+
+async function markStripeWebhookEventFailed(eventId, error) {
+  await prisma.stripeWebhookEvent.update({
+    where: { eventId },
+    data: {
+      status: "FAILED",
+      lastError: String(error?.message || error).slice(0, 4000),
+    },
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. Generate Stripe OAuth URL
@@ -288,6 +368,16 @@ exports.stripeConnectWebhook = async (request, reply) => {
     return reply.status(400).send({ error: `Webhook error: ${err.message}` });
   }
 
+  try {
+    const claim = await claimStripeWebhookEvent(event);
+    if (!claim.shouldProcess) {
+      return reply.status(200).send({
+        received: true,
+        duplicate: claim.status === "PROCESSED",
+        processing: claim.status === "PROCESSING",
+      });
+    }
+
   // ── account.updated ────────────────────────────────────────────────────────
   if (event.type === "account.updated") {
     const account = event.data.object;
@@ -336,6 +426,7 @@ exports.stripeConnectWebhook = async (request, reply) => {
       }
     } catch (err) {
       console.error("Stripe Connect webhook DB update error:", err.message);
+      throw err;
     }
   }
 
@@ -348,7 +439,12 @@ exports.stripeConnectWebhook = async (request, reply) => {
 
     try {
       // Retrieve the charge to get the payment_intent
-      const charge = chargeId ? await stripe.charges.retrieve(chargeId) : null;
+      const charge = chargeId
+        ? await stripe.charges.retrieve(
+            chargeId,
+            event.account ? { stripeAccount: event.account } : undefined,
+          )
+        : null;
       const piId    = charge?.payment_intent;
 
       let disputedOrder = null;
@@ -371,9 +467,11 @@ exports.stripeConnectWebhook = async (request, reply) => {
 
         for (const rec of commissionsToReverse) {
           try {
-            await stripe.transfers.createReversal(rec.stripe_transfer_id, {
-              metadata: { reason: "chargeback_dispute", orderId: disputedOrder.id, disputeId: dispute.id },
-            });
+            await stripe.transfers.createReversal(
+              rec.stripe_transfer_id,
+              { metadata: { reason: "chargeback_dispute", orderId: disputedOrder.id, disputeId: dispute.id } },
+              { idempotencyKey: `connect-dispute-reversal:${dispute.id}:${rec.id}` },
+            );
             await prisma.$executeRaw`
               UPDATE commission_earned
               SET stripe_transfer_status = 'reversed',
@@ -383,6 +481,7 @@ exports.stripeConnectWebhook = async (request, reply) => {
             `;
           } catch (reverseErr) {
             console.error(`❌ Transfer reversal failed for dispute (commissionId: ${rec.id}):`, reverseErr.message);
+            throw reverseErr;
           }
         }
       }
@@ -404,6 +503,7 @@ exports.stripeConnectWebhook = async (request, reply) => {
 
     } catch (err) {
       console.error("Stripe Connect dispute handler error:", err.message);
+      throw err;
     }
   }
 
@@ -422,15 +522,27 @@ exports.stripeConnectWebhook = async (request, reply) => {
   else {
   }
 
+  await markStripeWebhookEventProcessed(event.id);
   return reply.status(200).send({ received: true });
+  } catch (error) {
+    console.error("Stripe Connect webhook processing error:", error.message);
+    if (event?.id) {
+      try {
+        await markStripeWebhookEventFailed(event.id, error);
+      } catch (markError) {
+        console.error("Failed to mark Stripe Connect webhook event FAILED:", markError.message);
+      }
+    }
+    return reply.status(500).send({ error: "Webhook processing failed" });
+  }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5. Admin: Trigger a payout transfer to a seller's Stripe Connect account
-//    Called from admin payout approval flow.
+// 5. Admin: Trigger a legacy/manual Stripe Transfer to a seller's connected account.
+//    New Direct Charge checkout does not use this helper.
 //    amount is in AUD dollars (not cents).
 // ─────────────────────────────────────────────────────────────────────────────
-exports.createSellerTransfer = async (sellerUserId, amountAUD, description = "Seller payout") => {
+async function createLegacySellerTransfer(sellerUserId, amountAUD, description = "Legacy seller transfer") {
   const profile = await prisma.sellerProfile.findUnique({
     where: { userId: sellerUserId },
     select: {
@@ -450,18 +562,24 @@ exports.createSellerTransfer = async (sellerUserId, amountAUD, description = "Se
 
   const amountInCents = Math.round(amountAUD * 100);
 
-  const transfer = await stripe.transfers.create({
-    amount: amountInCents,
-    currency: "aud",
-    destination: profile.stripeAccountId,
-    description,
-    metadata: {
-      sellerUserId,
+  const transfer = await stripe.transfers.create(
+    {
+      amount: amountInCents,
+      currency: "aud",
+      destination: profile.stripeAccountId,
+      description,
+      metadata: {
+        sellerUserId,
+      },
     },
-  });
+    { idempotencyKey: `connect-manual-transfer:${sellerUserId}:${amountInCents}:${crypto.createHash("sha256").update(description || "").digest("hex").slice(0, 16)}` },
+  );
 
   return transfer;
-};
+}
+
+exports.createLegacySellerTransfer = createLegacySellerTransfer;
+exports.createSellerTransfer = createLegacySellerTransfer;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /seller-onboarding/stripe/login-link

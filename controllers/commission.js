@@ -352,6 +352,11 @@ const { calculateSellerPayout } = require("../utils/commissionCalculator");
  * @param {string|null} params.customerId  – null for guest orders
  * @param {string|null} params.sellerName
  * @param {string|null} [params.subOrderId]
+ * @param {number|null} [params.commissionAmountOverride] - explicit platform commission for Direct Charge records
+ * @param {number|null} [params.netPayableOverride] - explicit seller payable amount; Direct Charges use 0 because Stripe owns settlement
+ * @param {number|null} [params.productValueExGSTOverride]
+ * @param {number|null} [params.gstAmountOverride]
+ * @param {string} [params.status='PENDING']
  * @returns {Promise<string>} The new CommissionEarned id
  */
 exports.createCommissionEarned = async ({
@@ -364,6 +369,11 @@ exports.createCommissionEarned = async ({
   customerId = null,
   sellerName = null,
   subOrderId = null,
+  commissionAmountOverride = null,
+  netPayableOverride = null,
+  productValueExGSTOverride = null,
+  gstAmountOverride = null,
+  status = 'PENDING',
 }) => {
   try {
     // Prefer seller-specific commission rate; fall back to platform default; then hardcoded 10%
@@ -387,7 +397,22 @@ exports.createCommissionEarned = async ({
     let commissionAmount;
     let netPayable;
 
-    if (isFixedRate) {
+    if (commissionAmountOverride !== null || netPayableOverride !== null) {
+      commissionAmount = commissionAmountOverride !== null
+        ? parseFloat(Number(commissionAmountOverride).toFixed(2))
+        : 0;
+      netPayable = netPayableOverride !== null
+        ? parseFloat(Number(netPayableOverride).toFixed(2))
+        : 0;
+      payout = {
+        productValueExGST: productValueExGSTOverride !== null
+          ? parseFloat(Number(productValueExGSTOverride).toFixed(2))
+          : null,
+        gstAmount: gstAmountOverride !== null
+          ? parseFloat(Number(gstAmountOverride).toFixed(2))
+          : null,
+      };
+    } else if (isFixedRate) {
       // Flat fee — no GST extraction needed
       commissionAmount = parseFloat(commissionRatePct.toFixed(2));
       netPayable       = parseFloat((orderValue - commissionAmount + shippingAmount).toFixed(2));
@@ -422,7 +447,7 @@ exports.createCommissionEarned = async ({
         ${payout ? payout.productValueExGST : null},
         ${payout ? payout.gstAmount : null},
         ${parseFloat(shippingAmount.toFixed(2))},
-        'PENDING'::"CommissionStatus",
+        ${status}::"CommissionStatus",
         NOW(), NOW()
       )
     `;

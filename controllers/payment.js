@@ -381,6 +381,17 @@ function buildDirectChargePaymentRecordData({
   };
 }
 
+function buildDirectChargeCommissionRecordOverrides(paymentRecord) {
+  if (!paymentRecord || paymentRecord.paymentFlow !== "DIRECT_CHARGE") return {};
+  return {
+    commissionAmountOverride: Number(paymentRecord.applicationFeeAmount || 0) / 100,
+    netPayableOverride: 0,
+    productValueExGSTOverride: Number(paymentRecord.commissionBase || 0) / 100,
+    gstAmountOverride: Number(paymentRecord.gstAmount || 0) / 100,
+    status: "PAID",
+  };
+}
+
 function buildPaymentCompletionOutboxRows({ order, paymentIntentId, sellerIds }) {
   const basePayload = {
     orderId: order.id,
@@ -1417,6 +1428,10 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
 
   if (!order) return false;
 
+  const paymentRecord = await prisma.orderPaymentRecord.findUnique({
+    where: { stripePaymentIntentId: paymentIntentId },
+  }).catch(() => null);
+
   try {
     const { paymentIntent: pi, stripeAccountId } = await retrievePaymentIntentForOrder(paymentIntentId, order);
     latestChargeId = pi.latest_charge || latestChargeId;
@@ -1644,24 +1659,34 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
     const itemTotal = sellerItems.reduce((s, i) => s + Number(i.price) * i.quantity, 0);
     const productNames = sellerItems.map(i => i.product?.title).filter(Boolean);
     const sellerSubOrder = order.subOrders?.find((sub) => sub.sellerId === sid || sub.seller?.id === sid) || null;
+    const isDirectCharge = piChargeType === 'direct';
     
-    // ── Calculate commission for this seller (needed for description + commission record) ──
-    const sellerCommission = await getCommissionForSeller(sid);
-    const resolvedCommission = sellerCommission || (await getDefaultCommission());
-    const commissionRatePct = resolvedCommission ? parseFloat(resolvedCommission.value) : 10;
-    const payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
+    // Legacy Separate Charges and Transfers needs a seller transfer amount.
+    // Direct Charge settlement is owned by Stripe; the backend only records
+    // ALPA's application fee and must not calculate a seller payout.
+    let payout = null;
+    if (!isDirectCharge) {
+      const sellerCommission = await getCommissionForSeller(sid);
+      const resolvedCommission = sellerCommission || (await getDefaultCommission());
+      const commissionRatePct = resolvedCommission ? parseFloat(resolvedCommission.value) : 10;
+      payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
+    }
+    const directChargePlatformFee = Number(paymentRecord?.applicationFeeAmount || 0) / 100;
+    const directChargeGstAmount = Number(paymentRecord?.gstAmount || 0) / 100;
+    const directChargeSellerGross = itemTotal + perSellerShipping;
     
-    // ── Build transaction description WITH fee details so sellers can see the breakdown ──
+    // ── Build transaction description. Direct Charges show gross payment details;
+    // legacy transfers show the calculated transfer payout.
     const sellerTransactionDescription = buildSellerTransactionDescription({
       order: sellerSubOrder || order,
       customerName: toName,
       customerEmail: order.customerEmail,
       items: sellerItems,
-      amount: payout.sellerTotalPayout,
-      label: "Legacy seller transfer",
-      platformFee: payout.commissionAmount,
-      gstAmount: payout.gstAmount,
-      shippingAmount: payout.shippingAmount,
+      amount: isDirectCharge ? directChargeSellerGross : payout.sellerTotalPayout,
+      label: isDirectCharge ? "Direct Charge payment" : "Legacy seller transfer",
+      platformFee: isDirectCharge ? directChargePlatformFee : payout.commissionAmount,
+      gstAmount: isDirectCharge ? directChargeGstAmount : payout.gstAmount,
+      shippingAmount: isDirectCharge ? perSellerShipping : payout.shippingAmount,
     });
     if (!paymentCompletionNotificationsQueued) createOrderNotification(order.id, sid, 'ORDER_PROCESSING', 'HIGH', {
       message: `New order received from ${toName}`,
@@ -1744,6 +1769,7 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
       customerEmail:  order.customerEmail,
       customerId:     order.userId || null,
       sellerName:     sellerDisplayNames[sellerIdSet.indexOf(sid)] || null,
+      ...(isDirectCharge ? buildDirectChargeCommissionRecordOverrides(paymentRecord) : {}),
     });
     if (!commissionEarnedId) {
       throw new Error(`Commission earned record was not created for seller ${sid}`);
@@ -1756,7 +1782,6 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
     // Separate Charges and Transfers settlement only.
     // piChargeType is resolved once above (from the single PaymentIntent retrieval)
     // so this never triggers a redundant Stripe API call inside the seller loop.
-    const isDirectCharge = piChargeType === 'direct';
     const sellerStripeMetadata = buildSellerStripeOrderMetadata({
       order,
       subOrder: sellerSubOrder,

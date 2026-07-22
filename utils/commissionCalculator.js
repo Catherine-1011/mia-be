@@ -11,7 +11,7 @@
  *   gstAmount           = 100 - 90.91           = $9.09
  *   commissionAmount    = 90.91 * 0.10          = $9.09
  *   sellerProductEarning= 90.91 - 9.09          = $81.82
- *   sellerTotalPayout   = 81.82 + 15            = $96.82  (what platform transfers to seller)
+ *   sellerTotalPayout   = 81.82 + 15            = $96.82  (legacy platform transfer amount)
  *   platformRevenue     = 9.09 (commission)     stays with platform
  */
 
@@ -23,7 +23,8 @@ function round2(n) {
 }
 
 /**
- * Calculate the full commission/payout breakdown for one seller's slice of an order.
+ * Calculate the legacy Separate Charges and Transfers payout breakdown for one seller's slice of an order.
+ * Do not use this for Direct Charge settlement; Stripe calculates the seller balance.
  *
  * @param {number} productPriceGSTInclusive  Sum of (price × qty) for this seller's items (GST incl.)
  * @param {number} shippingAmount            Shipping amount allocated to this seller

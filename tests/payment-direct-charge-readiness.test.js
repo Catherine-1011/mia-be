@@ -29,7 +29,7 @@ function makeReply() {
   };
 }
 
-function makeCartWithSellerCount(sellerCount = 1) {
+function makeCartWithSellerCount(sellerCount = 1, productPrice = 110) {
   return {
     id: "cart_1",
     items: Array.from({ length: sellerCount }, (_, index) => ({
@@ -39,7 +39,7 @@ function makeCartWithSellerCount(sellerCount = 1) {
       product: {
         id: `prod_${index + 1}`,
         title: `Artwork ${index + 1}`,
-        price: 110,
+        price: productPrice,
         stock: 5,
         sellerId: `seller_${index + 1}`,
       },
@@ -47,7 +47,7 @@ function makeCartWithSellerCount(sellerCount = 1) {
   };
 }
 
-function makePrisma({ sellerProfile, sellerLookupError = null, sellerCount = 1, missingProductIds = [], paymentRecordCreateError = null, coupon = null } = {}) {
+function makePrisma({ sellerProfile, sellerLookupError = null, sellerCount = 1, productPrice = 110, missingProductIds = [], paymentRecordCreateError = null, coupon = null } = {}) {
   const prisma = {
     _orderCreateCalls: [],
     _orderPaymentRecordCreateCalls: [],
@@ -66,7 +66,7 @@ function makePrisma({ sellerProfile, sellerLookupError = null, sellerCount = 1, 
       }),
     },
     cart: {
-      findUnique: async () => makeCartWithSellerCount(sellerCount),
+      findUnique: async () => makeCartWithSellerCount(sellerCount, productPrice),
     },
     shippingMethod: {
       findUnique: async () => ({
@@ -88,7 +88,7 @@ function makePrisma({ sellerProfile, sellerLookupError = null, sellerCount = 1, 
         return {
           id: where.id,
           title: "Artwork",
-          price: 110,
+          price: productPrice,
           stock: 5,
           sellerId: where.id.replace("prod", "seller"),
         };
@@ -166,7 +166,7 @@ function makePrisma({ sellerProfile, sellerLookupError = null, sellerCount = 1, 
   return prisma;
 }
 
-function loadPaymentController({ prisma, stripeAccount }) {
+function loadPaymentController({ prisma, stripeAccount, cartTotals = null }) {
   const stripeMock = {
     accounts: {
       retrieve: async () => {
@@ -232,7 +232,7 @@ function loadPaymentController({ prisma, stripeAccount }) {
     if (resolved === prismaPath) return prisma;
     if (resolved === cartControllerPath) {
       return {
-        calculateCartTotals: async () => ({
+        calculateCartTotals: async () => cartTotals || ({
           subtotal: "110.00",
           subtotalExGST: "100.00",
           shippingCost: "10.00",
@@ -472,6 +472,59 @@ test("valid seller creates Direct Charge with connected-account request options"
   assert.equal(record.paymentStatus, "PENDING");
   assert.equal(record.refundStatus, "NONE");
   assert.equal(record.disputeStatus, "NONE");
+});
+
+test("AUD 100 product plus AUD 15 shipping Direct Charge sends only AUD 9.09 application fee", async () => {
+  const prisma = makePrisma({
+    productPrice: 100,
+    sellerProfile: {
+      stripeAccountId: "acct_ready",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_ready",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+    },
+    cartTotals: {
+      subtotal: "100.00",
+      subtotalExGST: "90.91",
+      shippingCost: "15.00",
+      totalShippingCost: "15.00",
+      sellerCount: 1,
+      gstPercentage: "10",
+      gstAmount: "9.09",
+      grandTotal: "115.00",
+      gstDetails: [],
+    },
+  });
+
+  const reply = await callCreatePaymentIntent(controller);
+
+  assert.equal(reply.statusCode, 200);
+  const call = stripeMock.paymentIntents.createCalls[0];
+  assert.equal(call.body.amount, 11500);
+  assert.equal(call.body.application_fee_amount, 909);
+  assert.equal(call.options.stripeAccount, "acct_ready");
+  assert.equal(call.body.transfer_data, undefined);
+  assert.equal(stripeMock.transfers.createCalls.length, 0);
+
+  const record = prisma._orderPaymentRecordCreateCalls[0].data;
+  assert.equal(record.grossAmount, 11500);
+  assert.equal(record.commissionBase, 9091);
+  assert.equal(record.applicationFeeAmount, 909);
+  assert.equal(record.gstAmount, 909);
+  assert.equal(record.shippingAmount, 1500);
+
+  const exampleStripeFeeCents = 226;
+  const expectedSellerBalanceCents = call.body.amount - call.body.application_fee_amount - exampleStripeFeeCents;
+  assert.equal(expectedSellerBalanceCents, 10365);
 });
 
 test("same logged-in checkout retry reuses one PaymentIntent and payment record", async () => {

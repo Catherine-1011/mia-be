@@ -155,14 +155,19 @@ function makePrisma({ chargeType = "direct", claimSequence = [1], isGuest = fals
       findUnique: async ({ where }) => {
         if (where.stripePaymentIntentId !== "pi_123") return null;
         return {
-          id: "opr_123",
-          orderId: "order_1",
-          sellerId: "seller_1",
-          paymentFlow: chargeType === "direct" ? "DIRECT_CHARGE" : "SEPARATE_CHARGE_AND_TRANSFER",
-          stripeAccountId: chargeType === "direct" ? "acct_ready" : null,
-          stripePaymentIntentId: "pi_123",
-          paymentStatus: "PAID",
-          disputeStatus: "NONE",
+        id: "opr_123",
+        orderId: "order_1",
+        sellerId: "seller_1",
+        paymentFlow: chargeType === "direct" ? "DIRECT_CHARGE" : "SEPARATE_CHARGE_AND_TRANSFER",
+        stripeAccountId: chargeType === "direct" ? "acct_ready" : null,
+        stripePaymentIntentId: "pi_123",
+        grossAmount: 12000,
+        commissionBase: 10000,
+        applicationFeeAmount: 1000,
+        gstAmount: 1000,
+        shippingAmount: 1000,
+        paymentStatus: "PAID",
+        disputeStatus: "NONE",
           order: {
             id: order.id,
             displayId: order.displayId,
@@ -395,8 +400,8 @@ function loadPaymentController({ prisma, chargeType = "direct", webhookEvent = n
     }
     if (resolved === commissionControllerPath) {
       return {
-        createCommissionEarned: async () => {
-          prisma._commissionCreateCalls.push([...arguments]);
+        createCommissionEarned: async function(params) {
+          prisma._commissionCreateCalls.push(params);
           return "commission_1";
         },
         getCommissionForSeller: async () => null,
@@ -598,6 +603,10 @@ test("Direct Charge payment-success webhook creates no transfer", async () => {
   assert.equal(event.stripeAccountId, "acct_ready");
   assert.equal(event.paymentIntentId, "pi_123");
   assert.equal(prisma._outboxCreateManyCalls.length, 1);
+  assert.equal(prisma._commissionCreateCalls.length, 1);
+  assert.equal(prisma._commissionCreateCalls[0].commissionAmountOverride, 10);
+  assert.equal(prisma._commissionCreateCalls[0].netPayableOverride, 0);
+  assert.equal(prisma._commissionCreateCalls[0].status, "PAID");
   assert.deepEqual(
     prisma._outboxCreateManyCalls[0].data.map((row) => row.type).sort(),
     [

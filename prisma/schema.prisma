@@ -938,9 +938,11 @@ enum OrderStatus {
 
 enum PaymentStatus {
   PENDING
+  PARTIALLY_PAID
   PAID
   DISPUTED
   FAILED
+  REFUND_PENDING
   REFUNDED
 }
 

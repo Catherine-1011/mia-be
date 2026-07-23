@@ -113,6 +113,7 @@ function makePrisma({ sellerProfile, sellerLookupError = null, sellerCount = 1, 
     },
     order: {
       findUnique: async () => null,
+      findFirst: async () => null,
       create: async ({ data }) => {
         prisma._orderCreateCalls.push({ data });
         return {
@@ -122,6 +123,8 @@ function makePrisma({ sellerProfile, sellerLookupError = null, sellerCount = 1, 
           customerEmail: data.customerEmail,
         };
       },
+      update: async (args) => args,
+      updateMany: async () => ({ count: 1 }),
     },
     subOrder: {
       create: async (args) => {
@@ -139,8 +142,16 @@ function makePrisma({ sellerProfile, sellerLookupError = null, sellerCount = 1, 
       create: async (args) => {
         if (paymentRecordCreateError) throw paymentRecordCreateError;
         prisma._orderPaymentRecordCreateCalls.push(args);
-        return { id: "payment_record_1", ...args.data };
+        return { id: `payment_record_${prisma._orderPaymentRecordCreateCalls.length}`, ...args.data };
       },
+      findMany: async ({ where }) => prisma._orderPaymentRecordCreateCalls
+        .map((call, index) => ({ id: `payment_record_${index + 1}`, ...call.data }))
+        .filter((record) => !where?.orderId || record.orderId === where.orderId),
+      findUnique: async ({ where }) => prisma._orderPaymentRecordCreateCalls
+        .map((call, index) => ({ id: `payment_record_${index + 1}`, ...call.data }))
+        .find((record) => record.stripePaymentIntentId === where.stripePaymentIntentId) || null,
+      update: async (args) => args,
+      updateMany: async () => ({ count: 1 }),
     },
     apiIdempotencyOperation: {
       create: async ({ data }) => {
@@ -179,14 +190,15 @@ function loadPaymentController({ prisma, stripeAccount, cartTotals = null }) {
       updateCalls: [],
       create: async function(body, options) {
         this.createCalls.push({ body, options });
+        const n = this.createCalls.length;
         return {
-          id: "pi_123",
+          id: n === 1 ? "pi_123" : `pi_${n}`,
           object: "payment_intent",
           status: "requires_payment_method",
           amount: body.amount,
           livemode: false,
-          client_secret: "pi_123_secret_abc",
-          lastResponse: { requestId: "req_123" },
+          client_secret: n === 1 ? "pi_123_secret_abc" : `pi_${n}_secret_abc`,
+          lastResponse: { requestId: `req_${n}` },
         };
       },
       update: async function(id, body, options) {
@@ -1240,69 +1252,149 @@ test("one seller cart succeeds for Phase 2 backend guard", async () => {
   assert.equal(prisma._orderCreateCalls.length, 1);
 });
 
-test("two seller cart is rejected before PaymentIntent, transfer, stock, or payable order", async () => {
-  const prisma = makePrisma({ sellerProfile: null, sellerCount: 2 });
+test("two seller cart creates one Direct Charge PaymentIntent and payment record per seller", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_ready",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+    sellerCount: 2,
+  });
   const { controller, stripeMock } = loadPaymentController({
     prisma,
-    stripeAccount: null,
+    stripeAccount: {
+      id: "acct_ready",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+    },
   });
 
   const reply = await callCreatePaymentIntent(controller);
 
-  assert.equal(reply.statusCode, 400);
-  assert.equal(reply.payload.code, "MIXED_SELLER_CHECKOUT_NOT_SUPPORTED");
-  assert.match(reply.payload.message, /one seller at a time/i);
-  assertNoFinancialOrOrderSideEffects({ stripeMock, prisma });
+  assert.equal(reply.statusCode, 200);
+  assert.equal(reply.payload.paymentFlow, "DIRECT_CHARGE");
+  assert.equal(reply.payload.payments.length, 2);
+  assert.equal(stripeMock.paymentIntents.createCalls.length, 2);
+  assert.equal(prisma._orderCreateCalls.length, 1);
+  assert.equal(prisma._subOrderCreateCalls.length, 2);
+  assert.equal(prisma._orderPaymentRecordCreateCalls.length, 2);
+  for (const call of stripeMock.paymentIntents.createCalls) {
+    assert.equal(call.options.stripeAccount, "acct_ready");
+    assert.equal(call.body.transfer_data, undefined);
+    assert.equal(call.body.on_behalf_of, undefined);
+    assert.equal(call.body.metadata.paymentFlow, "DIRECT_CHARGE");
+    assert.equal(call.body.metadata.sellerStripeAccountId, "acct_ready");
+    assert.ok(call.body.application_fee_amount > 0);
+  }
+  assert.equal(stripeMock.transfers.createCalls.length, 0);
 });
 
-test("three seller cart is rejected before PaymentIntent, transfer, stock, or payable order", async () => {
-  const prisma = makePrisma({ sellerProfile: null, sellerCount: 3 });
+test("three seller cart creates three Direct Charge PaymentIntents without transfers", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_ready",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+    sellerCount: 3,
+  });
   const { controller, stripeMock } = loadPaymentController({
     prisma,
-    stripeAccount: null,
+    stripeAccount: {
+      id: "acct_ready",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+    },
   });
 
   const reply = await callCreatePaymentIntent(controller);
 
-  assert.equal(reply.statusCode, 400);
-  assert.equal(reply.payload.code, "MIXED_SELLER_CHECKOUT_NOT_SUPPORTED");
-  assertNoFinancialOrOrderSideEffects({ stripeMock, prisma });
+  assert.equal(reply.statusCode, 200);
+  assert.equal(reply.payload.payments.length, 3);
+  assert.equal(stripeMock.paymentIntents.createCalls.length, 3);
+  assert.equal(prisma._orderPaymentRecordCreateCalls.length, 3);
+  assert.equal(stripeMock.transfers.createCalls.length, 0);
 });
 
-test("guest two seller cart is rejected before PaymentIntent, transfer, stock, or payable order", async () => {
-  const prisma = makePrisma({ sellerProfile: null });
+test("guest two seller cart creates one Direct Charge PaymentIntent and payment record per seller", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_guest_ready",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
   const { controller, stripeMock } = loadPaymentController({
     prisma,
-    stripeAccount: null,
+    stripeAccount: {
+      id: "acct_guest_ready",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+    },
   });
 
   const reply = await callCreateGuestPaymentIntentWithSellerCount(controller, 2);
 
-  assert.equal(reply.statusCode, 400);
-  assert.equal(reply.payload.code, "MIXED_SELLER_CHECKOUT_NOT_SUPPORTED");
-  assert.match(reply.payload.message, /one seller at a time/i);
-  assertNoFinancialOrOrderSideEffects({ stripeMock, prisma });
+  assert.equal(reply.statusCode, 200);
+  assert.equal(reply.payload.paymentFlow, "DIRECT_CHARGE");
+  assert.equal(reply.payload.payments.length, 2);
+  assert.equal(stripeMock.paymentIntents.createCalls.length, 2);
+  assert.equal(prisma._orderPaymentRecordCreateCalls.length, 2);
+  assert.equal(stripeMock.transfers.createCalls.length, 0);
 });
 
-test("guest three seller cart is rejected before PaymentIntent, transfer, stock, or payable order", async () => {
-  const prisma = makePrisma({ sellerProfile: null });
+test("guest three seller cart creates three Direct Charge PaymentIntents without transfers", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_guest_ready",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
   const { controller, stripeMock } = loadPaymentController({
     prisma,
-    stripeAccount: null,
+    stripeAccount: {
+      id: "acct_guest_ready",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+    },
   });
 
   const reply = await callCreateGuestPaymentIntentWithSellerCount(controller, 3);
 
-  assert.equal(reply.statusCode, 400);
-  assert.equal(reply.payload.code, "MIXED_SELLER_CHECKOUT_NOT_SUPPORTED");
-  assertNoFinancialOrOrderSideEffects({ stripeMock, prisma });
+  assert.equal(reply.statusCode, 200);
+  assert.equal(reply.payload.payments.length, 3);
+  assert.equal(stripeMock.paymentIntents.createCalls.length, 3);
+  assert.equal(prisma._orderPaymentRecordCreateCalls.length, 3);
+  assert.equal(stripeMock.transfers.createCalls.length, 0);
 });
 
-test("guest sellerId payload tampering cannot bypass database-derived mixed-seller guard", async () => {
-  const prisma = makePrisma({ sellerProfile: null });
+test("guest sellerId payload tampering still uses database-derived seller grouping", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_guest_ready",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+  });
   const { controller, stripeMock } = loadPaymentController({
     prisma,
-    stripeAccount: null,
+    stripeAccount: {
+      id: "acct_guest_ready",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+    },
   });
 
   const reply = await callCreateGuestPaymentIntentWithItems(controller, [
@@ -1310,13 +1402,12 @@ test("guest sellerId payload tampering cannot bypass database-derived mixed-sell
     { productId: "prod_2", quantity: 1, sellerId: "same_client_seller" },
   ]);
 
-  assert.equal(reply.statusCode, 400);
-  assert.equal(reply.payload.code, "MIXED_SELLER_CHECKOUT_NOT_SUPPORTED");
-  assert.equal(
-    reply.payload.message,
-    "Your cart contains products from multiple sellers. Please complete checkout for one seller at a time.",
+  assert.equal(reply.statusCode, 200);
+  assert.equal(reply.payload.payments.length, 2);
+  assert.deepEqual(
+    prisma._orderPaymentRecordCreateCalls.map((call) => call.data.sellerId),
+    ["seller_1", "seller_2"],
   );
-  assertNoFinancialOrOrderSideEffects({ stripeMock, prisma });
 });
 
 test("guest omitted or duplicated sellerId payload cannot change database-derived one-seller success", async () => {

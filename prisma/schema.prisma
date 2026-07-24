@@ -284,6 +284,7 @@ model Order {
   seller                User?               @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: SetNull)
   user                  User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
   subOrders             SubOrder[]
+  multiSellerCheckoutSession MultiSellerCheckoutSession?
 
   @@index([userId])
   @@index([sellerId])
@@ -382,6 +383,32 @@ model ApiIdempotencyOperation {
   @@index([stripePaymentIntentId])
   @@index([orderId])
   @@map("api_idempotency_operations")
+}
+
+// Collects the customer's card exactly once (as a platform-account PaymentMethod
+// via SetupIntent) for a multi-seller cart, so it can be cloned per connected
+// account and used to confirm each seller's own Direct Charge PaymentIntent.
+// See docs.stripe.com/connect/direct-charges-multiple-accounts.
+model MultiSellerCheckoutSession {
+  id                      String                @id @default(cuid())
+  orderId                 String                @unique @map("order_id")
+  platformCustomerId      String                @map("platform_customer_id")
+  platformSetupIntentId   String                @map("platform_setup_intent_id")
+  platformPaymentMethodId String?               @map("platform_payment_method_id")
+  status                  CheckoutSessionStatus @default(COLLECTING_PAYMENT_METHOD)
+  createdAt               DateTime              @default(now()) @map("created_at")
+  updatedAt               DateTime              @updatedAt @map("updated_at")
+  order                   Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("multi_seller_checkout_sessions")
+}
+
+enum CheckoutSessionStatus {
+  COLLECTING_PAYMENT_METHOD
+  CHARGING_SELLERS
+  COMPLETED
+  PARTIALLY_COMPLETED
+  FAILED
 }
 
 model SubOrder {

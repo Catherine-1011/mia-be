@@ -118,6 +118,39 @@ async function paymentRoutes(fastify, options) {
     paymentController.getPaymentStatus
   );
 
+  /**
+   * POST /api/payments/multi-seller/setup
+   *
+   * Multi-seller cart only (single-seller carts must keep using /create-intent).
+   * Creates the pending Order/SubOrders and a platform-account SetupIntent so
+   * the customer enters their card exactly once. Response includes the
+   * SetupIntent clientSecret plus a per-seller amount breakdown for the order
+   * summary UI.
+   *
+   * Request body: same shape as /create-intent.
+   */
+  fastify.post(
+    "/multi-seller/setup",
+    { preHandler: authenticateUser },
+    paymentController.createMultiSellerCheckoutSetup
+  );
+
+  /**
+   * POST /api/payments/multi-seller/finalize
+   *
+   * Call after stripe.confirmSetup() succeeds on the frontend. Clones the
+   * collected PaymentMethod to each seller's connected account and confirms
+   * that seller's own Direct Charge PaymentIntent (application_fee_amount,
+   * no transfer_data/destination). Idempotent — safe to retry.
+   *
+   * Request body: { "orderId": "clxxx..." }
+   */
+  fastify.post(
+    "/multi-seller/finalize",
+    { preHandler: authenticateUser },
+    paymentController.finalizeMultiSellerCheckout
+  );
+
   // ─── Guest payment routes (no authentication) ─────────────────────────────
 
   /**
@@ -163,6 +196,21 @@ async function paymentRoutes(fastify, options) {
    * Poll to check payment + order status for a guest order.
    */
   fastify.get("/guest/status", paymentController.getGuestPaymentStatus);
+
+  /**
+   * POST /api/payments/multi-seller/guest/setup
+   * Guest equivalent of /multi-seller/setup. No auth — accepts cart items
+   * directly in the body like /guest/create-intent.
+   */
+  fastify.post("/multi-seller/guest/setup", paymentController.createGuestMultiSellerCheckoutSetup);
+
+  /**
+   * POST /api/payments/multi-seller/guest/finalize
+   * Guest equivalent of /multi-seller/finalize. Ownership verified via
+   * customerEmail (no JWT) — same trust model as /guest/confirm.
+   * Body: { "orderId": "clxxx...", "customerEmail": "jane@example.com" }
+   */
+  fastify.post("/multi-seller/guest/finalize", paymentController.finalizeGuestMultiSellerCheckout);
 }
 
 module.exports = paymentRoutes;

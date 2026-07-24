@@ -1321,6 +1321,578 @@ exports.createPaymentIntent = async (request, reply) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Multi-seller "single checkout" flow (collect the card once, charge each
+// seller's Direct Charge PaymentIntent separately). Verified against
+// docs.stripe.com/connect/direct-charges-multiple-accounts — the customer's
+// PaymentMethod is collected once on the PLATFORM account via SetupIntent,
+// then cloned per connected account with stripe.paymentMethods.create(
+// { customer, payment_method }, { stripeAccount }) and used to confirm a
+// normal Direct Charge PaymentIntent (application_fee_amount, no
+// transfer_data/destination, no stripe.transfers.create()) on each seller's
+// own account. Single-seller checkout is untouched — it keeps using
+// /create-intent above.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// STEP 1 — Build the order + per-seller plan, collect the card once via a
+// platform-account SetupIntent.
+// POST /api/payments/multi-seller/setup
+// ─────────────────────────────────────────────────────────────────────────────
+exports.createMultiSellerCheckoutSetup = async (request, reply) => {
+  let checkoutApiOperationKey = null;
+  try {
+    const userId = request.user.userId;
+    const {
+      shippingAddress,
+      shippingMethodId,
+      internationalCountry,
+      gstId,
+      country,
+      city,
+      zipCode,
+      state,
+      mobileNumber,
+    } = request.body;
+
+    const effectiveIntlCountry = (internationalCountry || country || '').trim();
+    const isInternational = !!effectiveIntlCountry && effectiveIntlCountry.toLowerCase() !== 'australia';
+
+    if (!shippingAddress || (!shippingMethodId && !isInternational)) {
+      return reply.status(400).send({
+        success: false,
+        message: "shippingAddress and a shipping method (or international destination country) are required",
+      });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return reply.status(404).send({ success: false, message: "User not found" });
+    }
+
+    const cart = await prisma.cart.findUnique({
+      where: { userId },
+      include: { items: { include: { product: true, productVariant: true } } },
+    });
+
+    if (!cart || cart.items.length === 0) {
+      return reply.status(400).send({ success: false, message: "Cart is empty" });
+    }
+
+    let shippingMethod;
+    let intlZoneEntry = null;
+    if (isInternational) {
+      intlZoneEntry = lookupZone(effectiveIntlCountry);
+      shippingMethod = {
+        id: null,
+        name: `International (${effectiveIntlCountry})`,
+        cost: intlZoneEntry.cost,
+        estimatedDays: '10-20 business days',
+      };
+    } else {
+      shippingMethod = await prisma.shippingMethod.findUnique({
+        where: { id: shippingMethodId, isActive: true },
+      });
+      if (!shippingMethod) {
+        return reply.status(400).send({ success: false, message: "Invalid or inactive shipping method" });
+      }
+    }
+
+    for (const item of cart.items) {
+      const availableStock = item.productVariant ? item.productVariant.stock : (item.product.stock ?? 0);
+      if (availableStock < item.quantity) {
+        return reply.status(400).send({ success: false, message: `Insufficient stock for: ${item.product.title}` });
+      }
+    }
+
+    const cartCalculations = await calculateCartTotals(
+      cart.items,
+      isInternational ? null : shippingMethodId,
+      gstId,
+      isInternational ? intlZoneEntry.cost : null
+    );
+    const totalAmount = parseFloat(cartCalculations.grandTotal);
+    const amountInCents = Math.round(totalAmount * 100);
+
+    const sellerItemsMap = new Map();
+    for (const item of cart.items) {
+      const sid = item.product.sellerId;
+      if (!sellerItemsMap.has(sid)) sellerItemsMap.set(sid, []);
+      sellerItemsMap.get(sid).push(item);
+    }
+
+    if (sellerItemsMap.size <= 1) {
+      return reply.status(400).send({
+        success: false,
+        message: "This cart has a single seller — use /api/payments/create-intent instead.",
+      });
+    }
+
+    const displayId = await generateDisplayId();
+
+    const checkoutRequestHash = hashOperationPayload({
+      userId,
+      cartId: cart.id,
+      amountInCents,
+      shippingMethodId: shippingMethodId || null,
+      gstId: gstId || null,
+      isInternational,
+      effectiveIntlCountry,
+      items: cart.items.map((item) => ({
+        productId: item.product.id,
+        variantId: item.variantId || null,
+        quantity: item.quantity,
+      })),
+    });
+    checkoutApiOperationKey = checkoutOperationKey({
+      scope: "user",
+      subjectId: `${userId}:${cart.id}`,
+      sellerId: "multi-seller",
+      amountInCents,
+      requestHash: checkoutRequestHash,
+    });
+    const checkoutOperation = await claimApiOperation({
+      operationKey: checkoutApiOperationKey,
+      operationType: "MULTI_SELLER_SETUP_CREATE",
+      requestHash: checkoutRequestHash,
+      attemptNumber: 1,
+    });
+    if (checkoutOperation.status === "COMPLETED" && checkoutOperation.orderId) {
+      const existingOrder = await prisma.order.findUnique({
+        where: { id: checkoutOperation.orderId },
+        include: { multiSellerCheckoutSession: true },
+      });
+      if (existingOrder?.multiSellerCheckoutSession) {
+        const existingSetupIntent = await stripe.setupIntents.retrieve(
+          existingOrder.multiSellerCheckoutSession.platformSetupIntentId,
+        );
+        return reply.status(200).send({
+          success: true,
+          orderId: existingOrder.id,
+          displayId: existingOrder.displayId,
+          clientSecret: existingSetupIntent.client_secret,
+          amount: amountInCents,
+          displayAmount: totalAmount,
+          currency: "aud",
+          sellerBreakdown: existingOrder.shippingAddress?.orderSummary?.multiSellerPlan || [],
+          idempotent: true,
+        });
+      }
+    }
+    if (!checkoutOperation.claimedNew && checkoutOperation.status === "STARTED") {
+      return reply.status(202).send({ success: true, status: "PAYMENT_CREATION_IN_PROGRESS", idempotent: true });
+    }
+
+    // Build each seller's Direct Charge plan up-front — reuses the exact same
+    // math as the single-request multi-seller flow so amounts can never drift
+    // between what's shown at checkout and what's charged at finalize time.
+    const sellerPlans = [];
+    for (const [sellerId, items] of sellerItemsMap) {
+      const { stripeAccountId } = await requireDirectChargeReadySeller(sellerId);
+      sellerPlans.push({
+        ...buildSellerDirectChargePlan({ sellerId, items, cartCalculations }),
+        stripeAccountId,
+      });
+    }
+
+    const shippingAddressData =
+      typeof shippingAddress === "string"
+        ? { address: shippingAddress }
+        : {
+            ...shippingAddress,
+            orderSummary: {
+              subtotal: cartCalculations.subtotal,
+              subtotalExGST: cartCalculations.subtotalExGST,
+              shippingCost: cartCalculations.shippingCost,
+              totalShippingCost: cartCalculations.totalShippingCost,
+              sellerCount: cartCalculations.sellerCount,
+              gstPercentage: cartCalculations.gstPercentage,
+              gstAmount: cartCalculations.gstAmount,
+              grandTotal: cartCalculations.grandTotal,
+              gstInclusive: true,
+              shippingMethod: {
+                id: shippingMethod.id,
+                name: shippingMethod.name,
+                cost: shippingMethod.cost,
+                estimatedDays: shippingMethod.estimatedDays,
+              },
+              gstDetails: cartCalculations.gstDetails,
+            },
+          };
+
+    // ── Create the pending Order + SubOrders (same shape as the existing
+    //    multi-seller branch in createPaymentIntent) inside one transaction,
+    //    then persist the locked-in seller plan snapshot onto the Order so
+    //    /finalize charges exactly what the customer saw at checkout. ──────
+    const { order, sellerBreakdown } = await prisma.$transaction(async (tx) => {
+      const parentOrder = await tx.order.create({
+        data: {
+          displayId,
+          userId,
+          totalAmount,
+          shippingAddress: shippingAddressData,
+          shippingAddressLine:
+            typeof shippingAddress === "string"
+              ? shippingAddress
+              : shippingAddress?.shippingAddress || shippingAddress?.addressLine || shippingAddress?.address || "",
+          shippingCity: city || shippingAddress?.city || "",
+          shippingState: state || shippingAddress?.state || "",
+          shippingZipCode: zipCode || shippingAddress?.zipCode || "",
+          shippingCountry: country || shippingAddress?.country || "Australia",
+          shippingPhone: mobileNumber || shippingAddress?.mobileNumber || user.phone || "",
+          paymentMethod: "Credit/Debit Card",
+          status: "PENDING",
+          overallStatus: "PENDING",
+          paymentStatus: "PENDING",
+          customerName: user.isDeleted ? "Deleted User" : user.name,
+          customerEmail: user.email,
+          customerPhone: mobileNumber || user.phone || "",
+        },
+      });
+
+      const breakdown = [];
+      for (const plan of sellerPlans) {
+        const subOrderSubtotal = plan.discountedProductAmount + plan.shippingAmount;
+        const subOrder = await tx.subOrder.create({
+          data: {
+            parentOrderId: parentOrder.id,
+            sellerId: plan.sellerId,
+            subtotal: subOrderSubtotal,
+            status: "PENDING",
+          },
+        });
+        await tx.orderItem.createMany({
+          data: plan.items.map((i) => ({
+            subOrderId: subOrder.id,
+            productId: i.product.id,
+            variantId: i.variantId || null,
+            quantity: i.quantity,
+            price: getItemUnitPrice(i),
+          })),
+        });
+        breakdown.push({
+          sellerId: plan.sellerId,
+          subOrderId: subOrder.id,
+          stripeAccountId: plan.stripeAccountId,
+          productAmountCents: plan.productAmountCents,
+          shippingAmountCents: plan.shippingAmountCents,
+          gstAmountCents: plan.gstAmountCents,
+          grossAmountCents: plan.grossAmountCents,
+          commission: plan.commission,
+        });
+      }
+
+      // Lock the plan snapshot onto the order so /finalize never recomputes
+      // amounts from a cart that may have since changed.
+      await tx.order.update({
+        where: { id: parentOrder.id },
+        data: {
+          shippingAddress: {
+            ...shippingAddressData,
+            orderSummary: { ...shippingAddressData.orderSummary, multiSellerPlan: breakdown },
+          },
+        },
+      });
+
+      return { order: parentOrder, sellerBreakdown: breakdown };
+    });
+
+    // ── Platform-side Customer + SetupIntent — collects the card ONCE. ─────
+    const platformCustomer = await stripe.customers.create({
+      email: user.email,
+      name: user.isDeleted ? "Deleted User" : user.name,
+      metadata: { orderId: order.id, displayId: order.displayId, userId },
+    }, { idempotencyKey: `${checkoutApiOperationKey}:customer` });
+
+    const setupIntent = await stripe.setupIntents.create({
+      customer: platformCustomer.id,
+      automatic_payment_methods: { enabled: true },
+      metadata: {
+        orderId: order.id,
+        displayId: order.displayId,
+        userId,
+        paymentFlow: "DIRECT_CHARGE_MULTI_SELLER",
+      },
+    }, { idempotencyKey: `${checkoutApiOperationKey}:setup-intent` });
+
+    await prisma.multiSellerCheckoutSession.create({
+      data: {
+        orderId: order.id,
+        platformCustomerId: platformCustomer.id,
+        platformSetupIntentId: setupIntent.id,
+        status: "COLLECTING_PAYMENT_METHOD",
+      },
+    });
+
+    await markApiOperationCompleted({
+      operationKey: checkoutApiOperationKey,
+      stripePaymentIntentId: null,
+      orderId: order.id,
+    });
+
+    return reply.status(200).send({
+      success: true,
+      orderId: order.id,
+      displayId: order.displayId,
+      clientSecret: setupIntent.client_secret,
+      amount: amountInCents,
+      displayAmount: totalAmount,
+      currency: "aud",
+      paymentFlow: "DIRECT_CHARGE_MULTI_SELLER",
+      sellerBreakdown,
+      orderSummary: {
+        subtotal: cartCalculations.subtotal,
+        subtotalExGST: cartCalculations.subtotalExGST,
+        shippingCost: cartCalculations.shippingCost,
+        totalShippingCost: cartCalculations.totalShippingCost,
+        sellerCount: cartCalculations.sellerCount,
+        gstAmount: cartCalculations.gstAmount,
+        grandTotal: cartCalculations.grandTotal,
+      },
+    });
+  } catch (error) {
+    if (checkoutApiOperationKey) {
+      try {
+        await markApiOperationFailed({ operationKey: checkoutApiOperationKey, error });
+      } catch (_) { /* best effort */ }
+    }
+    if (error?.statusCode === 409 && error?.code) {
+      return reply.status(409).send({ success: false, code: error.code, message: error.message });
+    }
+    logStripeApiError(error);
+    console.error("❌ createMultiSellerCheckoutSetup error:", error);
+    return reply.status(500).send({
+      success: false,
+      message: "Failed to set up multi-seller checkout",
+      error: error.message,
+    });
+  }
+};
+
+// Shared by the authenticated and guest finalize endpoints: clones the
+// platform PaymentMethod to each seller's connected account and confirms that
+// seller's own Direct Charge PaymentIntent. `extraMetadata` differs between
+// the two callers (userId vs isGuest/customerEmail) — everything else is
+// identical, so this is the single place that logic lives.
+async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPlans, platformPaymentMethodId, extraMetadata = {} }) {
+  const results = [];
+  for (const plan of sellerPlans) {
+    try {
+      // Clone the platform PaymentMethod to this seller's connected account.
+      // Verified: docs.stripe.com/connect/direct-charges-multiple-accounts.
+      const cloned = await stripe.paymentMethods.create(
+        { customer: session.platformCustomerId, payment_method: platformPaymentMethodId },
+        { stripeAccount: plan.stripeAccountId, idempotencyKey: `clone:${order.id}:${plan.sellerId}` },
+      );
+
+      const metadata = buildDirectChargeStripeMetadata({
+        order,
+        sellerId: plan.sellerId,
+        sellerStripeAccountId: plan.stripeAccountId,
+        productAmountCents: plan.productAmountCents,
+        shippingAmountCents: plan.shippingAmountCents,
+        gstAmountCents: plan.gstAmountCents,
+        commission: plan.commission,
+      });
+
+      // Plain Direct Charge PaymentIntent — no transfer_data, no
+      // destination, no stripe.transfers.create(). Confirmed immediately
+      // with the cloned PaymentMethod so the customer never re-enters a card.
+      const paymentIntent = await stripe.paymentIntents.create(
+        {
+          amount: plan.grossAmountCents,
+          currency: "aud",
+          payment_method: cloned.id,
+          confirm: true,
+          application_fee_amount: plan.commission.applicationFeeAmount,
+          automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+          description: buildSellerTransactionDescription({
+            order,
+            customerName: order.customerName,
+            customerEmail: order.customerEmail,
+            amount: plan.grossAmountCents / 100,
+            label: "Seller payment",
+          }),
+          // buildDirectChargeStripeMetadata hardcodes paymentFlow: "DIRECT_CHARGE"
+          // (correct for the single-seller path it's shared with) — override it
+          // here so Stripe Dashboard reconciliation can tell multi-seller Direct
+          // Charges apart, per spec.
+          metadata: { ...metadata, paymentFlow: "DIRECT_CHARGE_MULTI_SELLER", ...extraMetadata, chargeType: "direct" },
+        },
+        { idempotencyKey: `charge:${order.id}:${plan.sellerId}`, stripeAccount: plan.stripeAccountId },
+      );
+
+      // plan is the persisted breakdown snapshot (cents-only fields) — convert
+      // back to dollars for buildDirectChargePaymentRecordData's itemTotal/
+      // shippingAmount params, which it re-derives to minor units internally.
+      const paymentRecordData = buildDirectChargePaymentRecordData({
+        orderId: order.id,
+        sellerId: plan.sellerId,
+        stripeAccountId: plan.stripeAccountId,
+        stripePaymentIntentId: paymentIntent.id,
+        itemTotal: plan.productAmountCents / 100,
+        shippingAmount: plan.shippingAmountCents / 100,
+        commission: plan.commission,
+        grossAmountCents: plan.grossAmountCents,
+        gstAmountCents: plan.gstAmountCents,
+      });
+      await prisma.orderPaymentRecord.create({ data: paymentRecordData });
+
+      results.push({
+        sellerId: plan.sellerId,
+        stripeAccountId: plan.stripeAccountId,
+        paymentIntentId: paymentIntent.id,
+        status: paymentIntent.status,
+        clientSecret: paymentIntent.status === "requires_action" ? paymentIntent.client_secret : undefined,
+        amount: plan.grossAmountCents,
+        currency: "aud",
+      });
+    } catch (sellerError) {
+      console.error(`[STRIPE TEST] Multi-seller finalize: seller ${plan.sellerId} charge failed:`, sellerError.message);
+      // A synchronous decline at confirm:true still creates a real PaymentIntent
+      // on Stripe (with last_payment_error set) — the Node SDK exposes it as
+      // err.payment_intent. Use that real id for dashboard reconciliation;
+      // only fall back to a synthetic id if Stripe didn't return one at all.
+      const failedPaymentIntentId =
+        sellerError.payment_intent?.id || `failed_${order.id}_${plan.sellerId}_${Date.now()}`;
+      await prisma.orderPaymentRecord.create({
+        data: buildDirectChargePaymentRecordData({
+          orderId: order.id,
+          sellerId: plan.sellerId,
+          stripeAccountId: plan.stripeAccountId,
+          stripePaymentIntentId: failedPaymentIntentId,
+          itemTotal: plan.productAmountCents / 100,
+          shippingAmount: plan.shippingAmountCents / 100,
+          commission: plan.commission,
+          grossAmountCents: plan.grossAmountCents,
+          gstAmountCents: plan.gstAmountCents,
+          paymentStatus: "FAILED",
+        }),
+      }).catch(() => {});
+
+      results.push({
+        sellerId: plan.sellerId,
+        stripeAccountId: plan.stripeAccountId,
+        status: "failed",
+        error: sellerError.message,
+      });
+    }
+  }
+  return results;
+}
+
+// STEP 2 — Clone the collected PaymentMethod to each seller's connected
+// account and confirm each seller's own Direct Charge PaymentIntent.
+// POST /api/payments/multi-seller/finalize
+// Body: { orderId }
+// ─────────────────────────────────────────────────────────────────────────────
+exports.finalizeMultiSellerCheckout = async (request, reply) => {
+  try {
+    const userId = request.user.userId;
+    const { orderId } = request.body;
+    if (!orderId) {
+      return reply.status(400).send({ success: false, message: "orderId is required" });
+    }
+
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, userId },
+      include: { multiSellerCheckoutSession: true },
+    });
+    if (!order) {
+      return reply.status(404).send({ success: false, message: "Order not found" });
+    }
+    const session = order.multiSellerCheckoutSession;
+    if (!session) {
+      return reply.status(400).send({ success: false, message: "No multi-seller checkout session for this order" });
+    }
+
+    const sellerPlans = order.shippingAddress?.orderSummary?.multiSellerPlan;
+    if (!Array.isArray(sellerPlans) || !sellerPlans.length) {
+      return reply.status(400).send({ success: false, message: "No seller plan found for this order" });
+    }
+
+    // Idempotent finalize: if already charging/completed, return the
+    // payment records already on file instead of charging sellers twice.
+    if (session.status !== "COLLECTING_PAYMENT_METHOD") {
+      const existingRecords = await prisma.orderPaymentRecord.findMany({ where: { orderId: order.id } });
+      return reply.status(200).send({
+        success: true,
+        orderId: order.id,
+        displayId: order.displayId,
+        idempotent: true,
+        payments: existingRecords.map((r) => ({
+          sellerId: r.sellerId,
+          stripeAccountId: r.stripeAccountId,
+          paymentIntentId: r.stripePaymentIntentId,
+          status: r.paymentStatus,
+        })),
+      });
+    }
+
+    const setupIntent = await stripe.setupIntents.retrieve(session.platformSetupIntentId);
+    if (setupIntent.status !== "succeeded" || !setupIntent.payment_method) {
+      return reply.status(400).send({
+        success: false,
+        message: `Card setup not complete. Stripe SetupIntent status: ${setupIntent.status}`,
+      });
+    }
+    const platformPaymentMethodId = setupIntent.payment_method;
+
+    // Atomically claim the session so a concurrent/duplicate finalize call
+    // can't charge every seller twice (same pattern as claimStripeWebhookEvent).
+    const claimed = await prisma.multiSellerCheckoutSession.updateMany({
+      where: { orderId: order.id, status: "COLLECTING_PAYMENT_METHOD" },
+      data: { status: "CHARGING_SELLERS", platformPaymentMethodId },
+    });
+    if (claimed.count !== 1) {
+      const existingRecords = await prisma.orderPaymentRecord.findMany({ where: { orderId: order.id } });
+      return reply.status(200).send({
+        success: true,
+        orderId: order.id,
+        displayId: order.displayId,
+        idempotent: true,
+        payments: existingRecords.map((r) => ({
+          sellerId: r.sellerId,
+          stripeAccountId: r.stripeAccountId,
+          paymentIntentId: r.stripePaymentIntentId,
+          status: r.paymentStatus,
+        })),
+      });
+    }
+
+    const results = await chargeSellerPlansForConnectedAccounts({
+      order,
+      session,
+      sellerPlans,
+      platformPaymentMethodId,
+      extraMetadata: { userId },
+    });
+
+    const paymentStatus = await aggregateParentPaymentStatus(order.id);
+    const allSucceeded = results.every((r) => r.status === "succeeded");
+    const anySucceeded = results.some((r) => r.status === "succeeded");
+    await prisma.multiSellerCheckoutSession.update({
+      where: { orderId: order.id },
+      data: { status: allSucceeded ? "COMPLETED" : anySucceeded ? "PARTIALLY_COMPLETED" : "FAILED" },
+    });
+
+    return reply.status(200).send({
+      success: true,
+      orderId: order.id,
+      displayId: order.displayId,
+      paymentStatus,
+      payments: results,
+    });
+  } catch (error) {
+    logStripeApiError(error);
+    console.error("❌ finalizeMultiSellerCheckout error:", error);
+    return reply.status(500).send({
+      success: false,
+      message: "Failed to finalize multi-seller checkout",
+      error: error.message,
+    });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // STEP 2 — Confirm payment after Stripe processes it on the frontend
 // POST /api/payments/confirm
 // Body: { paymentIntentId }
@@ -3039,6 +3611,482 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       message: "Failed to create guest payment intent",
       error: error.message,
     });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GUEST — Multi-seller single checkout (mirrors createMultiSellerCheckoutSetup
+// above, no auth — guest identity is the customerEmail on the order, same
+// pattern already used by confirmGuestPayment/getGuestPaymentStatus).
+// POST /api/payments/multi-seller/guest/setup
+// ─────────────────────────────────────────────────────────────────────────────
+exports.createGuestMultiSellerCheckoutSetup = async (request, reply) => {
+  let guestCheckoutApiOperationKey = null;
+  try {
+    const {
+      items,
+      customerName,
+      customerEmail,
+      customerPhone,
+      shippingAddress,
+      shippingMethodId,
+      internationalCountry,
+      gstId,
+      country,
+      city,
+      zipCode,
+      state,
+      mobileNumber,
+      couponCode,
+    } = request.body;
+
+    const effectiveIntlCountry = (internationalCountry || country || '').trim();
+    const isInternational = !!effectiveIntlCountry && effectiveIntlCountry.toLowerCase() !== 'australia';
+
+    if (!items || items.length === 0) {
+      return reply.status(400).send({ success: false, message: "Order items are required" });
+    }
+    if (!customerName || !customerEmail || !customerPhone) {
+      return reply.status(400).send({ success: false, message: "Customer name, email, and phone are required" });
+    }
+    if (!shippingAddress || (!shippingMethodId && !isInternational)) {
+      return reply.status(400).send({ success: false, message: "shippingAddress and a shipping method (or international destination country) are required" });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(customerEmail)) {
+      return reply.status(400).send({ success: false, message: "Invalid email address" });
+    }
+
+    let shippingMethod;
+    let intlZoneEntry = null;
+    if (isInternational) {
+      intlZoneEntry = lookupZone(effectiveIntlCountry);
+      shippingMethod = {
+        id: null,
+        name: `International (${effectiveIntlCountry})`,
+        cost: intlZoneEntry.cost,
+        estimatedDays: '10-20 business days',
+      };
+    } else {
+      shippingMethod = await prisma.shippingMethod.findUnique({ where: { id: shippingMethodId, isActive: true } });
+      if (!shippingMethod) {
+        return reply.status(400).send({ success: false, message: "Invalid or inactive shipping method" });
+      }
+    }
+
+    const cartItems = [];
+    for (const item of items) {
+      const { productId, variantId, quantity } = item;
+      if (!productId || !quantity || quantity < 1) {
+        return reply.status(400).send({ success: false, message: "Invalid item in order" });
+      }
+      const product = await prisma.product.findUnique({ where: { id: productId } });
+      if (!product) {
+        return reply.status(404).send({ success: false, message: `Product ${productId} not found` });
+      }
+      let variant = null;
+      if (variantId) {
+        variant = await prisma.productVariant.findUnique({ where: { id: variantId } });
+        if (!variant) {
+          return reply.status(404).send({ success: false, message: `Variant ${variantId} not found` });
+        }
+        if (variant.stock < quantity) {
+          return reply.status(400).send({ success: false, message: `Insufficient stock for: ${product.title}` });
+        }
+      } else if (product.stock < quantity) {
+        return reply.status(400).send({ success: false, message: `Insufficient stock for: ${product.title}` });
+      }
+      cartItems.push({ product, productVariant: variant, quantity });
+    }
+
+    const cartCalculations = await calculateCartTotals(
+      cartItems,
+      isInternational ? null : shippingMethodId,
+      gstId,
+      isInternational ? intlZoneEntry.cost : null
+    );
+    const originalTotal = parseFloat(cartCalculations.grandTotal);
+
+    // ── Coupon validation — same rules as createGuestPaymentIntent ──────────
+    let appliedCoupon = null;
+    let discountAmount = 0;
+    if (couponCode) {
+      const upper   = couponCode.toUpperCase();
+      const gstRate = parseFloat(cartCalculations.gstPercentage) || 0;
+      const sellerCoupon = await prisma.sellerCoupon.findUnique({ where: { code: upper } });
+      if (sellerCoupon && !sellerCoupon.softDeletedAt) {
+        if (!sellerCoupon.isActive) return reply.status(400).send({ success: false, message: "Coupon is no longer active" });
+        if (new Date() > sellerCoupon.expiresAt) return reply.status(400).send({ success: false, message: "Coupon has expired" });
+        if (sellerCoupon.usageLimit !== null && sellerCoupon.usageCount >= sellerCoupon.usageLimit)
+          return reply.status(400).send({ success: false, message: "Coupon usage limit reached" });
+        discountAmount = calcSellerCouponDiscount(sellerCoupon, cartItems, gstRate);
+        appliedCoupon  = sellerCoupon;
+      } else {
+        const coupon = await prisma.coupon.findUnique({ where: { code: upper } });
+        if (!coupon) return reply.status(400).send({ success: false, message: "Invalid coupon code" });
+        if (!coupon.isActive) return reply.status(400).send({ success: false, message: "Coupon is no longer active" });
+        if (new Date() > coupon.expiresAt) return reply.status(400).send({ success: false, message: "Coupon has expired" });
+        if (coupon.usageLimit !== null && coupon.usageCount >= coupon.usageLimit)
+          return reply.status(400).send({ success: false, message: "Coupon usage limit reached" });
+        if (coupon.minCartValue !== null && originalTotal < coupon.minCartValue)
+          return reply.status(400).send({ success: false, message: `Minimum cart value of $${coupon.minCartValue.toFixed(2)} required` });
+        if (coupon.discountType === "percentage") {
+          discountAmount = parseFloat(((originalTotal * coupon.discountValue) / 100).toFixed(2));
+          if (coupon.maxDiscount !== null) discountAmount = Math.min(discountAmount, coupon.maxDiscount);
+        } else {
+          discountAmount = Math.min(coupon.discountValue, originalTotal);
+        }
+        appliedCoupon = coupon;
+      }
+    }
+
+    const totalAmount = parseFloat((originalTotal - discountAmount).toFixed(2));
+    const amountInCents = Math.round(totalAmount * 100);
+
+    const guestSellerMap = new Map();
+    for (const { product, productVariant, quantity } of cartItems) {
+      const sid = product.sellerId;
+      if (!guestSellerMap.has(sid)) guestSellerMap.set(sid, []);
+      guestSellerMap.get(sid).push({ product, productVariant, quantity });
+    }
+
+    if (guestSellerMap.size <= 1) {
+      return reply.status(400).send({
+        success: false,
+        message: "This cart has a single seller — use /api/payments/guest/create-intent instead.",
+      });
+    }
+
+    const displayId = await generateDisplayId();
+    const normalizedGuestEmail = customerEmail.trim().toLowerCase();
+
+    const guestCheckoutRequestHash = hashOperationPayload({
+      customerEmail: normalizedGuestEmail,
+      customerPhone,
+      amountInCents,
+      shippingMethodId: shippingMethodId || null,
+      gstId: gstId || null,
+      isInternational,
+      effectiveIntlCountry,
+      couponCode: couponCode || null,
+      items: normalizeGuestItemsForOperation(items),
+    });
+    guestCheckoutApiOperationKey = checkoutOperationKey({
+      scope: "guest",
+      subjectId: normalizedGuestEmail,
+      sellerId: "multi-seller",
+      amountInCents,
+      requestHash: guestCheckoutRequestHash,
+    });
+    const guestCheckoutOperation = await claimApiOperation({
+      operationKey: guestCheckoutApiOperationKey,
+      operationType: "GUEST_MULTI_SELLER_SETUP_CREATE",
+      requestHash: guestCheckoutRequestHash,
+      attemptNumber: 1,
+    });
+    if (guestCheckoutOperation.status === "COMPLETED" && guestCheckoutOperation.orderId) {
+      const existingOrder = await prisma.order.findUnique({
+        where: { id: guestCheckoutOperation.orderId },
+        include: { multiSellerCheckoutSession: true },
+      });
+      if (existingOrder?.multiSellerCheckoutSession) {
+        const existingSetupIntent = await stripe.setupIntents.retrieve(
+          existingOrder.multiSellerCheckoutSession.platformSetupIntentId,
+        );
+        return reply.status(200).send({
+          success: true,
+          orderId: existingOrder.id,
+          displayId: existingOrder.displayId,
+          clientSecret: existingSetupIntent.client_secret,
+          amount: amountInCents,
+          displayAmount: totalAmount,
+          currency: "aud",
+          sellerBreakdown: existingOrder.shippingAddress?.orderSummary?.multiSellerPlan || [],
+          idempotent: true,
+        });
+      }
+    }
+    if (!guestCheckoutOperation.claimedNew && guestCheckoutOperation.status === "STARTED") {
+      return reply.status(202).send({ success: true, status: "PAYMENT_CREATION_IN_PROGRESS", idempotent: true });
+    }
+
+    const originalSubtotal = cartItems.reduce(
+      (sum, item) => sum + getItemUnitPrice(item) * Number(item.quantity || 0),
+      0,
+    );
+    const sellerPlans = [];
+    for (const [sellerId, sellerItems] of guestSellerMap) {
+      const { stripeAccountId } = await requireDirectChargeReadySeller(sellerId);
+      const sellerSubtotal = getSellerItemsTotal(sellerItems);
+      const discountShare = originalSubtotal > 0
+        ? Number(discountAmount || 0) * (sellerSubtotal / originalSubtotal)
+        : 0;
+      sellerPlans.push({
+        ...buildSellerDirectChargePlan({ sellerId, items: sellerItems, cartCalculations, discountShare }),
+        stripeAccountId,
+      });
+    }
+
+    const shippingAddressData =
+      typeof shippingAddress === "string"
+        ? { address: shippingAddress }
+        : {
+            ...shippingAddress,
+            orderSummary: {
+              subtotal: cartCalculations.subtotal,
+              subtotalExGST: cartCalculations.subtotalExGST,
+              shippingCost: cartCalculations.shippingCost,
+              totalShippingCost: cartCalculations.totalShippingCost,
+              sellerCount: cartCalculations.sellerCount,
+              gstPercentage: cartCalculations.gstPercentage,
+              gstAmount: cartCalculations.gstAmount,
+              grandTotal: cartCalculations.grandTotal,
+              couponCode: appliedCoupon ? appliedCoupon.code : null,
+              discountAmount,
+              finalTotal: totalAmount,
+              gstInclusive: true,
+              shippingMethod: {
+                id: shippingMethod.id,
+                name: shippingMethod.name,
+                cost: shippingMethod.cost,
+                estimatedDays: shippingMethod.estimatedDays,
+              },
+              gstDetails: cartCalculations.gstDetails,
+            },
+          };
+
+    const { order, sellerBreakdown } = await prisma.$transaction(async (tx) => {
+      const parentOrder = await tx.order.create({
+        data: {
+          displayId,
+          totalAmount,
+          originalTotal,
+          couponCode: appliedCoupon ? appliedCoupon.code : null,
+          discountAmount: discountAmount > 0 ? discountAmount : null,
+          shippingAddress: shippingAddressData,
+          shippingAddressLine:
+            typeof shippingAddress === "string"
+              ? shippingAddress
+              : shippingAddress?.shippingAddress || shippingAddress?.addressLine || shippingAddress?.address || "",
+          shippingCity: city || shippingAddress?.city || "",
+          shippingState: state || shippingAddress?.state || "",
+          shippingZipCode: zipCode || shippingAddress?.zipCode || "",
+          shippingCountry: country || shippingAddress?.country || "Australia",
+          shippingPhone: mobileNumber || customerPhone,
+          paymentMethod: "Credit/Debit Card",
+          status: "PENDING",
+          overallStatus: "PENDING",
+          paymentStatus: "PENDING",
+          customerName,
+          customerEmail,
+          customerPhone: mobileNumber || customerPhone || "",
+        },
+      });
+
+      const breakdown = [];
+      for (const plan of sellerPlans) {
+        const subOrderSubtotal = plan.discountedProductAmount + plan.shippingAmount;
+        const subOrder = await tx.subOrder.create({
+          data: { parentOrderId: parentOrder.id, sellerId: plan.sellerId, subtotal: subOrderSubtotal, status: "PENDING" },
+        });
+        await tx.orderItem.createMany({
+          data: plan.items.map((i) => ({
+            subOrderId: subOrder.id,
+            productId: i.product.id,
+            variantId: i.productVariant?.id || null,
+            quantity: i.quantity,
+            price: getItemUnitPrice(i),
+          })),
+        });
+        breakdown.push({
+          sellerId: plan.sellerId,
+          subOrderId: subOrder.id,
+          stripeAccountId: plan.stripeAccountId,
+          productAmountCents: plan.productAmountCents,
+          shippingAmountCents: plan.shippingAmountCents,
+          gstAmountCents: plan.gstAmountCents,
+          grossAmountCents: plan.grossAmountCents,
+          commission: plan.commission,
+        });
+      }
+
+      await tx.order.update({
+        where: { id: parentOrder.id },
+        data: {
+          shippingAddress: {
+            ...shippingAddressData,
+            orderSummary: { ...shippingAddressData.orderSummary, multiSellerPlan: breakdown },
+          },
+        },
+      });
+
+      return { order: parentOrder, sellerBreakdown: breakdown };
+    });
+
+    const platformCustomer = await stripe.customers.create({
+      email: customerEmail,
+      name: customerName,
+      metadata: { orderId: order.id, displayId: order.displayId, isGuest: "true" },
+    }, { idempotencyKey: `${guestCheckoutApiOperationKey}:customer` });
+
+    const setupIntent = await stripe.setupIntents.create({
+      customer: platformCustomer.id,
+      automatic_payment_methods: { enabled: true },
+      metadata: {
+        orderId: order.id,
+        displayId: order.displayId,
+        isGuest: "true",
+        customerEmail,
+        paymentFlow: "DIRECT_CHARGE_MULTI_SELLER",
+      },
+    }, { idempotencyKey: `${guestCheckoutApiOperationKey}:setup-intent` });
+
+    await prisma.multiSellerCheckoutSession.create({
+      data: {
+        orderId: order.id,
+        platformCustomerId: platformCustomer.id,
+        platformSetupIntentId: setupIntent.id,
+        status: "COLLECTING_PAYMENT_METHOD",
+      },
+    });
+
+    await markApiOperationCompleted({ operationKey: guestCheckoutApiOperationKey, stripePaymentIntentId: null, orderId: order.id });
+
+    return reply.status(200).send({
+      success: true,
+      orderId: order.id,
+      displayId: order.displayId,
+      clientSecret: setupIntent.client_secret,
+      amount: amountInCents,
+      displayAmount: totalAmount,
+      currency: "aud",
+      paymentFlow: "DIRECT_CHARGE_MULTI_SELLER",
+      sellerBreakdown,
+      orderSummary: {
+        subtotal: cartCalculations.subtotal,
+        subtotalExGST: cartCalculations.subtotalExGST,
+        shippingCost: cartCalculations.shippingCost,
+        totalShippingCost: cartCalculations.totalShippingCost,
+        sellerCount: cartCalculations.sellerCount,
+        gstAmount: cartCalculations.gstAmount,
+        grandTotal: cartCalculations.grandTotal,
+        couponCode: appliedCoupon ? appliedCoupon.code : null,
+        discountAmount,
+        finalTotal: totalAmount,
+      },
+    });
+  } catch (error) {
+    if (guestCheckoutApiOperationKey) {
+      try { await markApiOperationFailed({ operationKey: guestCheckoutApiOperationKey, error }); } catch (_) {}
+    }
+    if (error?.statusCode === 409 && error?.code) {
+      return reply.status(409).send({ success: false, code: error.code, message: error.message });
+    }
+    logStripeApiError(error);
+    console.error("❌ createGuestMultiSellerCheckoutSetup error:", error);
+    return reply.status(500).send({ success: false, message: "Failed to set up guest multi-seller checkout", error: error.message });
+  }
+};
+
+// GUEST — finalize (mirrors finalizeMultiSellerCheckout above). Ownership is
+// verified via customerEmail instead of a JWT userId, same trust model as
+// confirmGuestPayment/getGuestPaymentStatus elsewhere in this file.
+// POST /api/payments/multi-seller/guest/finalize
+// Body: { orderId, customerEmail }
+// ─────────────────────────────────────────────────────────────────────────────
+exports.finalizeGuestMultiSellerCheckout = async (request, reply) => {
+  try {
+    const { orderId, customerEmail } = request.body;
+    if (!orderId || !customerEmail) {
+      return reply.status(400).send({ success: false, message: "orderId and customerEmail are required" });
+    }
+
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, userId: null },
+      include: { multiSellerCheckoutSession: true },
+    });
+    if (!order || order.customerEmail.trim().toLowerCase() !== customerEmail.trim().toLowerCase()) {
+      return reply.status(404).send({ success: false, message: "Guest order not found" });
+    }
+    const session = order.multiSellerCheckoutSession;
+    if (!session) {
+      return reply.status(400).send({ success: false, message: "No multi-seller checkout session for this order" });
+    }
+
+    const sellerPlans = order.shippingAddress?.orderSummary?.multiSellerPlan;
+    if (!Array.isArray(sellerPlans) || !sellerPlans.length) {
+      return reply.status(400).send({ success: false, message: "No seller plan found for this order" });
+    }
+
+    if (session.status !== "COLLECTING_PAYMENT_METHOD") {
+      const existingRecords = await prisma.orderPaymentRecord.findMany({ where: { orderId: order.id } });
+      return reply.status(200).send({
+        success: true,
+        orderId: order.id,
+        displayId: order.displayId,
+        idempotent: true,
+        payments: existingRecords.map((r) => ({
+          sellerId: r.sellerId,
+          stripeAccountId: r.stripeAccountId,
+          paymentIntentId: r.stripePaymentIntentId,
+          status: r.paymentStatus,
+        })),
+      });
+    }
+
+    const setupIntent = await stripe.setupIntents.retrieve(session.platformSetupIntentId);
+    if (setupIntent.status !== "succeeded" || !setupIntent.payment_method) {
+      return reply.status(400).send({ success: false, message: `Card setup not complete. Stripe SetupIntent status: ${setupIntent.status}` });
+    }
+    const platformPaymentMethodId = setupIntent.payment_method;
+
+    const claimed = await prisma.multiSellerCheckoutSession.updateMany({
+      where: { orderId: order.id, status: "COLLECTING_PAYMENT_METHOD" },
+      data: { status: "CHARGING_SELLERS", platformPaymentMethodId },
+    });
+    if (claimed.count !== 1) {
+      const existingRecords = await prisma.orderPaymentRecord.findMany({ where: { orderId: order.id } });
+      return reply.status(200).send({
+        success: true,
+        orderId: order.id,
+        displayId: order.displayId,
+        idempotent: true,
+        payments: existingRecords.map((r) => ({
+          sellerId: r.sellerId,
+          stripeAccountId: r.stripeAccountId,
+          paymentIntentId: r.stripePaymentIntentId,
+          status: r.paymentStatus,
+        })),
+      });
+    }
+
+    const results = await chargeSellerPlansForConnectedAccounts({
+      order,
+      session,
+      sellerPlans,
+      platformPaymentMethodId,
+      extraMetadata: { isGuest: "true", customerEmail: order.customerEmail },
+    });
+
+    const paymentStatus = await aggregateParentPaymentStatus(order.id);
+    const allSucceeded = results.every((r) => r.status === "succeeded");
+    const anySucceeded = results.some((r) => r.status === "succeeded");
+    await prisma.multiSellerCheckoutSession.update({
+      where: { orderId: order.id },
+      data: { status: allSucceeded ? "COMPLETED" : anySucceeded ? "PARTIALLY_COMPLETED" : "FAILED" },
+    });
+
+    return reply.status(200).send({
+      success: true,
+      orderId: order.id,
+      displayId: order.displayId,
+      paymentStatus,
+      payments: results,
+    });
+  } catch (error) {
+    logStripeApiError(error);
+    console.error("❌ finalizeGuestMultiSellerCheckout error:", error);
+    return reply.status(500).send({ success: false, message: "Failed to finalize guest multi-seller checkout", error: error.message });
   }
 };
 

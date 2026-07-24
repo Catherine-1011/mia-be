@@ -409,8 +409,17 @@ function buildDirectChargeStripeMetadata({
   shippingAmountCents,
   gstAmountCents,
   commission,
+  // Optional, additive fields — every existing caller keeps its exact prior
+  // output unless it explicitly passes these. Callers override `paymentFlow`
+  // via spread afterwards where a more specific value applies (e.g. the
+  // multi-seller flows use DIRECT_CHARGE_MULTI_SELLER); the default here is
+  // intentionally left as "DIRECT_CHARGE" for backward compatibility with the
+  // legacy one-shot multi-seller endpoint's existing test coverage.
+  subOrderId = null,
+  isGuest = false,
+  customerEmail = null,
 }) {
-  return {
+  const metadata = {
     orderId: order.id,
     displayOrderId: order.displayId || order.id,
     sellerId,
@@ -421,7 +430,12 @@ function buildDirectChargeStripeMetadata({
     gstAmount: (Number(gstAmountCents || 0) / 100).toFixed(2),
     commissionRate: String(commission?.commissionRate || "10%"),
     commissionAmount: (Number(commission?.applicationFeeAmount || 0) / 100).toFixed(2),
+    guestCheckout: isGuest ? "true" : "false",
+    environment: process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") ? "test" : "live",
   };
+  if (subOrderId) metadata.subOrderId = subOrderId;
+  if (customerEmail) metadata.customerEmail = customerEmail;
+  return metadata;
 }
 
 async function aggregateParentPaymentStatus(orderId, tx = prisma) {
@@ -1231,8 +1245,27 @@ exports.createPaymentIntent = async (request, reply) => {
     });
 
     if (paymentIntentStripeAccountId) {
+      // Reuse the shared Direct Charge metadata builder (same one the
+      // multi-seller flows use) so single-seller PaymentIntents carry the
+      // same reconciliation fields — this is metadata only, no amount or
+      // application_fee_amount change.
+      const directChargeMetadata = directChargePaymentRecord
+        ? buildDirectChargeStripeMetadata({
+            order,
+            sellerId: directChargePaymentRecord.sellerId,
+            sellerStripeAccountId: directChargePaymentRecord.stripeAccountId,
+            productAmountCents: moneyToMinorUnits(directChargePaymentRecord.itemTotal),
+            shippingAmountCents: moneyToMinorUnits(directChargePaymentRecord.shippingAmount),
+            gstAmountCents: directChargePaymentRecord.gstAmountCents,
+            commission: directChargePaymentRecord.commission,
+            isGuest: false,
+            customerEmail: order.customerEmail,
+          })
+        : {};
       await stripe.paymentIntents.update(paymentIntent.id, {
         metadata: {
+          ...directChargeMetadata,
+          paymentFlow: "DIRECT_CHARGE_SINGLE_SELLER",
           userId,
           cartId:       cart.id,
           orderId:      order.id,
@@ -1691,6 +1724,9 @@ async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPla
         shippingAmountCents: plan.shippingAmountCents,
         gstAmountCents: plan.gstAmountCents,
         commission: plan.commission,
+        subOrderId: plan.subOrderId || null,
+        isGuest: extraMetadata.isGuest === "true",
+        customerEmail: extraMetadata.customerEmail || order.customerEmail || null,
       });
 
       // Plain Direct Charge PaymentIntent — no transfer_data, no
@@ -3525,8 +3561,27 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     });
 
     if (guestPaymentIntentStripeAccountId) {
+      // Reuse the shared Direct Charge metadata builder (same one the
+      // multi-seller flows use) so single-seller guest PaymentIntents carry
+      // the same reconciliation fields — metadata only, no amount or
+      // application_fee_amount change.
+      const guestDirectChargeMetadata = guestDirectChargePaymentRecord
+        ? buildDirectChargeStripeMetadata({
+            order,
+            sellerId: guestDirectChargePaymentRecord.sellerId,
+            sellerStripeAccountId: guestDirectChargePaymentRecord.stripeAccountId,
+            productAmountCents: moneyToMinorUnits(guestDirectChargePaymentRecord.itemTotal),
+            shippingAmountCents: moneyToMinorUnits(guestDirectChargePaymentRecord.shippingAmount),
+            gstAmountCents: guestDirectChargePaymentRecord.gstAmountCents,
+            commission: guestDirectChargePaymentRecord.commission,
+            isGuest: true,
+            customerEmail,
+          })
+        : {};
       await stripe.paymentIntents.update(paymentIntent.id, {
         metadata: {
+          ...guestDirectChargeMetadata,
+          paymentFlow: "DIRECT_CHARGE_SINGLE_SELLER",
           isGuest:      "true",
           customerEmail,
           orderId:      order.id,

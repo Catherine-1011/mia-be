@@ -1252,6 +1252,80 @@ test("one seller cart succeeds for Phase 2 backend guard", async () => {
   assert.equal(prisma._orderCreateCalls.length, 1);
 });
 
+test("single-seller Direct Charge PaymentIntent metadata includes reconciliation fields", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_ready",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+    sellerCount: 1,
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_ready",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+    },
+  });
+
+  const reply = await callCreatePaymentIntent(controller);
+
+  assert.equal(reply.statusCode, 200);
+  assert.equal(stripeMock.paymentIntents.updateCalls.length, 1);
+  const metadata = stripeMock.paymentIntents.updateCalls[0].body.metadata;
+  assert.equal(metadata.orderId, reply.payload.orderId);
+  assert.equal(metadata.sellerId, "seller_1");
+  assert.equal(metadata.sellerStripeAccountId, "acct_ready");
+  assert.equal(metadata.paymentFlow, "DIRECT_CHARGE_SINGLE_SELLER");
+  assert.ok(metadata.productAmount);
+  assert.ok(metadata.shippingAmount);
+  assert.ok(metadata.gstAmount);
+  assert.ok(metadata.commissionRate);
+  assert.ok(metadata.commissionAmount);
+  assert.equal(metadata.guestCheckout, "false");
+});
+
+test("guest single-seller Direct Charge PaymentIntent metadata includes reconciliation fields", async () => {
+  const prisma = makePrisma({
+    sellerProfile: {
+      stripeAccountId: "acct_ready",
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+    },
+    sellerCount: 1,
+  });
+  const { controller, stripeMock } = loadPaymentController({
+    prisma,
+    stripeAccount: {
+      id: "acct_ready",
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { card_payments: "active" },
+      requirements: { currently_due: [] },
+    },
+  });
+
+  const reply = await callCreateGuestPaymentIntent(controller);
+
+  assert.equal(reply.statusCode, 200);
+  assert.equal(stripeMock.paymentIntents.updateCalls.length, 1);
+  const metadata = stripeMock.paymentIntents.updateCalls[0].body.metadata;
+  assert.equal(metadata.sellerId, "seller_1");
+  assert.equal(metadata.sellerStripeAccountId, "acct_ready");
+  assert.equal(metadata.paymentFlow, "DIRECT_CHARGE_SINGLE_SELLER");
+  assert.ok(metadata.productAmount);
+  assert.ok(metadata.shippingAmount);
+  assert.ok(metadata.gstAmount);
+  assert.ok(metadata.commissionRate);
+  assert.ok(metadata.commissionAmount);
+  assert.equal(metadata.guestCheckout, "true");
+  assert.equal(metadata.customerEmail, "guest@example.com");
+});
+
 test("two seller cart creates one Direct Charge PaymentIntent and payment record per seller", async () => {
   const prisma = makePrisma({
     sellerProfile: {

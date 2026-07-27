@@ -3,6 +3,7 @@ const {
   sendOrderConfirmationEmail,
   sendFinanceOrderInvoiceEmail,
   sendSellerPaymentReceivedEmail,
+  sendAdminNewOrderEmail,
 } = require("./emailService");
 const { notifyAdminNewOrder, notifySellerNewOrder } = require("../controllers/notification");
 const { generateInvoiceBuffer } = require("../controllers/orders");
@@ -58,6 +59,17 @@ function orderInclude() {
   };
 }
 
+function assertEmailSuccess(result, context) {
+  if (!result || result.success !== true) {
+    const error = new Error(
+      result?.error || `Email provider returned an unsuccessful result (${context})`
+    );
+    error.code = result?.code;
+    error.status = result?.status;
+    throw error;
+  }
+}
+
 function productTitle(item) {
   return item.product?.title || "Product";
 }
@@ -67,9 +79,35 @@ function itemPrice(item) {
 }
 
 function sellerIdsFor(order, payload) {
+  if (payload?.sellerId) return [payload.sellerId];
   const fromPayload = Array.isArray(payload?.sellerIds) ? payload.sellerIds : [];
   if (fromPayload.length) return [...new Set(fromPayload.filter(Boolean))];
   return [...new Set(order.items.map((item) => item.product?.sellerId).filter(Boolean))];
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function isValidEmailAddress(email) {
+  return typeof email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+async function updateJobPayload(job, payloadPatch) {
+  const payload = { ...(job.payload || {}), ...payloadPatch };
+  job.payload = payload;
+  await prisma.paymentCompletionOutbox.update({
+    where: { id: job.id },
+    data: { payload },
+  });
+}
+
+function orderItemsForEmail(order) {
+  return order.items.map((item) => ({
+    title: productTitle(item),
+    quantity: item.quantity,
+    price: itemPrice(item),
+  }));
 }
 
 function buildOrderDetails(order) {
@@ -151,18 +189,21 @@ async function processJob(job) {
   if (job.type === "CUSTOMER_CONFIRMATION") {
     if (!orderDetails.customerEmail) return;
     const invoicePDFBuffer = await generateInvoiceBuffer(order);
-    await sendOrderConfirmationEmail(orderDetails.customerEmail, customerName, orderDetails, invoicePDFBuffer);
+    const result = await sendOrderConfirmationEmail(orderDetails.customerEmail, customerName, orderDetails, invoicePDFBuffer);
+    assertEmailSuccess(result, "customer confirmation");
     return;
   }
 
   if (job.type === "FINANCE_INVOICE") {
     const invoicePDFBuffer = await generateInvoiceBuffer(order);
-    await sendFinanceOrderInvoiceEmail(order, invoicePDFBuffer);
+    const result = await sendFinanceOrderInvoiceEmail(order, invoicePDFBuffer);
+    assertEmailSuccess(result, "finance invoice");
     return;
   }
 
   if (job.type === "ADMIN_NEW_ORDER_NOTIFICATION") {
-    const sellerNames = sellerIdsFor(order, job.payload)
+    const payload = job.payload || {};
+    const sellerNames = sellerIdsFor(order, payload)
       .map((sellerId) => {
         const item = order.items.find((candidate) => candidate.product?.sellerId === sellerId);
         return item?.product?.seller?.sellerProfile?.storeName
@@ -170,13 +211,67 @@ async function processJob(job) {
           || item?.product?.seller?.name
           || "Unknown";
       });
-    await notifyAdminNewOrder(order.id, {
+    const adminNotificationDetails = {
       customerName,
       sellerName: sellerNames.join(", ") || "Unknown",
       totalAmount: Number(order.totalAmount || 0).toFixed(2),
       itemCount: order.items.length,
       productNames: order.items.map(productTitle),
+    };
+
+    if (payload.adminNewOrderNotificationCreated !== true) {
+      await notifyAdminNewOrder(order.id, adminNotificationDetails);
+      await updateJobPayload(job, { adminNewOrderNotificationCreated: true });
+    }
+
+    const admins = await prisma.user.findMany({
+      where: {
+        role: { in: ["ADMIN", "SUPER_ADMIN"] },
+        isDeleted: false,
+      },
+      select: { id: true, email: true, name: true },
     });
+
+    const deliveredAdminIds = new Set(asArray(job.payload?.adminNewOrderEmailDeliveredAdminIds));
+    const failures = [];
+    const adminEmailDetails = {
+      displayId: order.displayId || order.id,
+      customerName,
+      customerEmail: orderDetails.customerEmail,
+      customerPhone: orderDetails.customerPhone,
+      sellerNames: sellerNames.join(", ") || "Unknown",
+      totalAmount: Number(order.totalAmount || 0),
+      paymentMethod: order.paymentMethod || "STRIPE",
+      items: orderItemsForEmail(order),
+    };
+
+    for (const admin of admins) {
+      if (!admin?.id) continue;
+      if (deliveredAdminIds.has(admin.id)) continue;
+      if (!isValidEmailAddress(admin.email)) {
+        console.warn("[PaymentCompletionOutbox] admin new order email skipped: missing or invalid recipient", {
+          jobId: job.id,
+          orderId: order.id,
+          adminId: admin.id,
+        });
+        continue;
+      }
+
+      const result = await sendAdminNewOrderEmail(admin.email, admin.name || "Admin", adminEmailDetails);
+      if (!result || result.success !== true) {
+        failures.push(`${admin.id}: ${result?.error || "unknown error"}`);
+        continue;
+      }
+
+      deliveredAdminIds.add(admin.id);
+      await updateJobPayload(job, {
+        adminNewOrderEmailDeliveredAdminIds: [...deliveredAdminIds],
+      });
+    }
+
+    if (failures.length) {
+      throw new Error(`Admin new order email failures: ${failures.join("; ")}`);
+    }
     return;
   }
 
@@ -195,17 +290,47 @@ async function processJob(job) {
   }
 
   if (job.type === "SELLER_PAYMENT_NOTIFICATION") {
+    const deliveredSellerIds = new Set(asArray(job.payload?.sellerPaymentEmailDeliveredSellerIds));
+    const failures = [];
     for (const sellerId of sellerIdsFor(order, job.payload)) {
+      if (deliveredSellerIds.has(sellerId)) continue;
       const sellerItems = order.items.filter((item) => item.product?.sellerId === sellerId);
       const seller = sellerItems[0]?.product?.seller;
-      if (!seller?.email) continue;
+      if (!sellerItems.length) {
+        console.warn("[PaymentCompletionOutbox] seller payment email skipped: seller has no order items", {
+          jobId: job.id,
+          orderId: order.id,
+          sellerId,
+        });
+        continue;
+      }
+      if (!isValidEmailAddress(seller?.email)) {
+        console.warn("[PaymentCompletionOutbox] seller payment email skipped: missing or invalid recipient", {
+          jobId: job.id,
+          orderId: order.id,
+          sellerId,
+        });
+        continue;
+      }
       const amount = sellerItems.reduce((sum, item) => sum + itemPrice(item) * item.quantity, 0);
-      await sendSellerPaymentReceivedEmail(seller.email, seller.name || "Seller", {
+      const result = await sendSellerPaymentReceivedEmail(seller.email, seller.name || "Seller", {
         orderId: order.id,
         orderDisplayId: order.displayId || order.id,
         amount,
         currency: "AUD",
       });
+      if (!result || result.success !== true) {
+        failures.push(`${seller.email}: ${result?.error || "unknown error"}`);
+        continue;
+      }
+
+      deliveredSellerIds.add(sellerId);
+      await updateJobPayload(job, {
+        sellerPaymentEmailDeliveredSellerIds: [...deliveredSellerIds],
+      });
+    }
+    if (failures.length) {
+      throw new Error(`Seller payment notification email failures: ${failures.join("; ")}`);
     }
     return;
   }

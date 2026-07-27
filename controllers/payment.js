@@ -554,6 +554,8 @@ function buildPaymentCompletionOutboxRows({ order, paymentIntentId, sellerIds })
   return rows;
 }
 
+exports.buildPaymentCompletionOutboxRows = buildPaymentCompletionOutboxRows;
+
 function directChargeReadinessError(code, detail = null) {
   const error = new Error(DIRECT_CHARGE_READINESS_MESSAGES[code] || DIRECT_CHARGE_READINESS_MESSAGES.SELLER_LOOKUP_FAILED);
   error.code = code;

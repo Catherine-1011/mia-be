@@ -2934,6 +2934,14 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
   };
 
   try {
+    if (orderDetails.invoicePDFBuffer) {
+      msg.attachments = [{
+        content: orderDetails.invoicePDFBuffer.toString('base64'),
+        filename: `invoice-${orderDetails.displayId}.pdf`,
+        type: 'application/pdf',
+        disposition: 'attachment'
+      }];
+    }
     await sgMail.send(msg);
     return { success: true };
   } catch (error) {
@@ -4800,7 +4808,7 @@ const sendNewsletterSubscriptionAlertEmail = async ({ subscribedEmail, subscribe
 // ─── Seller: payment received notification ──────────────────────────────────
 // Sent after a verified payment completion. Direct Charge orders do not create
 // a Stripe Transfer; seller funds are on the connected account charge.
-const sendSellerPaymentReceivedEmail = async (sellerEmail, sellerName, { orderId, orderDisplayId, amount, currency = 'AUD' } = {}) => {
+const sendSellerPaymentReceivedEmail = async (sellerEmail, sellerName, { orderId, orderDisplayId, amount, currency = 'AUD', invoicePDFBuffer } = {}) => {
   if (isDevelopmentMode) {
     return { success: true };
   }
@@ -4871,6 +4879,15 @@ const sendSellerPaymentReceivedEmail = async (sellerEmail, sellerName, { orderId
       </html>
     `,
   };
+
+  if (invoicePDFBuffer) {
+    msg.attachments = [{
+      content: invoicePDFBuffer.toString('base64'),
+      filename: `invoice-${orderDisplayId || orderId}.pdf`,
+      type: 'application/pdf',
+      disposition: 'attachment'
+    }];
+  }
 
   return sendWithFallback(msg, 'Seller Payment Received Email');
 };

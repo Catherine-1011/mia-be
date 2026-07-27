@@ -70,6 +70,12 @@ function assertEmailSuccess(result, context) {
   }
 }
 
+function assertValidInvoiceBuffer(buffer, context) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error(`Invoice PDF generation returned an invalid buffer (${context})`);
+  }
+}
+
 function productTitle(item) {
   return item.product?.title || "Product";
 }
@@ -139,6 +145,49 @@ function buildOrderDetails(order) {
   };
 }
 
+function sellerEmailDetails(order, orderDetails, sellerId, sellerItems) {
+  const sellerSubOrder = order.subOrders?.find((sub) => sub.sellerId === sellerId || sub.seller?.id === sellerId);
+  const sellerShipping = parseFloat(order.shippingAddress?.orderSummary?.shippingCost || 0);
+  const itemTotal = sellerItems.reduce((sum, item) => sum + itemPrice(item) * item.quantity, 0);
+  const gstPct = parseFloat(order.shippingAddress?.orderSummary?.gstPercentage || 10);
+  const sellerGstAmount = itemTotal * (gstPct / (100 + gstPct));
+  const sellerSubtotalExGST = itemTotal - sellerGstAmount;
+
+  return {
+    ...orderDetails,
+    isSellerCopy: true,
+    subOrderId: sellerSubOrder?.id,
+    products: sellerItems.map((item) => ({
+      title: productTitle(item),
+      quantity: item.quantity,
+      price: itemPrice(item),
+    })),
+    totalAmount: itemTotal + sellerShipping,
+    orderSummary: {
+      ...(order.shippingAddress?.orderSummary || {}),
+      subtotal: itemTotal,
+      subtotalExGST: sellerSubtotalExGST,
+      gstAmount: sellerGstAmount,
+      shippingCost: sellerShipping,
+    },
+  };
+}
+
+function sellerInvoiceShape(order, sellerId, sellerItems, sellerDetails) {
+  const sellerSubOrder = order.subOrders?.find((sub) => sub.sellerId === sellerId || sub.seller?.id === sellerId);
+  return {
+    ...order,
+    id: sellerSubOrder?.id || order.id,
+    displayId: sellerSubOrder?.subDisplayId || sellerSubOrder?.id || order.displayId || order.id,
+    subDisplayId: sellerSubOrder?.subDisplayId,
+    totalAmount: sellerDetails.totalAmount,
+    items: sellerItems.map((item) => ({
+      ...item,
+      price: itemPrice(item),
+    })),
+  };
+}
+
 async function loadOrder(orderId) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -189,6 +238,7 @@ async function processJob(job) {
   if (job.type === "CUSTOMER_CONFIRMATION") {
     if (!orderDetails.customerEmail) return;
     const invoicePDFBuffer = await generateInvoiceBuffer(order);
+    assertValidInvoiceBuffer(invoicePDFBuffer, "customer confirmation");
     const result = await sendOrderConfirmationEmail(orderDetails.customerEmail, customerName, orderDetails, invoicePDFBuffer);
     assertEmailSuccess(result, "customer confirmation");
     return;
@@ -196,6 +246,7 @@ async function processJob(job) {
 
   if (job.type === "FINANCE_INVOICE") {
     const invoicePDFBuffer = await generateInvoiceBuffer(order);
+    assertValidInvoiceBuffer(invoicePDFBuffer, "finance invoice");
     const result = await sendFinanceOrderInvoiceEmail(order, invoicePDFBuffer);
     assertEmailSuccess(result, "finance invoice");
     return;
@@ -244,6 +295,9 @@ async function processJob(job) {
       paymentMethod: order.paymentMethod || "STRIPE",
       items: orderItemsForEmail(order),
     };
+    const invoicePDFBuffer = await generateInvoiceBuffer(order);
+    assertValidInvoiceBuffer(invoicePDFBuffer, "admin new order");
+    adminEmailDetails.invoicePDFBuffer = invoicePDFBuffer;
 
     for (const admin of admins) {
       if (!admin?.id) continue;
@@ -313,11 +367,15 @@ async function processJob(job) {
         continue;
       }
       const amount = sellerItems.reduce((sum, item) => sum + itemPrice(item) * item.quantity, 0);
+      const sellerDetails = sellerEmailDetails(order, orderDetails, sellerId, sellerItems);
+      const invoicePDFBuffer = await generateInvoiceBuffer(sellerInvoiceShape(order, sellerId, sellerItems, sellerDetails));
+      assertValidInvoiceBuffer(invoicePDFBuffer, `seller payment notification ${sellerId}`);
       const result = await sendSellerPaymentReceivedEmail(seller.email, seller.name || "Seller", {
         orderId: order.id,
         orderDisplayId: order.displayId || order.id,
         amount,
         currency: "AUD",
+        invoicePDFBuffer,
       });
       if (!result || result.success !== true) {
         failures.push(`${seller.email}: ${result?.error || "unknown error"}`);
@@ -351,13 +409,26 @@ async function processPaymentCompletionOutboxOnce() {
       orderBy: { createdAt: "asc" },
       take: OUTBOX_BATCH_SIZE,
     });
+    if (jobs.length) {
+      console.log("[PaymentCompletionOutbox] jobs found", { count: jobs.length });
+    }
 
     for (const job of jobs) {
       const claimed = await claimJob(job);
       if (!claimed) continue;
+      console.log("[PaymentCompletionOutbox] job claimed", {
+        jobId: job.id,
+        orderId: job.orderId,
+        type: job.type,
+      });
       try {
         await processJob(job);
         await markProcessed(job.id);
+        console.log("[PaymentCompletionOutbox] job processed", {
+          jobId: job.id,
+          orderId: job.orderId,
+          type: job.type,
+        });
         processed += 1;
       } catch (error) {
         console.error("[PaymentCompletionOutbox] job failed", {
@@ -377,10 +448,15 @@ async function processPaymentCompletionOutboxOnce() {
 
 function startPaymentCompletionOutboxProcessor() {
   if (process.env.PAYMENT_OUTBOX_WORKER_ENABLED === "false") {
-    console.log("[PaymentCompletionOutbox] worker disabled");
+    console.log("[PaymentCompletionOutbox] worker disabled", { enabled: false });
     return null;
   }
   if (intervalHandle) return intervalHandle;
+  console.log("[PaymentCompletionOutbox] worker started", {
+    intervalMs: OUTBOX_INTERVAL_MS,
+    batchSize: OUTBOX_BATCH_SIZE,
+    maxAttempts: OUTBOX_MAX_ATTEMPTS,
+  });
 
   setTimeout(() => {
     processPaymentCompletionOutboxOnce().catch((error) => {

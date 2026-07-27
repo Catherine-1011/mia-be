@@ -106,7 +106,7 @@ function makeGuestOrder(overrides = {}) {
   };
 }
 
-function loadProcessor({ ordersById, jobs, emailResults = {}, notificationImpls = {}, admins = [ADMIN_A, ADMIN_B] } = {}) {
+function loadProcessor({ ordersById, jobs, emailResults = {}, notificationImpls = {}, admins = [ADMIN_A, ADMIN_B], invoiceImpl } = {}) {
   resetModules();
   const jobMap = new Map(jobs.map((job) => [job.id, {
     attemptCount: 0,
@@ -163,16 +163,16 @@ function loadProcessor({ ordersById, jobs, emailResults = {}, notificationImpls 
   require.cache[prismaPath] = { exports: prisma };
   require.cache[emailPath] = {
     exports: {
-      sendOrderConfirmationEmail: async (email, name, details) => {
-        calls.customerEmail.push({ email, name, isSuperAdminCopy: !!details.isSuperAdminCopy });
+      sendOrderConfirmationEmail: async (email, name, details, invoicePDFBuffer) => {
+        calls.customerEmail.push({ email, name, isSuperAdminCopy: !!details.isSuperAdminCopy, invoicePDFBuffer });
         return nextResult("sendOrderConfirmationEmail");
       },
-      sendFinanceOrderInvoiceEmail: async (order) => {
-        calls.financeEmail.push({ orderId: order.id });
+      sendFinanceOrderInvoiceEmail: async (order, invoicePDFBuffer) => {
+        calls.financeEmail.push({ orderId: order.id, invoicePDFBuffer });
         return nextResult("sendFinanceOrderInvoiceEmail");
       },
       sendSellerPaymentReceivedEmail: async (email, name, details) => {
-        calls.sellerEmail.push({ email, name, amount: details.amount });
+        calls.sellerEmail.push({ email, name, amount: details.amount, invoicePDFBuffer: details.invoicePDFBuffer });
         return nextResult("sendSellerPaymentReceivedEmail");
       },
       sendAdminNewOrderEmail: async (email, name, details) => {
@@ -195,9 +195,9 @@ function loadProcessor({ ordersById, jobs, emailResults = {}, notificationImpls 
   };
   require.cache[ordersPath] = {
     exports: {
-      generateInvoiceBuffer: async () => {
+      generateInvoiceBuffer: async (order) => {
         calls.invoice += 1;
-        return Buffer.from("pdf");
+        return invoiceImpl ? invoiceImpl(order) : Buffer.from("pdf");
       },
     },
   };
@@ -289,13 +289,17 @@ test("a successful payment creates customer, finance, admin, and seller job outc
   assert.equal(result.processed, 5);
   for (const job of jobs.values()) assert.equal(job.status, "PROCESSED");
   assert.equal(calls.customerEmail.length, 1);
+  assert.ok(Buffer.isBuffer(calls.customerEmail[0].invoicePDFBuffer));
   assert.equal(calls.financeEmail.length, 1);
+  assert.ok(Buffer.isBuffer(calls.financeEmail[0].invoicePDFBuffer));
   assert.equal(calls.notifyAdmin.length, 1);
   assert.equal(calls.adminEmail.length, 2);
+  assert.ok(Buffer.isBuffer(calls.adminEmail[0].details.invoicePDFBuffer));
   assert.deepEqual(calls.adminEmail.map((c) => c.email).sort(), [ADMIN_A.email, ADMIN_B.email].sort());
   assert.equal(calls.notifySeller.length, 1);
   assert.equal(calls.sellerEmail.length, 1);
   assert.equal(calls.sellerEmail[0].email, SELLER_A.email);
+  assert.ok(Buffer.isBuffer(calls.sellerEmail[0].invoicePDFBuffer));
 });
 
 test("multi-seller payment creates seller notifications and payment emails for every seller", async () => {
@@ -328,6 +332,44 @@ test("single-seller payment sends exactly one seller payment email for the full 
 
   assert.equal(calls.sellerEmail.length, 1);
   assert.equal(calls.sellerEmail[0].amount, 100);
+  assert.ok(Buffer.isBuffer(calls.sellerEmail[0].invoicePDFBuffer));
+});
+
+test("multi-seller payment generates each seller invoice from only that seller's items", async () => {
+  const order = makeMultiSellerOrder();
+  const invoiceOrders = [];
+  const { processor } = loadProcessor({
+    ordersById: { [order.id]: order },
+    jobs: [{ id: "seller-payment", orderId: order.id, type: "SELLER_PAYMENT_NOTIFICATION", payload: { sellerIds: [SELLER_A.id, SELLER_B.id, SELLER_C.id] } }],
+    invoiceImpl: async (invoiceOrder) => {
+      invoiceOrders.push(invoiceOrder);
+      return Buffer.from("pdf");
+    },
+  });
+
+  await processor.processPaymentCompletionOutboxOnce();
+
+  assert.equal(invoiceOrders.length, 3);
+  for (const invoiceOrder of invoiceOrders) {
+    const sellerIds = new Set(invoiceOrder.items.map((item) => item.product?.sellerId));
+    assert.equal(sellerIds.size, 1);
+  }
+});
+
+test("invalid invoice buffers fail customer jobs so they remain retryable", async () => {
+  const order = makeSingleSellerOrder();
+  const { processor, jobs, calls } = loadProcessor({
+    ordersById: { [order.id]: order },
+    jobs: [{ id: "job_1", orderId: order.id, type: "CUSTOMER_CONFIRMATION" }],
+    invoiceImpl: async () => Buffer.alloc(0),
+  });
+
+  const result = await processor.processPaymentCompletionOutboxOnce();
+
+  assert.equal(result.processed, 0);
+  assert.equal(jobs.get("job_1").status, "FAILED");
+  assert.match(jobs.get("job_1").lastError, /invalid buffer/);
+  assert.equal(calls.customerEmail.length, 0);
 });
 
 test("guest checkout (no userId) resolves the order.customerEmail for confirmation", async () => {

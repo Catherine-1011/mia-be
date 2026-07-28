@@ -2789,6 +2789,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
     return { success: true };
   }
 
+  const adminDashboardUrl = process.env.DASHBOARD_URL || process.env.FRONTEND_URL || 'https://dashboard.madeinarnhemland.com.au';
   const productRows = (orderDetails.items || []).map(item => `
     <tr style="border-bottom:1px solid #EDD8CC;">
       <td style="padding:10px 12px;mso-padding-alt:10px 12px;color:#333;font-size:14px;vertical-align:top;">${item.title || item.product?.title || 'Product'}</td>
@@ -2901,7 +2902,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
               <tr>
                 <td style="padding:28px 40px 40px;mso-padding-alt:28px 40px 40px;text-align:center;">
                   <!--[if mso]>
-                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/admin/orders/${orderDetails.displayId}" style="height:48px;v-text-anchor:middle;width:200px;" arcsize="8%" stroke="f" fillcolor="#5A1E12">
+                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${adminDashboardUrl}/admin/orders/${orderDetails.displayId}" style="height:48px;v-text-anchor:middle;width:200px;" arcsize="8%" stroke="f" fillcolor="#5A1E12">
                       <w:anchorlock/>
                       <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:700;padding:13px 28px;">View in Admin Panel</center>
                     </v:roundrect>
@@ -2910,7 +2911,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
                   <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;border-radius:8px;overflow:hidden;">
                     <tr>
                       <td align="center" bgcolor="#5A1E12" style="background-color:#5A1E12;padding:13px 28px;mso-padding-alt:13px 28px;border-radius:8px;display:inline-block;">
-                        <a href="${process.env.FRONTEND_URL || 'https://madeinarnhemland.com.au'}/admin/orders/${orderDetails.displayId}" style="display:inline-block;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;font-family:Arial,sans-serif;mso-line-height-rule:exactly;">View in Admin Panel</a>
+                        <a href="${adminDashboardUrl}/admin/orders/${orderDetails.displayId}" style="display:inline-block;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;font-family:Arial,sans-serif;mso-line-height-rule:exactly;">View in Admin Panel</a>
                       </td>
                     </tr>
                   </table>

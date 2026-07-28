@@ -143,7 +143,25 @@ function loadProcessor({ ordersById, jobs, emailResults = {}, notificationImpls 
 
   const prisma = {
     paymentCompletionOutbox: {
-      findMany: async () => [...jobMap.values()].filter((job) => ["PENDING", "FAILED"].includes(job.status) && job.attemptCount < 10),
+      findMany: async ({ where } = {}) => {
+        const staleCutoff = where?.OR?.find((clause) => clause.status === "PROCESSING")?.updatedAt?.lt;
+        const maxAttemptsLt = where?.attemptCount?.lt ?? Number.POSITIVE_INFINITY;
+        const maxAttemptsGte = where?.attemptCount?.gte ?? Number.NEGATIVE_INFINITY;
+        const statusIn = where?.status?.in || null;
+        return [...jobMap.values()].filter((job) => {
+          if (statusIn && !statusIn.includes(job.status)) return false;
+          if (where?.attemptCount?.lt !== undefined && job.attemptCount >= maxAttemptsLt) return false;
+          if (where?.attemptCount?.gte !== undefined && job.attemptCount < maxAttemptsGte) return false;
+          if (!where?.OR) return true;
+          return where.OR.some((clause) => {
+            if (clause.status?.in?.includes(job.status)) return true;
+            if (clause.status === "PROCESSING" && job.status === "PROCESSING") {
+              return new Date(job.updatedAt || 0) < staleCutoff;
+            }
+            return false;
+          });
+        });
+      },
       updateMany: async ({ where, data }) => {
         const job = jobMap.get(where.id);
         if (!job || job.status !== where.status || job.attemptCount >= where.attemptCount.lt) return { count: 0 };
@@ -389,6 +407,12 @@ test("parent plus suborder items feed customer, super admin, and seller-scoped e
     sellerInvoiceOrders.map((invoiceOrder) => invoiceOrder.items[0].product.sellerId).sort(),
     [SELLER_A.id, SELLER_B.id].sort()
   );
+  for (const invoiceOrder of sellerInvoiceOrders) {
+    assert.equal(invoiceOrder.subOrders.length, 1);
+    const invoiceSellerIds = new Set(invoiceOrder.subOrders.flatMap((subOrder) => subOrder.items).map((item) => item.product.sellerId));
+    assert.equal(invoiceSellerIds.size, 1);
+    assert.equal(invoiceSellerIds.has(invoiceOrder.items[0].product.sellerId), true);
+  }
 });
 
 test("multi-seller payment generates each seller invoice from only that seller's items", async () => {
@@ -425,6 +449,42 @@ test("invalid invoice buffers fail customer jobs so they remain retryable", asyn
   assert.equal(result.processed, 0);
   assert.equal(jobs.get("job_1").status, "FAILED");
   assert.match(jobs.get("job_1").lastError, /invalid buffer/);
+  assert.equal(calls.customerEmail.length, 0);
+});
+
+test("stale PROCESSING outbox jobs are reclaimed and processed once", async () => {
+  const order = makeSingleSellerOrder();
+  const { processor, jobs, calls } = loadProcessor({
+    ordersById: { [order.id]: order },
+    jobs: [{
+      id: "job_stale",
+      orderId: order.id,
+      type: "CUSTOMER_CONFIRMATION",
+      status: "PROCESSING",
+      attemptCount: 1,
+      updatedAt: new Date(Date.now() - 20 * 60 * 1000),
+    }],
+  });
+
+  const result = await processor.processPaymentCompletionOutboxOnce();
+
+  assert.equal(result.processed, 1);
+  assert.equal(jobs.get("job_stale").status, "PROCESSED");
+  assert.equal(jobs.get("job_stale").attemptCount, 2);
+  assert.equal(calls.customerEmail.length, 1);
+});
+
+test("pending confirmation jobs do not send after refund or cancellation state", async () => {
+  const order = makeSingleSellerOrder({ status: "REFUND", paymentStatus: "REFUNDED" });
+  const { processor, jobs, calls } = loadProcessor({
+    ordersById: { [order.id]: order },
+    jobs: [{ id: "job_refund", orderId: order.id, type: "CUSTOMER_CONFIRMATION" }],
+  });
+
+  const result = await processor.processPaymentCompletionOutboxOnce();
+
+  assert.equal(result.processed, 1);
+  assert.equal(jobs.get("job_refund").status, "PROCESSED");
   assert.equal(calls.customerEmail.length, 0);
 });
 

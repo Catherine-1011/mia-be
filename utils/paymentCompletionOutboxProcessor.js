@@ -11,6 +11,8 @@ const { generateInvoiceBuffer } = require("../controllers/orders");
 const OUTBOX_BATCH_SIZE = Number(process.env.PAYMENT_OUTBOX_BATCH_SIZE || 10);
 const OUTBOX_INTERVAL_MS = Number(process.env.PAYMENT_OUTBOX_INTERVAL_MS || 30 * 1000);
 const OUTBOX_MAX_ATTEMPTS = Number(process.env.PAYMENT_OUTBOX_MAX_ATTEMPTS || 10);
+const OUTBOX_PROCESSING_TIMEOUT_MS =
+  Number(process.env.PAYMENT_OUTBOX_PROCESSING_TIMEOUT_MS || 10 * 60 * 1000);
 
 let intervalHandle = null;
 let running = false;
@@ -191,6 +193,9 @@ function sellerEmailDetails(order, orderDetails, sellerId, sellerItems) {
 
 function sellerInvoiceShape(order, sellerId, sellerItems, sellerDetails) {
   const sellerSubOrder = order.subOrders?.find((sub) => sub.sellerId === sellerId || sub.seller?.id === sellerId);
+  const isolatedSubOrder = sellerSubOrder
+    ? { ...sellerSubOrder, items: sellerItems }
+    : null;
   return {
     ...order,
     id: sellerSubOrder?.id || order.id,
@@ -201,7 +206,23 @@ function sellerInvoiceShape(order, sellerId, sellerItems, sellerDetails) {
       ...item,
       price: itemPrice(item),
     })),
+    subOrders: isolatedSubOrder ? [isolatedSubOrder] : [],
   };
+}
+
+function isConfirmationEmailJob(type) {
+  return [
+    "CUSTOMER_CONFIRMATION",
+    "FINANCE_INVOICE",
+    "ADMIN_NEW_ORDER_NOTIFICATION",
+    "SELLER_PAYMENT_NOTIFICATION",
+  ].includes(type);
+}
+
+function isOrderSafeForConfirmationEmail(order) {
+  const blockedOrderStatuses = new Set(["CANCELLED", "REFUND", "PARTIAL_REFUND"]);
+  const blockedPaymentStatuses = new Set(["FAILED", "DISPUTED", "REFUND_PENDING", "REFUNDED"]);
+  return !blockedOrderStatuses.has(order.status) && !blockedPaymentStatuses.has(order.paymentStatus);
 }
 
 async function loadOrder(orderId) {
@@ -248,6 +269,16 @@ async function markFailed(jobId, error) {
 
 async function processJob(job) {
   const order = await loadOrder(job.orderId);
+  if (isConfirmationEmailJob(job.type) && !isOrderSafeForConfirmationEmail(order)) {
+    console.warn("[PaymentCompletionOutbox] confirmation email skipped: order/payment state no longer eligible", {
+      jobId: job.id,
+      orderId: order.id,
+      type: job.type,
+      orderStatus: order.status,
+      paymentStatus: order.paymentStatus,
+    });
+    return;
+  }
   const orderDetails = buildOrderDetails(order);
   const customerName = orderDetails.customerName;
 
@@ -417,10 +448,14 @@ async function processPaymentCompletionOutboxOnce() {
   running = true;
   let processed = 0;
   try {
+    const staleBefore = new Date(Date.now() - OUTBOX_PROCESSING_TIMEOUT_MS);
     const jobs = await prisma.paymentCompletionOutbox.findMany({
       where: {
-        status: { in: ["PENDING", "FAILED"] },
         attemptCount: { lt: OUTBOX_MAX_ATTEMPTS },
+        OR: [
+          { status: { in: ["PENDING", "FAILED"] } },
+          { status: "PROCESSING", updatedAt: { lt: staleBefore } },
+        ],
       },
       orderBy: { createdAt: "asc" },
       take: OUTBOX_BATCH_SIZE,
@@ -455,6 +490,26 @@ async function processPaymentCompletionOutboxOnce() {
         });
         await markFailed(job.id, error);
       }
+    }
+
+    const exhaustedJobs = await prisma.paymentCompletionOutbox.findMany({
+      where: {
+        status: { in: ["FAILED", "PROCESSING"] },
+        attemptCount: { gte: OUTBOX_MAX_ATTEMPTS },
+      },
+      orderBy: { updatedAt: "asc" },
+      take: OUTBOX_BATCH_SIZE,
+    });
+    for (const job of exhaustedJobs) {
+      console.error("[PaymentCompletionOutbox] job exhausted max attempts", {
+        jobId: job.id,
+        orderId: job.orderId,
+        type: job.type,
+        status: job.status,
+        attemptCount: job.attemptCount,
+        maxAttempts: OUTBOX_MAX_ATTEMPTS,
+        lastError: job.lastError,
+      });
     }
   } finally {
     running = false;

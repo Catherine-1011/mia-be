@@ -74,8 +74,8 @@ function makeOrder({ isGuest = false } = {}) {
   };
 }
 
-function makePrisma({ chargeType = "direct", claimSequence = [1], isGuest = false, commissionsToReverse = [], failDisputeEmailOnce = false, failOutboxOnce = false } = {}) {
-  const order = makeOrder({ isGuest });
+function makePrisma({ chargeType = "direct", claimSequence = [1], isGuest = false, commissionsToReverse = [], failDisputeEmailOnce = false, failOutboxOnce = false, orderOverrides = {}, outboxCount = 0 } = {}) {
+  const order = { ...makeOrder({ isGuest }), ...orderOverrides };
   const webhookEvents = new Map();
   const prisma = {
     _claimSequence: [...claimSequence],
@@ -229,6 +229,7 @@ function makePrisma({ chargeType = "direct", claimSequence = [1], isGuest = fals
       },
     },
     paymentCompletionOutbox: {
+      count: async () => outboxCount,
       createMany: async (args) => {
         if (prisma._failOutboxOnce) {
           prisma._failOutboxOnce = false;
@@ -681,6 +682,50 @@ test("payment-completion outbox failure is stored FAILED and retry does not dupl
   assert.equal(prisma._productUpdateCalls.length, 1);
   assert.equal(prisma._commissionCreateCalls.length, 1);
   assert.equal(prisma._outboxCreateManyCalls.length, 1);
+});
+
+test("paid unconfirmed order without outbox recovers on webhook retry", async () => {
+  const prisma = makePrisma({
+    chargeType: "direct",
+    claimSequence: [0],
+    orderOverrides: { paymentStatus: "PAID", status: "PENDING" },
+    outboxCount: 0,
+  });
+  const { controller, stripeMock } = loadPaymentController({ prisma, chargeType: "direct" });
+
+  const reply = await callWebhook(controller);
+
+  assert.equal(reply.statusCode, 200);
+  assert.equal(stripeMock.transfers.createCalls.length, 0);
+  assert.equal(prisma._productUpdateCalls.length, 1);
+  assert.equal(prisma._commissionCreateCalls.length, 1);
+  assert.equal(prisma._outboxCreateManyCalls.length, 1);
+  assert.deepEqual(
+    prisma._outboxCreateManyCalls[0].data.map((row) => row.type).sort(),
+    [
+      "ADMIN_NEW_ORDER_NOTIFICATION",
+      "CUSTOMER_CONFIRMATION",
+      "SELLER_NEW_ORDER_NOTIFICATION",
+      "SELLER_PAYMENT_NOTIFICATION",
+    ],
+  );
+});
+
+test("paid unconfirmed order with existing outbox does not duplicate recovery side effects", async () => {
+  const prisma = makePrisma({
+    chargeType: "direct",
+    claimSequence: [0],
+    orderOverrides: { paymentStatus: "PAID", status: "PENDING" },
+    outboxCount: 4,
+  });
+  const { controller } = loadPaymentController({ prisma, chargeType: "direct" });
+
+  const reply = await callWebhook(controller);
+
+  assert.equal(reply.statusCode, 200);
+  assert.equal(prisma._productUpdateCalls.length, 0);
+  assert.equal(prisma._commissionCreateCalls.length, 0);
+  assert.equal(prisma._outboxCreateManyCalls.length, 0);
 });
 
 test("active PROCESSING duplicate returns 200 without side effects", async () => {

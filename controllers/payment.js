@@ -2285,7 +2285,16 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
     });
 
     if (paymentRecordClaim.count === 0) {
-      return false;
+      const existingOutboxCount = await prisma.paymentCompletionOutbox.count({
+        where: { orderId: phase2PaymentRecord.orderId },
+      }).catch(() => 0);
+      if (
+        phase2PaymentRecord.paymentStatus !== "PAID" ||
+        phase2PaymentRecord.order?.status === "CONFIRMED" ||
+        existingOutboxCount > 0
+      ) {
+        return false;
+      }
     }
 
     const parentPaymentStatus = await aggregateParentPaymentStatus(phase2PaymentRecord.orderId);
@@ -2303,7 +2312,12 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
     });
 
     if (parentClaim.count === 0) {
-      return false;
+      const existingOutboxCount = await prisma.paymentCompletionOutbox.count({
+        where: { orderId: phase2PaymentRecord.orderId },
+      }).catch(() => 0);
+      if (existingOutboxCount > 0) {
+        return false;
+      }
     }
   } else {
   // ── Atomic claim ──────────────────────────────────────────────────────────
@@ -2323,7 +2337,25 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
   });
 
   if (claimed.count === 0) {
-    return false;
+    const recoveryOrder = await prisma.order.findFirst({
+      where: { stripePaymentIntentId: paymentIntentId },
+      select: { id: true, status: true, paymentStatus: true },
+    });
+    if (!recoveryOrder || recoveryOrder.paymentStatus !== "PAID" || recoveryOrder.status === "CONFIRMED") {
+      return false;
+    }
+    const existingOutboxCount = await prisma.paymentCompletionOutbox.count({
+      where: { orderId: recoveryOrder.id },
+    }).catch(() => 0);
+    if (existingOutboxCount > 0) {
+      return false;
+    }
+    console.warn("[PaymentCompletion] recovering paid order without completion outbox", {
+      orderId: recoveryOrder.id,
+      paymentIntentId,
+      status: recoveryOrder.status,
+      paymentStatus: recoveryOrder.paymentStatus,
+    });
   }
   }
 

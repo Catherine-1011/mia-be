@@ -919,10 +919,11 @@ exports.createOrder = async (request, reply) => {
     // ── Fire all emails & notifications in background (non-blocking) ────────
     // Reply is sent immediately below; PDF generation + all outbound calls
     // run in the background so they never delay the API response.
-    ;(async () => {
+    const paymentConfirmationEmailsHandledByOutbox = paymentMethod.toUpperCase() === 'STRIPE';
+    (async () => {
       try {
         // 1. Customer confirmation email (invoice download link is in the email)
-        if (user.email) {
+        if (!paymentConfirmationEmailsHandledByOutbox && user.email) {
           try {
             const emailResult = await sendOrderConfirmationEmail(user.email, user.name, {
               displayId: mainOrder.displayId,
@@ -963,7 +964,7 @@ exports.createOrder = async (request, reply) => {
         }
 
         // 1.5. Send order confirmation to super admins as well
-        try {
+        if (!paymentConfirmationEmailsHandledByOutbox) try {
           const superAdmins = await prisma.user.findMany({
             where: { role: 'SUPER_ADMIN' },
             select: { email: true, name: true }
@@ -1035,7 +1036,7 @@ exports.createOrder = async (request, reply) => {
               }).catch(e => console.error("SLA notification error:", e.message));
               // In-app notification already fired before reply — only SLA + email needed here
             }
-            if (seller && seller.email) {
+            if (!paymentConfirmationEmailsHandledByOutbox && seller && seller.email) {
               const sellerName = seller.sellerProfile?.storeName || seller.sellerProfile?.businessName || seller.name || 'Seller';
               try {
                 const sellerEmailResult = await sendSellerOrderNotificationEmail(seller.email, sellerName, {
@@ -1056,7 +1057,7 @@ exports.createOrder = async (request, reply) => {
               } catch (emailErr) {
                 console.error(`❌ Seller order email error for ${seller.email}:`, emailErr.message);
               }
-            } else {
+            } else if (!paymentConfirmationEmailsHandledByOutbox) {
               console.warn(`⚠️  No email for seller ${sellerId} — order email skipped`);
             }
           } catch (err) {
@@ -1065,7 +1066,7 @@ exports.createOrder = async (request, reply) => {
         }));
 
         // 3. Admin order emails — notify SUPER_ADMIN only
-        try {
+        if (!paymentConfirmationEmailsHandledByOutbox) try {
           const admins = await prisma.user.findMany({
             where: { role: 'SUPER_ADMIN' },
             select: { email: true, name: true }
@@ -3655,10 +3656,11 @@ exports.createGuestOrder = async (request, reply) => {
     // Guest receives email confirmation instead.
 
     // ── Fire all emails & notifications in background (non-blocking) ────────
-    ;(async () => {
+    const guestPaymentConfirmationEmailsHandledByOutbox = paymentMethod.toUpperCase() === 'STRIPE';
+    (async () => {
       try {
         // 1. Guest customer confirmation email (invoice download button is in the email)
-        try {
+        if (!guestPaymentConfirmationEmailsHandledByOutbox) try {
           const guestEmailResult = await sendOrderConfirmationEmail(customerEmail, customerName, {
             displayId: order.displayId,
             totalAmount,
@@ -3697,7 +3699,7 @@ exports.createGuestOrder = async (request, reply) => {
         }
 
         // 1.5. Send guest order confirmation to super admins as well
-        try {
+        if (!guestPaymentConfirmationEmailsHandledByOutbox) try {
           const superAdmins = await prisma.user.findMany({
             where: { role: 'SUPER_ADMIN' },
             select: { email: true, name: true }
@@ -3763,7 +3765,7 @@ exports.createGuestOrder = async (request, reply) => {
                 notes: `${sellerData.productCount} item(s), Total: $${sellerData.totalAmount.toFixed(2)}`
               }).catch(e => console.error("SLA notification error:", e.message));
             }
-            if (seller && seller.email) {
+            if (!guestPaymentConfirmationEmailsHandledByOutbox && seller && seller.email) {
               const sellerName = seller.sellerProfile?.storeName || seller.sellerProfile?.businessName || seller.name || 'Seller';
               try {
                 const sellerEmailResult = await sendSellerOrderNotificationEmail(seller.email, sellerName, {
@@ -3785,7 +3787,7 @@ exports.createGuestOrder = async (request, reply) => {
               } catch (emailErr) {
                 console.error(`❌ Guest seller order email error for ${seller.email}:`, emailErr.message);
               }
-            } else {
+            } else if (!guestPaymentConfirmationEmailsHandledByOutbox) {
               console.warn(`⚠️  No email for seller ${sellerId} — guest order email skipped`);
             }
           } catch (err) {
@@ -3794,7 +3796,7 @@ exports.createGuestOrder = async (request, reply) => {
         }));
 
         // 3. Admin order emails for guest orders
-        try {
+        if (!guestPaymentConfirmationEmailsHandledByOutbox) try {
           const admins = await prisma.user.findMany({
             where: { role: 'SUPER_ADMIN' },
             select: { email: true, name: true }

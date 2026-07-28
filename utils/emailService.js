@@ -3490,7 +3490,7 @@ const sendAdminProductSubmitReviewEmail = async (adminEmail, adminName, { produc
     return { success: true };
   }
 
-  const adminDashboardUrl = `${process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au'}/admindashboard/products`;
+  const adminDashboardUrl = `${process.env.DASHBOARD_URL || 'https://dashboard.madeinarnhemland.com.au'}/admindashboard/products/${productId || ''}`;
 
   const msg = {
     to: adminEmail,

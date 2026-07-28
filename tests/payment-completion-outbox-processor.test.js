@@ -42,6 +42,11 @@ const ADMIN_B = {
   email: "admin-b@example.com",
   name: "Admin B",
 };
+const SUPER_ADMIN = {
+  id: "super_admin",
+  email: "super-admin@example.com",
+  name: "Super Admin",
+};
 
 function makeSingleSellerOrder(overrides = {}) {
   return {
@@ -106,7 +111,7 @@ function makeGuestOrder(overrides = {}) {
   };
 }
 
-function loadProcessor({ ordersById, jobs, emailResults = {}, notificationImpls = {}, admins = [ADMIN_A, ADMIN_B], invoiceImpl } = {}) {
+function loadProcessor({ ordersById, jobs, emailResults = {}, notificationImpls = {}, admins = [SUPER_ADMIN], invoiceImpl } = {}) {
   resetModules();
   const jobMap = new Map(jobs.map((job) => [job.id, {
     attemptCount: 0,
@@ -156,7 +161,12 @@ function loadProcessor({ ordersById, jobs, emailResults = {}, notificationImpls 
       findUnique: async ({ where: { id } }) => ordersById[id] || null,
     },
     user: {
-      findMany: async () => admins,
+      findMany: async ({ where } = {}) => {
+        if (where?.role === "SUPER_ADMIN") {
+          return admins.filter((admin) => admin.role === "SUPER_ADMIN" || admin.id === SUPER_ADMIN.id);
+        }
+        return admins;
+      },
     },
   };
 
@@ -164,7 +174,7 @@ function loadProcessor({ ordersById, jobs, emailResults = {}, notificationImpls 
   require.cache[emailPath] = {
     exports: {
       sendOrderConfirmationEmail: async (email, name, details, invoicePDFBuffer) => {
-        calls.customerEmail.push({ email, name, isSuperAdminCopy: !!details.isSuperAdminCopy, invoicePDFBuffer });
+        calls.customerEmail.push({ email, name, details, isSuperAdminCopy: !!details.isSuperAdminCopy, invoicePDFBuffer });
         return nextResult("sendOrderConfirmationEmail");
       },
       sendFinanceOrderInvoiceEmail: async (order, invoicePDFBuffer) => {
@@ -209,7 +219,6 @@ function loadProcessor({ ordersById, jobs, emailResults = {}, notificationImpls 
 function outboxRowsFor(order, sellerIds) {
   return [
     { id: `${order.id}-customer`, orderId: order.id, type: "CUSTOMER_CONFIRMATION" },
-    { id: `${order.id}-finance`, orderId: order.id, type: "FINANCE_INVOICE" },
     { id: `${order.id}-admin`, orderId: order.id, type: "ADMIN_NEW_ORDER_NOTIFICATION", payload: { sellerIds } },
     { id: `${order.id}-seller-new`, orderId: order.id, type: "SELLER_NEW_ORDER_NOTIFICATION", payload: { sellerIds } },
     { id: `${order.id}-seller-payment`, orderId: order.id, type: "SELLER_PAYMENT_NOTIFICATION", payload: { sellerIds } },
@@ -277,25 +286,25 @@ test("a thrown error still fails the job as before", async () => {
   assert.match(jobs.get("job_1").lastError, /email unavailable/);
 });
 
-test("a successful payment creates customer, finance, admin, and seller job outcomes", async () => {
+test("a successful payment creates customer, super admin, and seller job outcomes", async () => {
   const order = makeSingleSellerOrder();
   const { processor, jobs, calls } = loadProcessor({
     ordersById: { [order.id]: order },
     jobs: outboxRowsFor(order, [SELLER_A.id]),
+    admins: [{ ...ADMIN_A, role: "ADMIN" }, { ...SUPER_ADMIN, role: "SUPER_ADMIN" }],
   });
 
   const result = await processor.processPaymentCompletionOutboxOnce();
 
-  assert.equal(result.processed, 5);
+  assert.equal(result.processed, 4);
   for (const job of jobs.values()) assert.equal(job.status, "PROCESSED");
   assert.equal(calls.customerEmail.length, 1);
   assert.ok(Buffer.isBuffer(calls.customerEmail[0].invoicePDFBuffer));
-  assert.equal(calls.financeEmail.length, 1);
-  assert.ok(Buffer.isBuffer(calls.financeEmail[0].invoicePDFBuffer));
+  assert.equal(calls.financeEmail.length, 0);
   assert.equal(calls.notifyAdmin.length, 1);
-  assert.equal(calls.adminEmail.length, 2);
+  assert.equal(calls.adminEmail.length, 1);
   assert.ok(Buffer.isBuffer(calls.adminEmail[0].details.invoicePDFBuffer));
-  assert.deepEqual(calls.adminEmail.map((c) => c.email).sort(), [ADMIN_A.email, ADMIN_B.email].sort());
+  assert.deepEqual(calls.adminEmail.map((c) => c.email), [SUPER_ADMIN.email]);
   assert.equal(calls.notifySeller.length, 1);
   assert.equal(calls.sellerEmail.length, 1);
   assert.equal(calls.sellerEmail[0].email, SELLER_A.email);
@@ -333,6 +342,53 @@ test("single-seller payment sends exactly one seller payment email for the full 
   assert.equal(calls.sellerEmail.length, 1);
   assert.equal(calls.sellerEmail[0].amount, 100);
   assert.ok(Buffer.isBuffer(calls.sellerEmail[0].invoicePDFBuffer));
+});
+
+test("parent plus suborder items feed customer, super admin, and seller-scoped emails", async () => {
+  const itemA = {
+    id: "item_a",
+    quantity: 1,
+    price: 100,
+    product: { title: "Sub Item A", sellerId: SELLER_A.id, seller: SELLER_A },
+  };
+  const itemB = {
+    id: "item_b",
+    quantity: 2,
+    price: 80,
+    product: { title: "Sub Item B", sellerId: SELLER_B.id, seller: SELLER_B },
+  };
+  const order = makeMultiSellerOrder({
+    items: [],
+    subOrders: [
+      { id: "sub_a", sellerId: SELLER_A.id, items: [itemA], seller: SELLER_A },
+      { id: "sub_b", sellerId: SELLER_B.id, items: [itemB], seller: SELLER_B },
+    ],
+  });
+  const invoiceOrders = [];
+  const { processor, calls } = loadProcessor({
+    ordersById: { [order.id]: order },
+    jobs: [
+      { id: "customer", orderId: order.id, type: "CUSTOMER_CONFIRMATION" },
+      { id: "admin", orderId: order.id, type: "ADMIN_NEW_ORDER_NOTIFICATION", payload: { sellerIds: [SELLER_A.id, SELLER_B.id] } },
+      { id: "seller-payment", orderId: order.id, type: "SELLER_PAYMENT_NOTIFICATION", payload: { sellerIds: [SELLER_A.id, SELLER_B.id, SELLER_C.id] } },
+    ],
+    invoiceImpl: async (invoiceOrder) => {
+      invoiceOrders.push(invoiceOrder);
+      return Buffer.from("pdf");
+    },
+  });
+
+  await processor.processPaymentCompletionOutboxOnce();
+
+  assert.deepEqual(calls.customerEmail[0].details.products.map((item) => item.title).sort(), ["Sub Item A", "Sub Item B"]);
+  assert.deepEqual(calls.adminEmail[0].details.items.map((item) => item.title).sort(), ["Sub Item A", "Sub Item B"]);
+  assert.deepEqual(calls.sellerEmail.map((call) => call.email).sort(), [SELLER_A.email, SELLER_B.email].sort());
+  const sellerInvoiceOrders = invoiceOrders.filter((invoiceOrder) => invoiceOrder.items?.length === 1);
+  assert.equal(sellerInvoiceOrders.length, 2);
+  assert.deepEqual(
+    sellerInvoiceOrders.map((invoiceOrder) => invoiceOrder.items[0].product.sellerId).sort(),
+    [SELLER_A.id, SELLER_B.id].sort()
+  );
 });
 
 test("multi-seller payment generates each seller invoice from only that seller's items", async () => {
@@ -495,6 +551,10 @@ test("admin email failures remain retryable without duplicating successful admin
   const { processor, jobs, calls } = loadProcessor({
     ordersById: { [order.id]: order },
     jobs: [{ id: "admin-job", orderId: order.id, type: "ADMIN_NEW_ORDER_NOTIFICATION", payload: { sellerIds: [SELLER_A.id] } }],
+    admins: [
+      { id: "super_a", email: "super-a@example.com", name: "Super A", role: "SUPER_ADMIN" },
+      { id: "super_b", email: "super-b@example.com", name: "Super B", role: "SUPER_ADMIN" },
+    ],
     emailResults: {
       sendAdminNewOrderEmail: [
         { success: true },
@@ -509,7 +569,7 @@ test("admin email failures remain retryable without duplicating successful admin
   assert.equal(first.processed, 0);
   assert.equal(jobs.get("admin-job").status, "FAILED");
   assert.equal(calls.notifyAdmin.length, 1);
-  assert.deepEqual(jobs.get("admin-job").payload.adminNewOrderEmailDeliveredAdminIds, [ADMIN_A.id]);
+  assert.deepEqual(jobs.get("admin-job").payload.adminNewOrderEmailDeliveredAdminIds, ["super_a"]);
   assert.match(jobs.get("admin-job").lastError, /admin mailbox down/);
 
   const second = await processor.processPaymentCompletionOutboxOnce();
@@ -517,7 +577,7 @@ test("admin email failures remain retryable without duplicating successful admin
   assert.equal(second.processed, 1);
   assert.equal(jobs.get("admin-job").status, "PROCESSED");
   assert.equal(calls.notifyAdmin.length, 1);
-  assert.deepEqual(calls.adminEmail.map((c) => c.email), [ADMIN_A.email, ADMIN_B.email, ADMIN_B.email]);
+  assert.deepEqual(calls.adminEmail.map((c) => c.email), ["super-a@example.com", "super-b@example.com", "super-b@example.com"]);
 });
 
 test("missing or invalid admin recipients do not crash payment completion", async () => {

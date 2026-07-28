@@ -22,7 +22,6 @@ const { buildPaymentCompletionOutboxRows } = require(paymentPath);
 
 const EXPECTED_TYPES = [
   "CUSTOMER_CONFIRMATION",
-  "FINANCE_INVOICE",
   "ADMIN_NEW_ORDER_NOTIFICATION",
   "SELLER_NEW_ORDER_NOTIFICATION",
   "SELLER_PAYMENT_NOTIFICATION",

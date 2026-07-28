@@ -527,12 +527,6 @@ function buildPaymentCompletionOutboxRows({ order, paymentIntentId, sellerIds })
     {
       orderId: order.id,
       stripePaymentIntentId: paymentIntentId,
-      type: "FINANCE_INVOICE",
-      payload: basePayload,
-    },
-    {
-      orderId: order.id,
-      stripePaymentIntentId: paymentIntentId,
       type: "ADMIN_NEW_ORDER_NOTIFICATION",
       payload: basePayload,
     },

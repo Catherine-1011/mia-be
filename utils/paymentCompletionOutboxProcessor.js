@@ -88,7 +88,7 @@ function sellerIdsFor(order, payload) {
   if (payload?.sellerId) return [payload.sellerId];
   const fromPayload = Array.isArray(payload?.sellerIds) ? payload.sellerIds : [];
   if (fromPayload.length) return [...new Set(fromPayload.filter(Boolean))];
-  return [...new Set(order.items.map((item) => item.product?.sellerId).filter(Boolean))];
+  return [...new Set(completeOrderItems(order).map((item) => item.product?.sellerId).filter(Boolean))];
 }
 
 function asArray(value) {
@@ -97,6 +97,21 @@ function asArray(value) {
 
 function isValidEmailAddress(email) {
   return typeof email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function completeOrderItems(order) {
+  const items = [
+    ...(order.items || []),
+    ...(order.subOrders || []).flatMap((subOrder) => subOrder.items || []),
+  ];
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = item?.id;
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 async function updateJobPayload(job, payloadPatch) {
@@ -109,7 +124,7 @@ async function updateJobPayload(job, payloadPatch) {
 }
 
 function orderItemsForEmail(order) {
-  return order.items.map((item) => ({
+  return completeOrderItems(order).map((item) => ({
     title: productTitle(item),
     quantity: item.quantity,
     price: itemPrice(item),
@@ -118,7 +133,8 @@ function orderItemsForEmail(order) {
 
 function buildOrderDetails(order) {
   const toName = order.customerName || (order.user?.isDeleted ? "Deleted User" : order.user?.name) || "Customer";
-  const products = order.items.map((item) => ({
+  const items = completeOrderItems(order);
+  const products = items.map((item) => ({
     title: productTitle(item),
     quantity: item.quantity,
     price: itemPrice(item),
@@ -128,7 +144,7 @@ function buildOrderDetails(order) {
     displayId: order.displayId,
     customerEmail: order.customerEmail || order.user?.email || null,
     totalAmount: Number(order.totalAmount || 0),
-    itemCount: order.items.length,
+    itemCount: items.length,
     products,
     paymentMethod: order.paymentMethod || "STRIPE",
     customerPhone: order.customerPhone || order.user?.phone || "",
@@ -256,7 +272,7 @@ async function processJob(job) {
     const payload = job.payload || {};
     const sellerNames = sellerIdsFor(order, payload)
       .map((sellerId) => {
-        const item = order.items.find((candidate) => candidate.product?.sellerId === sellerId);
+        const item = completeOrderItems(order).find((candidate) => candidate.product?.sellerId === sellerId);
         return item?.product?.seller?.sellerProfile?.storeName
           || item?.product?.seller?.sellerProfile?.businessName
           || item?.product?.seller?.name
@@ -266,8 +282,8 @@ async function processJob(job) {
       customerName,
       sellerName: sellerNames.join(", ") || "Unknown",
       totalAmount: Number(order.totalAmount || 0).toFixed(2),
-      itemCount: order.items.length,
-      productNames: order.items.map(productTitle),
+      itemCount: completeOrderItems(order).length,
+      productNames: completeOrderItems(order).map(productTitle),
     };
 
     if (payload.adminNewOrderNotificationCreated !== true) {
@@ -277,7 +293,7 @@ async function processJob(job) {
 
     const admins = await prisma.user.findMany({
       where: {
-        role: { in: ["ADMIN", "SUPER_ADMIN"] },
+        role: "SUPER_ADMIN",
         isDeleted: false,
       },
       select: { id: true, email: true, name: true },
@@ -331,7 +347,7 @@ async function processJob(job) {
 
   if (job.type === "SELLER_NEW_ORDER_NOTIFICATION") {
     for (const sellerId of sellerIdsFor(order, job.payload)) {
-      const sellerItems = order.items.filter((item) => item.product?.sellerId === sellerId);
+      const sellerItems = completeOrderItems(order).filter((item) => item.product?.sellerId === sellerId);
       const itemTotal = sellerItems.reduce((sum, item) => sum + itemPrice(item) * item.quantity, 0);
       await notifySellerNewOrder(sellerId, order.id, {
         customerName,
@@ -348,7 +364,7 @@ async function processJob(job) {
     const failures = [];
     for (const sellerId of sellerIdsFor(order, job.payload)) {
       if (deliveredSellerIds.has(sellerId)) continue;
-      const sellerItems = order.items.filter((item) => item.product?.sellerId === sellerId);
+      const sellerItems = completeOrderItems(order).filter((item) => item.product?.sellerId === sellerId);
       const seller = sellerItems[0]?.product?.seller;
       if (!sellerItems.length) {
         console.warn("[PaymentCompletionOutbox] seller payment email skipped: seller has no order items", {

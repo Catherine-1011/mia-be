@@ -141,6 +141,9 @@ async function createStripeRefundFromPaymentRecord({
         throw buildRefundError('Separate Charge and Transfer refund blocked: missing historical transfer identifiers');
       }
       break;
+    case 'PLATFORM_ACCOUNT':
+      requireStoredPaymentIntent(paymentRecord, 'Platform Account');
+      break;
     case 'LEGACY_OR_UNKNOWN':
       throw buildRefundError('Legacy or unknown payment flow requires manual refund review');
     default:
@@ -5197,6 +5200,19 @@ exports.getAllOrdersDetailed = async (request, reply) => {
               },
             },
           },
+          paymentRecords: {
+            select: {
+              id: true,
+              sellerId: true,
+              paymentFlow: true,
+              stripeAccountId: true,
+              stripePaymentIntentId: true,
+              grossAmount: true,
+              applicationFeeAmount: true,
+              paymentStatus: true,
+              refundStatus: true,
+            },
+          },
         },
       }),
       prisma.order.count({ where }),
@@ -5322,6 +5338,18 @@ exports.getAllOrdersDetailed = async (request, reply) => {
         discountAmount:        order.discountAmount  != null ? parseFloat(order.discountAmount)  : null,
         couponCode:            order.couponCode      || null,
         stripePaymentIntentId: order.stripePaymentIntentId || null,
+        paymentRecords: (order.paymentRecords || []).map((record) => ({
+          id: record.id,
+          sellerId: record.sellerId,
+          paymentFlow: record.paymentFlow,
+          paymentOwner: record.paymentFlow === 'PLATFORM_ACCOUNT' ? 'PLATFORM' : 'CONNECTED',
+          stripeAccountId: record.stripeAccountId,
+          stripePaymentIntentId: record.stripePaymentIntentId,
+          grossAmount: Number(record.grossAmount || 0) / 100,
+          applicationFeeAmount: Number(record.applicationFeeAmount || 0) / 100,
+          paymentStatus: record.paymentStatus,
+          refundStatus: record.refundStatus,
+        })),
         orderSummary,
         customer,
         shippingAddress,

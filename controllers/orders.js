@@ -123,7 +123,7 @@ async function triggerStripeRefund(paymentIntentId, reason, displayId) {
       return;
     }
 
-    if (!['DIRECT_CHARGE', 'DESTINATION_CHARGE', 'SEPARATE_CHARGE_AND_TRANSFER'].includes(paymentRecord.paymentFlow)) {
+    if (!['DIRECT_CHARGE', 'PLATFORM_ACCOUNT', 'DESTINATION_CHARGE', 'SEPARATE_CHARGE_AND_TRANSFER'].includes(paymentRecord.paymentFlow)) {
       console.error(`Stripe refund/cancel blocked for order #${displayId}: unsupported payment flow ${paymentRecord.paymentFlow || 'missing'}`);
       return;
     }

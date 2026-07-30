@@ -381,6 +381,34 @@ function buildDirectChargePaymentRecordData({
   };
 }
 
+function buildPlatformPaymentRecordData({
+  orderId,
+  sellerId,
+  stripePaymentIntentId,
+  itemTotal,
+  shippingAmount,
+  grossAmountCents,
+  gstAmountCents,
+  paymentStatus = "PENDING",
+}) {
+  return {
+    orderId,
+    sellerId,
+    paymentFlow: "PLATFORM_ACCOUNT",
+    stripeAccountId: null,
+    stripePaymentIntentId,
+    currency: "aud",
+    grossAmount: grossAmountCents ?? moneyToMinorUnits(Number(itemTotal || 0) + Number(shippingAmount || 0)),
+    commissionBase: 0,
+    applicationFeeAmount: 0,
+    gstAmount: gstAmountCents ?? 0,
+    shippingAmount: moneyToMinorUnits(shippingAmount),
+    paymentStatus,
+    refundStatus: "NONE",
+    disputeStatus: "NONE",
+  };
+}
+
 function getItemUnitPrice(item) {
   return Number(item.productVariant?.price ?? item.product?.price ?? item.price ?? 0);
 }
@@ -495,14 +523,92 @@ function buildSellerDirectChargePlan({ sellerId, items, cartCalculations, discou
   };
 }
 
-function buildDirectChargeCommissionRecordOverrides(paymentRecord) {
-  if (!paymentRecord || paymentRecord.paymentFlow !== "DIRECT_CHARGE") return {};
+function buildSellerPlatformPaymentPlan({ sellerId, items, cartCalculations, discountShare = 0 }) {
+  const productAmount = getSellerItemsTotal(items);
+  const shippingAmount = Number(cartCalculations.shippingCost || 0);
+  const gstRatePct = getGstRateFromCartCalculations(cartCalculations);
+  const discountedProductAmount = Math.max(0, productAmount - Number(discountShare || 0));
+  const { gst } = getGstInclusiveBreakdown(discountedProductAmount, gstRatePct);
+  const grossAmountCents = moneyToMinorUnits(discountedProductAmount + shippingAmount);
+
+  return {
+    sellerId,
+    items,
+    paymentAccountType: "PLATFORM",
+    productAmount,
+    discountedProductAmount,
+    shippingAmount,
+    grossAmountCents,
+    productAmountCents: moneyToMinorUnits(discountedProductAmount),
+    shippingAmountCents: moneyToMinorUnits(shippingAmount),
+    gstAmountCents: moneyToMinorUnits(gst),
+    commission: {
+      commissionBase: 0,
+      applicationFeeAmount: 0,
+      currency: "aud",
+    },
+  };
+}
+
+function buildPaymentRecordCommissionOverrides(paymentRecord) {
+  if (!paymentRecord) return {};
+  if (paymentRecord.paymentFlow === "PLATFORM_ACCOUNT") {
+    return {
+      commissionAmountOverride: 0,
+      netPayableOverride: 0,
+      productValueExGSTOverride: 0,
+      gstAmountOverride: Number(paymentRecord.gstAmount || 0) / 100,
+      status: "PAID",
+    };
+  }
+  if (paymentRecord.paymentFlow !== "DIRECT_CHARGE") return {};
   return {
     commissionAmountOverride: Number(paymentRecord.applicationFeeAmount || 0) / 100,
     netPayableOverride: 0,
     productValueExGSTOverride: Number(paymentRecord.commissionBase || 0) / 100,
     gstAmountOverride: Number(paymentRecord.gstAmount || 0) / 100,
     status: "PAID",
+  };
+}
+
+async function getSellerPaymentAccountType(sellerId, tx = prisma) {
+  try {
+    const sellerProfile = await tx.sellerProfile.findUnique({
+      where: { userId: sellerId },
+      select: { paymentAccountType: true },
+    });
+    return sellerProfile?.paymentAccountType || "CONNECTED";
+  } catch (_) {
+    return "CONNECTED";
+  }
+}
+
+async function findSellerPaymentRecordForOrder({ orderId, sellerId }) {
+  if (prisma.orderPaymentRecord.findFirst) {
+    return prisma.orderPaymentRecord.findFirst({
+      where: { orderId, sellerId },
+      orderBy: { createdAt: "desc" },
+    }).catch(() => null);
+  }
+  if (prisma.orderPaymentRecord.findMany) {
+    const records = await prisma.orderPaymentRecord.findMany({
+      where: { orderId, sellerId },
+    }).catch(() => []);
+    return records[0] || null;
+  }
+  return null;
+}
+
+async function buildSellerPaymentPlan({ sellerId, items, cartCalculations, discountShare = 0 }) {
+  const paymentAccountType = await getSellerPaymentAccountType(sellerId);
+  if (paymentAccountType === "PLATFORM") {
+    return buildSellerPlatformPaymentPlan({ sellerId, items, cartCalculations, discountShare });
+  }
+  const { stripeAccountId } = await requireDirectChargeReadySeller(sellerId);
+  return {
+    ...buildSellerDirectChargePlan({ sellerId, items, cartCalculations, discountShare }),
+    paymentAccountType: "CONNECTED",
+    stripeAccountId,
   };
 }
 
@@ -829,31 +935,44 @@ exports.createPaymentIntent = async (request, reply) => {
     if (!isMultiSeller && USE_DIRECT_CHARGES_FOR_SINGLE_SELLER) {
       const [singleSellerId] = sellerItemsMap.keys();
       singleSellerIdForOperation = singleSellerId;
-      const { stripeAccountId } = await requireDirectChargeReadySeller(singleSellerId);
       const itemTotal = cart.items.reduce((s, i) => s + Number(i.productVariant?.price ?? i.product.price) * i.quantity, 0);
       const perSellerShipping  = parseFloat(cartCalculations.shippingCost);
-      const eligibleSubtotalCents = moneyToMinorUnits(cartCalculations.subtotalExGST);
-      const commission = calculateAlpaCommission({
-        eligibleProductSubtotalCents: eligibleSubtotalCents,
-        currency: "aud",
-      });
-      // True Direct Charge: PaymentIntent is created on the seller's connected account.
-      // Stripe automatically deducts its processing fee from the seller's balance.
-      // ALPA's commission flows as application_fee_amount.
-      // No transfer_data or on_behalf_of required.
-      paymentIntentStripeAccountId = stripeAccountId;
-      directChargeParams = {
-        application_fee_amount: commission.applicationFeeAmount,
-      };
-      directChargePaymentRecord = {
-        sellerId: singleSellerId,
-        stripeAccountId,
-        itemTotal,
-        shippingAmount: perSellerShipping,
-        commission,
-        grossAmountCents: amountInCents,
-        gstAmountCents: moneyToMinorUnits(cartCalculations.gstAmount),
-      };
+      const paymentAccountType = await getSellerPaymentAccountType(singleSellerId);
+      if (paymentAccountType === "PLATFORM") {
+        directChargePaymentRecord = {
+          paymentAccountType: "PLATFORM",
+          sellerId: singleSellerId,
+          itemTotal,
+          shippingAmount: perSellerShipping,
+          grossAmountCents: amountInCents,
+          gstAmountCents: moneyToMinorUnits(cartCalculations.gstAmount),
+        };
+      } else {
+        const { stripeAccountId } = await requireDirectChargeReadySeller(singleSellerId);
+        const eligibleSubtotalCents = moneyToMinorUnits(cartCalculations.subtotalExGST);
+        const commission = calculateAlpaCommission({
+          eligibleProductSubtotalCents: eligibleSubtotalCents,
+          currency: "aud",
+        });
+        // True Direct Charge: PaymentIntent is created on the seller's connected account.
+        // Stripe automatically deducts its processing fee from the seller's balance.
+        // ALPA's commission flows as application_fee_amount.
+        // No transfer_data or on_behalf_of required.
+        paymentIntentStripeAccountId = stripeAccountId;
+        directChargeParams = {
+          application_fee_amount: commission.applicationFeeAmount,
+        };
+        directChargePaymentRecord = {
+          paymentAccountType: "CONNECTED",
+          sellerId: singleSellerId,
+          stripeAccountId,
+          itemTotal,
+          shippingAmount: perSellerShipping,
+          commission,
+          grossAmountCents: amountInCents,
+          gstAmountCents: moneyToMinorUnits(cartCalculations.gstAmount),
+        };
+      }
     }
 
     const checkoutRequestHash = hashOperationPayload({
@@ -912,11 +1031,7 @@ exports.createPaymentIntent = async (request, reply) => {
     if (isMultiSeller) {
       const sellerPlans = [];
       for (const [sellerId, items] of sellerItemsMap) {
-        const { stripeAccountId } = await requireDirectChargeReadySeller(sellerId);
-        sellerPlans.push({
-          ...buildSellerDirectChargePlan({ sellerId, items, cartCalculations }),
-          stripeAccountId,
-        });
+        sellerPlans.push(await buildSellerPaymentPlan({ sellerId, items, cartCalculations }));
       }
 
       const shippingAddressData =
@@ -995,15 +1110,28 @@ exports.createPaymentIntent = async (request, reply) => {
 
       const payments = [];
       for (const plan of sellerPlans) {
-        const metadata = buildDirectChargeStripeMetadata({
-          order,
-          sellerId: plan.sellerId,
-          sellerStripeAccountId: plan.stripeAccountId,
-          productAmountCents: plan.productAmountCents,
-          shippingAmountCents: plan.shippingAmountCents,
-          gstAmountCents: plan.gstAmountCents,
-          commission: plan.commission,
-        });
+        const isPlatformPayment = plan.paymentAccountType === "PLATFORM";
+        const metadata = isPlatformPayment
+          ? {
+              orderId: order.id,
+              displayOrderId: order.displayId || order.id,
+              sellerId: plan.sellerId,
+              paymentFlow: "PLATFORM_ACCOUNT",
+              productAmount: (Number(plan.productAmountCents || 0) / 100).toFixed(2),
+              shippingAmount: (Number(plan.shippingAmountCents || 0) / 100).toFixed(2),
+              gstAmount: (Number(plan.gstAmountCents || 0) / 100).toFixed(2),
+              commissionAmount: "0.00",
+              environment: process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") ? "test" : "live",
+            }
+          : buildDirectChargeStripeMetadata({
+              order,
+              sellerId: plan.sellerId,
+              sellerStripeAccountId: plan.stripeAccountId,
+              productAmountCents: plan.productAmountCents,
+              shippingAmountCents: plan.shippingAmountCents,
+              gstAmountCents: plan.gstAmountCents,
+              commission: plan.commission,
+            });
         const paymentIntent = await stripe.paymentIntents.create(
           {
             amount: plan.grossAmountCents,
@@ -1020,35 +1148,46 @@ exports.createPaymentIntent = async (request, reply) => {
               ...metadata,
               userId,
               cartId: cart.id,
-              chargeType: "direct",
+              chargeType: isPlatformPayment ? "platform" : "direct",
             },
             automatic_payment_methods: { enabled: true },
-            application_fee_amount: plan.commission.applicationFeeAmount,
+            ...(!isPlatformPayment && { application_fee_amount: plan.commission.applicationFeeAmount }),
           },
           {
             idempotencyKey: `${checkoutApiOperationKey}:${plan.sellerId}`,
-            stripeAccount: plan.stripeAccountId,
+            ...(!isPlatformPayment && { stripeAccount: plan.stripeAccountId }),
           },
         );
 
         const paymentRecord = await prisma.orderPaymentRecord.create({
-          data: buildDirectChargePaymentRecordData({
-            orderId: order.id,
-            sellerId: plan.sellerId,
-            stripeAccountId: plan.stripeAccountId,
-            stripePaymentIntentId: paymentIntent.id,
-            itemTotal: plan.discountedProductAmount,
-            shippingAmount: plan.shippingAmount,
-            commission: plan.commission,
-            grossAmountCents: plan.grossAmountCents,
-            gstAmountCents: plan.gstAmountCents,
-          }),
+          data: isPlatformPayment
+            ? buildPlatformPaymentRecordData({
+                orderId: order.id,
+                sellerId: plan.sellerId,
+                stripePaymentIntentId: paymentIntent.id,
+                itemTotal: plan.discountedProductAmount,
+                shippingAmount: plan.shippingAmount,
+                grossAmountCents: plan.grossAmountCents,
+                gstAmountCents: plan.gstAmountCents,
+              })
+            : buildDirectChargePaymentRecordData({
+                orderId: order.id,
+                sellerId: plan.sellerId,
+                stripeAccountId: plan.stripeAccountId,
+                stripePaymentIntentId: paymentIntent.id,
+                itemTotal: plan.discountedProductAmount,
+                shippingAmount: plan.shippingAmount,
+                commission: plan.commission,
+                grossAmountCents: plan.grossAmountCents,
+                gstAmountCents: plan.gstAmountCents,
+              }),
         });
 
         payments.push({
           orderPaymentId: paymentRecord.id,
           sellerId: plan.sellerId,
-          stripeAccountId: plan.stripeAccountId,
+          stripeAccountId: isPlatformPayment ? null : plan.stripeAccountId,
+          paymentFlow: isPlatformPayment ? "PLATFORM_ACCOUNT" : "DIRECT_CHARGE",
           paymentIntentId: paymentIntent.id,
           clientSecret: paymentIntent.client_secret,
           amount: plan.grossAmountCents,
@@ -1218,13 +1357,24 @@ exports.createPaymentIntent = async (request, reply) => {
           },
           include: { items: { include: { product: true } } },
         });
-        if (paymentIntentStripeAccountId && directChargePaymentRecord) {
+        if (directChargePaymentRecord) {
+          const isPlatformPayment = directChargePaymentRecord.paymentAccountType === "PLATFORM";
           await tx.orderPaymentRecord.create({
-            data: buildDirectChargePaymentRecordData({
-              orderId: createdOrder.id,
-              stripePaymentIntentId: paymentIntent.id,
-              ...directChargePaymentRecord,
-            }),
+            data: isPlatformPayment
+              ? buildPlatformPaymentRecordData({
+                  orderId: createdOrder.id,
+                  stripePaymentIntentId: paymentIntent.id,
+                  sellerId: directChargePaymentRecord.sellerId,
+                  itemTotal: directChargePaymentRecord.itemTotal,
+                  shippingAmount: directChargePaymentRecord.shippingAmount,
+                  grossAmountCents: directChargePaymentRecord.grossAmountCents,
+                  gstAmountCents: directChargePaymentRecord.gstAmountCents,
+                })
+              : buildDirectChargePaymentRecordData({
+                  orderId: createdOrder.id,
+                  stripePaymentIntentId: paymentIntent.id,
+                  ...directChargePaymentRecord,
+                }),
           });
         }
         return createdOrder;
@@ -1515,11 +1665,7 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
     // between what's shown at checkout and what's charged at finalize time.
     const sellerPlans = [];
     for (const [sellerId, items] of sellerItemsMap) {
-      const { stripeAccountId } = await requireDirectChargeReadySeller(sellerId);
-      sellerPlans.push({
-        ...buildSellerDirectChargePlan({ sellerId, items, cartCalculations }),
-        stripeAccountId,
-      });
+      sellerPlans.push(await buildSellerPaymentPlan({ sellerId, items, cartCalculations }));
     }
 
     const shippingAddressData =
@@ -1600,7 +1746,9 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
         breakdown.push({
           sellerId: plan.sellerId,
           subOrderId: subOrder.id,
-          stripeAccountId: plan.stripeAccountId,
+          stripeAccountId: plan.paymentAccountType === "PLATFORM" ? null : plan.stripeAccountId,
+          paymentAccountType: plan.paymentAccountType,
+          paymentFlow: plan.paymentAccountType === "PLATFORM" ? "PLATFORM_ACCOUNT" : "DIRECT_CHARGE",
           productAmountCents: plan.productAmountCents,
           shippingAmountCents: plan.shippingAmountCents,
           gstAmountCents: plan.gstAmountCents,
@@ -1705,6 +1853,64 @@ async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPla
   const results = [];
   for (const plan of sellerPlans) {
     try {
+      if (plan.paymentAccountType === "PLATFORM" || plan.paymentFlow === "PLATFORM_ACCOUNT") {
+        const paymentIntent = await stripe.paymentIntents.create(
+          {
+            amount: plan.grossAmountCents,
+            currency: "aud",
+            payment_method: platformPaymentMethodId,
+            confirm: true,
+            automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+            description: buildSellerTransactionDescription({
+              order,
+              customerName: order.customerName,
+              customerEmail: order.customerEmail,
+              amount: plan.grossAmountCents / 100,
+              label: "Platform payment",
+            }),
+            metadata: {
+              orderId: order.id,
+              displayOrderId: order.displayId || order.id,
+              sellerId: plan.sellerId,
+              subOrderId: plan.subOrderId || "",
+              paymentFlow: "PLATFORM_ACCOUNT",
+              productAmount: (Number(plan.productAmountCents || 0) / 100).toFixed(2),
+              shippingAmount: (Number(plan.shippingAmountCents || 0) / 100).toFixed(2),
+              gstAmount: (Number(plan.gstAmountCents || 0) / 100).toFixed(2),
+              commissionAmount: "0.00",
+              ...extraMetadata,
+              chargeType: "platform",
+            },
+          },
+          { idempotencyKey: `charge:${order.id}:${plan.sellerId}:platform` },
+        );
+
+        await prisma.orderPaymentRecord.create({
+          data: buildPlatformPaymentRecordData({
+            orderId: order.id,
+            sellerId: plan.sellerId,
+            stripePaymentIntentId: paymentIntent.id,
+            itemTotal: plan.productAmountCents / 100,
+            shippingAmount: plan.shippingAmountCents / 100,
+            grossAmountCents: plan.grossAmountCents,
+            gstAmountCents: plan.gstAmountCents,
+            paymentStatus: paymentIntent.status === "succeeded" ? "PAID" : "PENDING",
+          }),
+        });
+
+        results.push({
+          sellerId: plan.sellerId,
+          stripeAccountId: null,
+          paymentFlow: "PLATFORM_ACCOUNT",
+          paymentIntentId: paymentIntent.id,
+          status: paymentIntent.status,
+          clientSecret: paymentIntent.status === "requires_action" ? paymentIntent.client_secret : undefined,
+          amount: plan.grossAmountCents,
+          currency: "aud",
+        });
+        continue;
+      }
+
       // Clone the platform PaymentMethod to this seller's connected account.
       // Verified: docs.stripe.com/connect/direct-charges-multiple-accounts.
       const cloned = await stripe.paymentMethods.create(
@@ -1771,6 +1977,7 @@ async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPla
       results.push({
         sellerId: plan.sellerId,
         stripeAccountId: plan.stripeAccountId,
+        paymentFlow: "DIRECT_CHARGE",
         paymentIntentId: paymentIntent.id,
         status: paymentIntent.status,
         clientSecret: paymentIntent.status === "requires_action" ? paymentIntent.client_secret : undefined,
@@ -1803,6 +2010,7 @@ async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPla
       results.push({
         sellerId: plan.sellerId,
         stripeAccountId: plan.stripeAccountId,
+        paymentFlow: plan.paymentAccountType === "PLATFORM" ? "PLATFORM_ACCOUNT" : "DIRECT_CHARGE",
         status: "failed",
         error: sellerError.message,
       });
@@ -2625,21 +2833,27 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
     const itemTotal = sellerItems.reduce((s, i) => s + Number(i.price) * i.quantity, 0);
     const productNames = sellerItems.map(i => i.product?.title).filter(Boolean);
     const sellerSubOrder = order.subOrders?.find((sub) => sub.sellerId === sid || sub.seller?.id === sid) || null;
-    const isDirectCharge = piChargeType === 'direct';
+    const sellerPaymentRecord =
+      await findSellerPaymentRecordForOrder({ orderId: order.id, sellerId: sid })
+      || (paymentRecord?.sellerId === sid ? paymentRecord : null);
+    const isDirectCharge = sellerPaymentRecord?.paymentFlow === 'DIRECT_CHARGE' || (!sellerPaymentRecord && piChargeType === 'direct');
+    const isPlatformAccountPayment = sellerPaymentRecord?.paymentFlow === 'PLATFORM_ACCOUNT';
+    const isConnectedAccountWebhook = Boolean(connectedAccountId);
     
     // Legacy Separate Charges and Transfers needs a seller transfer amount.
     // Direct Charge settlement is owned by Stripe; the backend only records
     // ALPA's application fee and must not calculate a seller payout.
     let payout = null;
-    if (!isDirectCharge) {
+    if (!isDirectCharge && !isPlatformAccountPayment && !isConnectedAccountWebhook) {
       const sellerCommission = await getCommissionForSeller(sid);
       const resolvedCommission = sellerCommission || (await getDefaultCommission());
       const commissionRatePct = resolvedCommission ? parseFloat(resolvedCommission.value) : 10;
       payout = calculateSellerPayout(itemTotal, perSellerShipping, commissionRatePct);
     }
-    const directChargePlatformFee = Number(paymentRecord?.applicationFeeAmount || 0) / 100;
-    const directChargeGstAmount = Number(paymentRecord?.gstAmount || 0) / 100;
+    const directChargePlatformFee = Number(sellerPaymentRecord?.applicationFeeAmount || 0) / 100;
+    const directChargeGstAmount = Number(sellerPaymentRecord?.gstAmount || 0) / 100;
     const directChargeSellerGross = itemTotal + perSellerShipping;
+    const paymentSettledByStripe = isDirectCharge || isPlatformAccountPayment || isConnectedAccountWebhook;
     
     // ── Build transaction description. Direct Charges show gross payment details;
     // legacy transfers show the calculated transfer payout.
@@ -2648,11 +2862,11 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
       customerName: toName,
       customerEmail: order.customerEmail,
       items: sellerItems,
-      amount: isDirectCharge ? directChargeSellerGross : payout.sellerTotalPayout,
-      label: isDirectCharge ? "Direct Charge payment" : "Legacy seller transfer",
-      platformFee: isDirectCharge ? directChargePlatformFee : payout.commissionAmount,
-      gstAmount: isDirectCharge ? directChargeGstAmount : payout.gstAmount,
-      shippingAmount: isDirectCharge ? perSellerShipping : payout.shippingAmount,
+      amount: paymentSettledByStripe ? directChargeSellerGross : payout.sellerTotalPayout,
+      label: isPlatformAccountPayment ? "Platform payment" : paymentSettledByStripe ? "Direct Charge payment" : "Legacy seller transfer",
+      platformFee: paymentSettledByStripe ? directChargePlatformFee : payout.commissionAmount,
+      gstAmount: paymentSettledByStripe ? directChargeGstAmount : payout.gstAmount,
+      shippingAmount: paymentSettledByStripe ? perSellerShipping : payout.shippingAmount,
     });
     if (!paymentCompletionNotificationsQueued) createOrderNotification(order.id, sid, 'ORDER_PROCESSING', 'HIGH', {
       message: `New order received from ${toName}`,
@@ -2735,7 +2949,7 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
       customerEmail:  order.customerEmail,
       customerId:     order.userId || null,
       sellerName:     sellerDisplayNames[sellerIdSet.indexOf(sid)] || null,
-      ...(isDirectCharge ? buildDirectChargeCommissionRecordOverrides(paymentRecord) : {}),
+      ...buildPaymentRecordCommissionOverrides(sellerPaymentRecord),
     });
     if (!commissionEarnedId) {
       throw new Error(`Commission earned record was not created for seller ${sid}`);
@@ -2758,11 +2972,13 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
       amount: itemTotal,
     });
 
-    if (isDirectCharge) {
+    if (paymentSettledByStripe) {
       // Direct Charge: Stripe handled seller settlement automatically.
+      // Platform Account: ALPA owns the platform payment; no seller transfer is needed.
       // Do not create seller transfers in this branch. If an old Stripe object
       // exposes a related transfer, only enrich metadata for reconciliation.
       await (async () => {
+        if (isPlatformAccountPayment) return;
         try {
           if (latestChargeId) {
             const stripeAccountOptions = retrievedPaymentIntentStripeAccountId
@@ -3154,33 +3370,46 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     if (!guestIsMultiSeller && USE_DIRECT_CHARGES_FOR_SINGLE_SELLER) {
       const [singleSellerId] = guestSellerMap.keys();
       guestSingleSellerIdForOperation = singleSellerId;
-      const { stripeAccountId } = await requireDirectChargeReadySeller(singleSellerId);
       const itemTotal = cartItems.reduce((s, i) => s + (i.productVariant ? Number(i.productVariant.price) : Number(i.product.price)) * i.quantity, 0);
       const perSellerShipping  = parseFloat(cartCalculations.shippingCost);
-      const eligibleSubtotalCents = Math.max(
-        0,
-        moneyToMinorUnits(cartCalculations.subtotalExGST) - moneyToMinorUnits(discountAmount),
-      );
-      const commission = calculateAlpaCommission({
-        eligibleProductSubtotalCents: eligibleSubtotalCents,
-        currency: "aud",
-      });
-      // True Direct Charge: PaymentIntent is created on the seller's connected account.
-      // Stripe automatically deducts its processing fee from the seller's balance.
-      // ALPA's commission flows as application_fee_amount.
-      guestPaymentIntentStripeAccountId = stripeAccountId;
-      guestDirectChargeParams = {
-        application_fee_amount: commission.applicationFeeAmount,
-      };
-      guestDirectChargePaymentRecord = {
-        sellerId: singleSellerId,
-        stripeAccountId,
-        itemTotal,
-        shippingAmount: perSellerShipping,
-        commission,
-        grossAmountCents: amountInCents,
-        gstAmountCents: moneyToMinorUnits(cartCalculations.gstAmount),
-      };
+      const paymentAccountType = await getSellerPaymentAccountType(singleSellerId);
+      if (paymentAccountType === "PLATFORM") {
+        guestDirectChargePaymentRecord = {
+          paymentAccountType: "PLATFORM",
+          sellerId: singleSellerId,
+          itemTotal,
+          shippingAmount: perSellerShipping,
+          grossAmountCents: amountInCents,
+          gstAmountCents: moneyToMinorUnits(cartCalculations.gstAmount),
+        };
+      } else {
+        const { stripeAccountId } = await requireDirectChargeReadySeller(singleSellerId);
+        const eligibleSubtotalCents = Math.max(
+          0,
+          moneyToMinorUnits(cartCalculations.subtotalExGST) - moneyToMinorUnits(discountAmount),
+        );
+        const commission = calculateAlpaCommission({
+          eligibleProductSubtotalCents: eligibleSubtotalCents,
+          currency: "aud",
+        });
+        // True Direct Charge: PaymentIntent is created on the seller's connected account.
+        // Stripe automatically deducts its processing fee from the seller's balance.
+        // ALPA's commission flows as application_fee_amount.
+        guestPaymentIntentStripeAccountId = stripeAccountId;
+        guestDirectChargeParams = {
+          application_fee_amount: commission.applicationFeeAmount,
+        };
+        guestDirectChargePaymentRecord = {
+          paymentAccountType: "CONNECTED",
+          sellerId: singleSellerId,
+          stripeAccountId,
+          itemTotal,
+          shippingAmount: perSellerShipping,
+          commission,
+          grossAmountCents: amountInCents,
+          gstAmountCents: moneyToMinorUnits(cartCalculations.gstAmount),
+        };
+      }
     }
 
     const normalizedGuestEmail = customerEmail.trim().toLowerCase();
@@ -3242,20 +3471,16 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       );
       const guestSellerPlans = [];
       for (const [sellerId, sellerItems] of guestSellerMap) {
-        const { stripeAccountId } = await requireDirectChargeReadySeller(sellerId);
         const sellerSubtotal = getSellerItemsTotal(sellerItems);
         const discountShare = originalSubtotal > 0
           ? Number(discountAmount || 0) * (sellerSubtotal / originalSubtotal)
           : 0;
-        guestSellerPlans.push({
-          ...buildSellerDirectChargePlan({
+        guestSellerPlans.push(await buildSellerPaymentPlan({
             sellerId,
             items: sellerItems,
             cartCalculations,
             discountShare,
-          }),
-          stripeAccountId,
-        });
+        }));
       }
 
       const shippingAddressData =
@@ -3339,15 +3564,28 @@ exports.createGuestPaymentIntent = async (request, reply) => {
 
       const payments = [];
       for (const plan of guestSellerPlans) {
-        const metadata = buildDirectChargeStripeMetadata({
-          order,
-          sellerId: plan.sellerId,
-          sellerStripeAccountId: plan.stripeAccountId,
-          productAmountCents: plan.productAmountCents,
-          shippingAmountCents: plan.shippingAmountCents,
-          gstAmountCents: plan.gstAmountCents,
-          commission: plan.commission,
-        });
+        const isPlatformPayment = plan.paymentAccountType === "PLATFORM";
+        const metadata = isPlatformPayment
+          ? {
+              orderId: order.id,
+              displayOrderId: order.displayId || order.id,
+              sellerId: plan.sellerId,
+              paymentFlow: "PLATFORM_ACCOUNT",
+              productAmount: (Number(plan.productAmountCents || 0) / 100).toFixed(2),
+              shippingAmount: (Number(plan.shippingAmountCents || 0) / 100).toFixed(2),
+              gstAmount: (Number(plan.gstAmountCents || 0) / 100).toFixed(2),
+              commissionAmount: "0.00",
+              environment: process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") ? "test" : "live",
+            }
+          : buildDirectChargeStripeMetadata({
+              order,
+              sellerId: plan.sellerId,
+              sellerStripeAccountId: plan.stripeAccountId,
+              productAmountCents: plan.productAmountCents,
+              shippingAmountCents: plan.shippingAmountCents,
+              gstAmountCents: plan.gstAmountCents,
+              commission: plan.commission,
+            });
         const paymentIntent = await stripe.paymentIntents.create(
           {
             amount: plan.grossAmountCents,
@@ -3364,35 +3602,46 @@ exports.createGuestPaymentIntent = async (request, reply) => {
               ...metadata,
               isGuest: "true",
               customerEmail,
-              chargeType: "direct",
+              chargeType: isPlatformPayment ? "platform" : "direct",
             },
             automatic_payment_methods: { enabled: true },
-            application_fee_amount: plan.commission.applicationFeeAmount,
+            ...(!isPlatformPayment && { application_fee_amount: plan.commission.applicationFeeAmount }),
           },
           {
             idempotencyKey: `${guestCheckoutApiOperationKey}:${plan.sellerId}`,
-            stripeAccount: plan.stripeAccountId,
+            ...(!isPlatformPayment && { stripeAccount: plan.stripeAccountId }),
           },
         );
 
         const paymentRecord = await prisma.orderPaymentRecord.create({
-          data: buildDirectChargePaymentRecordData({
-            orderId: order.id,
-            sellerId: plan.sellerId,
-            stripeAccountId: plan.stripeAccountId,
-            stripePaymentIntentId: paymentIntent.id,
-            itemTotal: plan.discountedProductAmount,
-            shippingAmount: plan.shippingAmount,
-            commission: plan.commission,
-            grossAmountCents: plan.grossAmountCents,
-            gstAmountCents: plan.gstAmountCents,
-          }),
+          data: isPlatformPayment
+            ? buildPlatformPaymentRecordData({
+                orderId: order.id,
+                sellerId: plan.sellerId,
+                stripePaymentIntentId: paymentIntent.id,
+                itemTotal: plan.discountedProductAmount,
+                shippingAmount: plan.shippingAmount,
+                grossAmountCents: plan.grossAmountCents,
+                gstAmountCents: plan.gstAmountCents,
+              })
+            : buildDirectChargePaymentRecordData({
+                orderId: order.id,
+                sellerId: plan.sellerId,
+                stripeAccountId: plan.stripeAccountId,
+                stripePaymentIntentId: paymentIntent.id,
+                itemTotal: plan.discountedProductAmount,
+                shippingAmount: plan.shippingAmount,
+                commission: plan.commission,
+                grossAmountCents: plan.grossAmountCents,
+                gstAmountCents: plan.gstAmountCents,
+              }),
         });
 
         payments.push({
           orderPaymentId: paymentRecord.id,
           sellerId: plan.sellerId,
-          stripeAccountId: plan.stripeAccountId,
+          stripeAccountId: isPlatformPayment ? null : plan.stripeAccountId,
+          paymentFlow: isPlatformPayment ? "PLATFORM_ACCOUNT" : "DIRECT_CHARGE",
           paymentIntentId: paymentIntent.id,
           clientSecret: paymentIntent.client_secret,
           amount: plan.grossAmountCents,
@@ -3564,13 +3813,24 @@ exports.createGuestPaymentIntent = async (request, reply) => {
             items: { create: orderItems },
           },
         });
-        if (guestPaymentIntentStripeAccountId && guestDirectChargePaymentRecord) {
+        if (guestDirectChargePaymentRecord) {
+          const isPlatformPayment = guestDirectChargePaymentRecord.paymentAccountType === "PLATFORM";
           await tx.orderPaymentRecord.create({
-            data: buildDirectChargePaymentRecordData({
-              orderId: createdOrder.id,
-              stripePaymentIntentId: paymentIntent.id,
-              ...guestDirectChargePaymentRecord,
-            }),
+            data: isPlatformPayment
+              ? buildPlatformPaymentRecordData({
+                  orderId: createdOrder.id,
+                  stripePaymentIntentId: paymentIntent.id,
+                  sellerId: guestDirectChargePaymentRecord.sellerId,
+                  itemTotal: guestDirectChargePaymentRecord.itemTotal,
+                  shippingAmount: guestDirectChargePaymentRecord.shippingAmount,
+                  grossAmountCents: guestDirectChargePaymentRecord.grossAmountCents,
+                  gstAmountCents: guestDirectChargePaymentRecord.gstAmountCents,
+                })
+              : buildDirectChargePaymentRecordData({
+                  orderId: createdOrder.id,
+                  stripePaymentIntentId: paymentIntent.id,
+                  ...guestDirectChargePaymentRecord,
+                }),
           });
         }
         return createdOrder;
@@ -3899,15 +4159,16 @@ exports.createGuestMultiSellerCheckoutSetup = async (request, reply) => {
     );
     const sellerPlans = [];
     for (const [sellerId, sellerItems] of guestSellerMap) {
-      const { stripeAccountId } = await requireDirectChargeReadySeller(sellerId);
       const sellerSubtotal = getSellerItemsTotal(sellerItems);
       const discountShare = originalSubtotal > 0
         ? Number(discountAmount || 0) * (sellerSubtotal / originalSubtotal)
         : 0;
-      sellerPlans.push({
-        ...buildSellerDirectChargePlan({ sellerId, items: sellerItems, cartCalculations, discountShare }),
-        stripeAccountId,
-      });
+      sellerPlans.push(await buildSellerPaymentPlan({
+        sellerId,
+        items: sellerItems,
+        cartCalculations,
+        discountShare,
+      }));
     }
 
     const shippingAddressData =
@@ -3984,7 +4245,9 @@ exports.createGuestMultiSellerCheckoutSetup = async (request, reply) => {
         breakdown.push({
           sellerId: plan.sellerId,
           subOrderId: subOrder.id,
-          stripeAccountId: plan.stripeAccountId,
+          stripeAccountId: plan.paymentAccountType === "PLATFORM" ? null : plan.stripeAccountId,
+          paymentAccountType: plan.paymentAccountType,
+          paymentFlow: plan.paymentAccountType === "PLATFORM" ? "PLATFORM_ACCOUNT" : "DIRECT_CHARGE",
           productAmountCents: plan.productAmountCents,
           shippingAmountCents: plan.shippingAmountCents,
           gstAmountCents: plan.gstAmountCents,

@@ -58,12 +58,21 @@ async function checkSellerPaymentReadiness({ prisma, stripe, sellerId, currency 
       where: { userId: sellerId },
       select: {
         stripeAccountId: true,
+        paymentAccountType: true,
         stripeChargesEnabled: true,
         stripePayoutsEnabled: true,
       },
     });
   } catch (err) {
     return readinessResult(false, "SELLER_LOOKUP_FAILED", err.message);
+  }
+
+  if (sellerProfile?.paymentAccountType === "PLATFORM") {
+    return readinessResult(true, null, null, {
+      paymentAccountType: "PLATFORM",
+      stripeAccountId: null,
+      account: null,
+    });
   }
 
   if (!sellerProfile?.stripeAccountId) return readinessResult(false, "STRIPE_NOT_CONNECTED");
@@ -92,6 +101,7 @@ async function checkSellerPaymentReadiness({ prisma, stripe, sellerId, currency 
 
   return readinessResult(true, null, null, {
     stripeAccountId: sellerProfile.stripeAccountId,
+    paymentAccountType: "CONNECTED",
     account,
   });
 }

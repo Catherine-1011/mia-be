@@ -87,6 +87,9 @@ async function adminRoutes(fastify, options) {
   // Optional filters: &sellerId=xxx  &page=1 &limit=20
   fastify.get("/products", { preHandler: adminAuth }, adminController.getAllAdminProducts);
 
+  // Create ALPA/platform-owned product as PENDING for normal approval workflow
+  fastify.post("/products/create", { preHandler: adminAuth }, adminController.createPlatformProduct);
+
   // Get all pending products for approval
   fastify.get("/products/pending", { preHandler: adminAuth }, adminController.getPendingProducts);
   

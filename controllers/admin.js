@@ -2011,6 +2011,7 @@ exports.getAllSellers = async (request, reply) => {
         SELECT sp.id, sp."userId" AS "sellerId", sp."businessName", sp."storeName",
                sp."businessType", sp."businessAddress" AS address,
                sp."productCount", sp.status::text AS status,
+               sp."isActive", sp.payment_account_type::text AS "paymentAccountType",
                sp."minimumProductsUploaded", sp."onboardingStep",
                sp."bankDetails", sp."kycSubmitted",
                sp."createdAt", sp."updatedAt",
@@ -2038,6 +2039,7 @@ exports.getAllSellers = async (request, reply) => {
         SELECT sp.id, sp."userId" AS "sellerId", sp."businessName", sp."storeName",
                sp."businessType", sp."businessAddress" AS address,
                sp."productCount", sp.status::text AS status,
+               sp."isActive", sp.payment_account_type::text AS "paymentAccountType",
                sp."minimumProductsUploaded", sp."onboardingStep",
                sp."bankDetails", sp."kycSubmitted",
                sp."createdAt", sp."updatedAt",
@@ -2074,6 +2076,8 @@ exports.getAllSellers = async (request, reply) => {
       address: row.address,
       productCount: row.productCount,
       status: row.status,
+      isActive: row.isActive,
+      paymentAccountType: row.paymentAccountType,
       minimumProductsUploaded: row.minimumProductsUploaded,
       onboardingStep: row.onboardingStep,
       kycSubmitted: row.kycSubmitted,
@@ -2453,6 +2457,165 @@ exports.getAllAdminProducts = async (request, reply) => {
   } catch (err) {
     console.error("Get all admin products error:", err);
     reply.status(500).send({ success: false, error: err.message });
+  }
+};
+
+// ADMIN: CREATE ALPA/PLATFORM-OWNED PRODUCT
+// POST /api/admin/products/create
+exports.createPlatformProduct = async (request, reply) => {
+  try {
+    if (!request.user || !isAdminRole(request.user.role)) {
+      return reply.status(403).send({ success: false, message: 'Access denied. Admins only.' });
+    }
+
+    const {
+      sellerId,
+      title,
+      description,
+      category,
+      price,
+      weight,
+      images,
+      featuredImage,
+      galleryImages,
+      tags,
+      artistName,
+      featured,
+      stock,
+      type,
+    } = request.body || {};
+
+    if (!sellerId) {
+      return reply.status(400).send({ success: false, message: 'sellerId is required' });
+    }
+    if (!title || !category || price === undefined || price === null || weight === undefined || weight === null) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Title, category, price, and weight are required',
+      });
+    }
+
+    const productType = type && String(type).toUpperCase() === 'VARIABLE' ? 'VARIABLE' : 'SIMPLE';
+    if (productType !== 'SIMPLE') {
+      return reply.status(400).send({
+        success: false,
+        message: 'Admin platform product creation currently supports SIMPLE products only. Use existing edit tools after creation if variants are required.',
+      });
+    }
+
+    const numericPrice = Number(price);
+    const numericWeight = Number(weight);
+    const numericStock = stock === undefined || stock === null || stock === '' ? 0 : Number.parseInt(String(stock), 10);
+
+    if (!Number.isFinite(numericPrice) || numericPrice < 0) {
+      return reply.status(400).send({ success: false, message: 'Price must be a valid non-negative number' });
+    }
+    if (!Number.isFinite(numericWeight) || numericWeight <= 0) {
+      return reply.status(400).send({ success: false, message: 'Weight must be greater than 0' });
+    }
+    if (!Number.isFinite(numericStock) || numericStock < 0) {
+      return reply.status(400).send({ success: false, message: 'Stock must be a valid non-negative number' });
+    }
+
+    const owner = await prisma.user.findUnique({
+      where: { id: sellerId },
+      include: { sellerProfile: true },
+    });
+
+    if (!owner) {
+      return reply.status(404).send({ success: false, message: 'Seller user not found' });
+    }
+    if (owner.role !== 'SELLER') {
+      return reply.status(400).send({ success: false, message: 'Selected owner must be a SELLER user' });
+    }
+    if (!owner.sellerProfile) {
+      return reply.status(400).send({ success: false, message: 'Selected owner does not have a seller profile' });
+    }
+    if (!owner.sellerProfile.isActive || owner.sellerProfile.status !== 'ACTIVE') {
+      return reply.status(400).send({ success: false, message: 'Selected platform owner seller profile must be active' });
+    }
+    if (owner.sellerProfile.paymentAccountType !== 'PLATFORM') {
+      return reply.status(400).send({
+        success: false,
+        message: 'Admin platform product creation requires a PLATFORM payment account owner',
+      });
+    }
+
+    const normalizeStringArray = (value) => {
+      if (!value) return [];
+      if (Array.isArray(value)) return value.map((v) => String(v).trim()).filter(Boolean);
+      return String(value).split(',').map((v) => v.trim()).filter(Boolean);
+    };
+
+    const normalizedGalleryImages = normalizeStringArray(galleryImages?.length ? galleryImages : images);
+    const normalizedTags = normalizeStringArray(tags);
+    const normalizedFeaturedImage =
+      typeof featuredImage === 'string' && featuredImage.trim()
+        ? featuredImage.trim()
+        : normalizedGalleryImages[0] || null;
+
+    const product = await prisma.product.create({
+      data: {
+        title: String(title).trim(),
+        description: description ? String(description).trim() : null,
+        type: 'SIMPLE',
+        price: numericPrice,
+        weight: numericWeight,
+        stock: numericStock,
+        category: String(category).trim(),
+        sellerId: owner.id,
+        sellerName: owner.sellerProfile.storeName || owner.sellerProfile.businessName || owner.name,
+        artistName: artistName ? String(artistName).trim() : null,
+        images: normalizedGalleryImages,
+        status: 'PENDING',
+        featured: featured === true || featured === 'true',
+        tags: normalizedTags,
+      },
+    });
+
+    await prisma.$executeRaw`
+      UPDATE "products"
+      SET "isActive" = false,
+          "featuredImage" = ${normalizedFeaturedImage}
+      WHERE "id" = ${product.id}
+    `;
+
+    await prisma.sellerProfile.update({
+      where: { userId: owner.id },
+      data: {
+        productCount: { increment: 1 },
+        minimumProductsUploaded: true,
+      },
+    });
+
+    auditLog({
+      entityType: ENTITY_TYPES.PRODUCT,
+      entityId: product.id,
+      action: AUDIT_ACTIONS.PRODUCT_CREATED,
+      newData: {
+        ...product,
+        isActive: false,
+        featuredImage: normalizedFeaturedImage,
+        ownerPaymentAccountType: owner.sellerProfile.paymentAccountType,
+        createdByAdmin: request.user.userId,
+      },
+      ...extractRequestMeta(request),
+    });
+
+    await invalidateCache('products');
+    return reply.status(201).send({
+      success: true,
+      message: 'Platform product created and submitted for approval',
+      product: {
+        ...product,
+        isActive: false,
+        featuredImage: normalizedFeaturedImage,
+        galleryImages: normalizedGalleryImages,
+      },
+    });
+  } catch (error) {
+    console.error('Create platform product error:', error);
+    return reply.status(500).send({ success: false, message: error.message });
   }
 };
 

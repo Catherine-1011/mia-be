@@ -2469,7 +2469,6 @@ exports.createPlatformProduct = async (request, reply) => {
     }
 
     const {
-      sellerId,
       title,
       description,
       category,
@@ -2485,8 +2484,12 @@ exports.createPlatformProduct = async (request, reply) => {
       type,
     } = request.body || {};
 
-    if (!sellerId) {
-      return reply.status(400).send({ success: false, message: 'sellerId is required' });
+    const platformOwnerId = process.env.ALPA_PLATFORM_OWNER_ID?.trim();
+    if (!platformOwnerId) {
+      return reply.status(500).send({
+        success: false,
+        message: 'ALPA platform owner is not configured',
+      });
     }
     if (!title || !category || price === undefined || price === null || weight === undefined || weight === null) {
       return reply.status(400).send({
@@ -2518,12 +2521,12 @@ exports.createPlatformProduct = async (request, reply) => {
     }
 
     const owner = await prisma.user.findUnique({
-      where: { id: sellerId },
+      where: { id: platformOwnerId },
       include: { sellerProfile: true },
     });
 
     if (!owner) {
-      return reply.status(404).send({ success: false, message: 'Seller user not found' });
+      return reply.status(500).send({ success: false, message: 'Configured ALPA platform owner was not found' });
     }
     if (owner.role !== 'SELLER') {
       return reply.status(400).send({ success: false, message: 'Selected owner must be a SELLER user' });

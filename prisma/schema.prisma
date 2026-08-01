@@ -36,6 +36,8 @@ model User {
   orders                          Order[]
   payoutRequests                  PayoutRequest[]
   products                        Product[]
+  createdProducts                 Product[]           @relation("ProductCreator")
+  platformAccount                 PlatformAccount?
   ratings                         Rating[]
   sellerProfile                   SellerProfile?
   siteFeedback                    SiteFeedback[]
@@ -187,6 +189,9 @@ model Product {
   stock                Int?               @default(0)
   images               String[]
   sellerId             String
+  creatorId            String?            @map("creator_id")
+  ownerType            ProductOwnerType   @default(SELLER) @map("owner_type")
+  platformAccountId    String?            @map("platform_account_id")
   sellerName           String?
   status               ProductStatus      @default(PENDING)
   createdAt            DateTime           @default(now())
@@ -205,11 +210,16 @@ model Product {
   cartItems            CartItem[]
   orderItems           OrderItem[]
   productVariants      ProductVariant[]
+  creator              User?              @relation("ProductCreator", fields: [creatorId], references: [id], onDelete: SetNull)
+  platformAccount      PlatformAccount?   @relation(fields: [platformAccountId], references: [id], onDelete: SetNull)
   seller               User               @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   ratings              Rating[]
   wishlist             Wishlist[]
 
   @@index([sellerId])
+  @@index([creatorId])
+  @@index([ownerType])
+  @@index([platformAccountId])
   @@index([category])
   @@index([status])
   @@index([isActive])
@@ -217,6 +227,22 @@ model Product {
   @@index([deletedAt])
   @@index([type])
   @@map("products")
+}
+
+model PlatformAccount {
+  id          String             @id @default(cuid())
+  userId      String             @unique @map("user_id")
+  displayName String             @map("display_name")
+  active      Boolean            @default(true)
+  paymentType PaymentAccountType @default(PLATFORM) @map("payment_type")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+  products    Product[]
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([active])
+  @@index([paymentType])
+  @@map("platform_accounts")
 }
 
 model Cart {
@@ -984,6 +1010,11 @@ enum PaymentFlow {
 
 enum PaymentAccountType {
   CONNECTED
+  PLATFORM
+}
+
+enum ProductOwnerType {
+  SELLER
   PLATFORM
 }
 

@@ -1,11 +1,21 @@
-# ALPA Platform Owner Setup
+# ALPA Platform Account Setup
 
-Admin-created ALPA products need an internal seller identity. The product create
-endpoint continues to read this ID from:
+Admin-created ALPA products use a platform account identity for ownership and
+payment routing. This identity is no longer required to be a seller and does not
+need a `SellerProfile` or Stripe Connect account.
+
+The backend reads the owning user ID from:
 
 ```env
-ALPA_PLATFORM_OWNER_ID=<user.id>
+ALPA_PLATFORM_OWNER_ID=<users.id>
 ```
+
+That user must be an existing ADMIN, SUPER_ADMIN, or SAML admin. It must not be
+a SELLER user. The required database shape is:
+
+- `PlatformAccount.userId = ALPA_PLATFORM_OWNER_ID`
+- `PlatformAccount.active = true`
+- `PlatformAccount.paymentType = PLATFORM`
 
 ## Audit Existing Database
 
@@ -15,45 +25,26 @@ Run from `mia-be`:
 npm run provision:platform-owner
 ```
 
-If a valid platform owner already exists, the script prints the user ID and makes
-no database changes.
-
-The required database shape is:
-
-- `User.role = SELLER`
-- `SellerProfile.status = ACTIVE`
-- `SellerProfile.isActive = true`
-- `SellerProfile.paymentAccountType = PLATFORM`
-- `SellerProfile.stripeAccountId = null`
+If a valid platform account already exists, the script prints its user ID and
+makes no database changes.
 
 ## Provision If Missing
 
-If audit mode reports that no valid owner exists, run:
+Set `ALPA_PLATFORM_OWNER_ID` to the existing user that should represent the ALPA
+platform account, then run:
 
 ```bash
 npm run provision:platform-owner -- --create
 ```
 
-This creates or repairs only the reserved internal identity:
+The script creates or updates only the `platform_accounts` row. It does not:
 
-- `name = ALPA Platform Internal`
-- `email = alpa.platform.internal@alpa.asn.au`
-- `role = SELLER`
-- `SellerProfile.status = ACTIVE`
-- `SellerProfile.isActive = true`
-- `SellerProfile.paymentAccountType = PLATFORM`
-- `SellerProfile.stripeAccountId = null`
-
-It does not create a Stripe connected account, start seller onboarding, require
-ABN data, or alter payment, checkout, refund, webhook, or commission logic.
-
-After the script prints the user ID, configure the backend runtime environment:
-
-```env
-ALPA_PLATFORM_OWNER_ID=<printed-user-id>
-```
-
-Restart or redeploy the backend after changing the environment variable.
+- convert ADMIN users into SELLERS
+- create seller profiles
+- create duplicate seller accounts
+- allow SELLER users as the platform account identity
+- start Stripe Connect onboarding
+- require a connected Stripe account
 
 ## Verification
 
@@ -61,8 +52,10 @@ Restart or redeploy the backend after changing the environment variable.
 2. Open Admin Dashboard -> Products -> Add Product.
 3. Submit a simple product.
 4. Confirm the created product has:
-   - `sellerId = ALPA_PLATFORM_OWNER_ID`
+   - `creatorId = <logged-in admin user id>`
+   - `ownerType = PLATFORM`
+   - `platformAccountId = <active PlatformAccount.id>`
    - `status = PENDING`
    - `isActive = false`
-5. Approve through the existing super-admin approval flow and confirm it becomes
-   active through the existing product approval path.
+5. Approve through the existing super-admin approval flow and confirm checkout
+   uses `paymentFlow = PLATFORM_ACCOUNT` with no Stripe connected account.

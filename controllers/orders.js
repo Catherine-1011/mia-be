@@ -312,6 +312,10 @@ function _calcSellerCouponDiscount(coupon, cartItems, gstRate) {
   return parseFloat((regularIncl - discountedIncl).toFixed(2));
 }
 
+function isPlatformOwnedProduct(product) {
+  return product?.ownerType === 'PLATFORM' || Boolean(product?.platformAccountId);
+}
+
 // Shared helper: normalize variant attributes for order/cart/refund responses.
 function formatVariantAttributes(productVariant) {
   if (!productVariant?.variantAttributeValues?.length) return null;
@@ -504,6 +508,8 @@ exports.createOrder = async (request, reply) => {
 
     let sellerNotifications = new Map();
     const orderItems = [];
+    const platformOrderItems = [];
+    const allProductTitles = [];
 
     // Stock validation + prepare order items
     for (const item of cart.items) {
@@ -538,7 +544,25 @@ exports.createOrder = async (request, reply) => {
         price: itemPrice
       });
 
-      // Track seller products for notification
+      // Build variant-aware title for customer/admin notifications.
+      const variantAttrs = item.productVariant?.variantAttributeValues
+        ?.map(av => `${av.attributeValue?.attribute?.name}: ${av.attributeValue?.value}`)
+        .filter(Boolean)
+        .join(', ');
+      const displayTitle = variantAttrs ? `${product.title} (${variantAttrs})` : product.title;
+      allProductTitles.push(displayTitle);
+
+      if (isPlatformOwnedProduct(product)) {
+        platformOrderItems.push({
+          productId: product.id,
+          variantId: item.variantId || null,
+          quantity: item.quantity,
+          price: itemPrice
+        });
+        continue;
+      }
+
+      // Track seller-owned products for seller-only workflows.
       if (!sellerNotifications.has(product.sellerId)) {
         sellerNotifications.set(product.sellerId, {
           productCount: 0,
@@ -552,12 +576,6 @@ exports.createOrder = async (request, reply) => {
       if (product.sellerName && !sellerData.sellerName) sellerData.sellerName = product.sellerName;
       sellerData.productCount += item.quantity;
       sellerData.totalAmount += itemTotal;
-      // Build variant-aware title for seller notifications
-      const variantAttrs = item.productVariant?.variantAttributeValues
-        ?.map(av => `${av.attributeValue?.attribute?.name}: ${av.attributeValue?.value}`)
-        .filter(Boolean)
-        .join(', ');
-      const displayTitle = variantAttrs ? `${product.title} (${variantAttrs})` : product.title;
       sellerData.products.push({
         productId: product.id,
         title: displayTitle,
@@ -623,8 +641,9 @@ exports.createOrder = async (request, reply) => {
         }
       }
 
-      // Check if this is a single seller or multi-seller order
-      const isMultiSeller = sellerNotifications.size > 1;
+      // Check if this is a single seller, multi-seller, or mixed seller/platform order.
+      const hasPlatformItems = platformOrderItems.length > 0;
+      const isMultiSeller = sellerNotifications.size > 1 || (sellerNotifications.size > 0 && hasPlatformItems);
       
       if (isMultiSeller) {
         // MULTI-SELLER ORDER: Create parent order + sub-orders
@@ -721,6 +740,18 @@ exports.createOrder = async (request, reply) => {
           });
         }
 
+        if (platformOrderItems.length > 0) {
+          await tx.orderItem.createMany({
+            data: platformOrderItems.map(item => ({
+              orderId: parentOrder.id,
+              productId: item.productId,
+              variantId: item.variantId || null,
+              quantity: item.quantity,
+              price: item.price
+            }))
+          });
+        }
+
         // Clear cart
         await tx.cartItem.deleteMany({
           where: { cartId: cart.id }
@@ -732,13 +763,14 @@ exports.createOrder = async (request, reply) => {
           isMultiSeller: true
         };
       } else {
-        // SINGLE SELLER ORDER: Create simple order (no sub-orders needed)
+        // SINGLE OWNER ORDER: Create simple order (no sub-orders needed).
+        // Platform-only orders intentionally have no sellerId.
         const [sellerId] = sellerNotifications.keys();
         const singleOrder = await tx.order.create({
           data: {
             displayId,
             userId,
-            sellerId, // Link directly to seller
+            ...(sellerId ? { sellerId } : {}),
             totalAmount,
             originalTotal,
             couponCode: appliedCoupon ? appliedCoupon.code : null,
@@ -855,17 +887,11 @@ exports.createOrder = async (request, reply) => {
       sellerNameMap.set(sid, s?.name || s?.sellerProfile?.storeName || s?.sellerProfile?.businessName || 'Unknown');
     }));
     const sellerNameList = [...sellerNameMap.values()];
-    const allProductTitles = [];
-    for (const [, sellerData] of sellerNotifications) {
-      if (sellerData.products) {
-        allProductTitles.push(...sellerData.products.map(p => p.title).filter(Boolean));
-      }
-    }
 
     // Create notifications for the main order (parent or single)
     const orderNotificationData = {
       customerName: user.isDeleted ? 'Deleted User' : user.name,
-      sellerName: sellerNameList.length > 0 ? sellerNameList.join(', ') : 'Unknown',
+      sellerName: sellerNameList.length > 0 ? sellerNameList.join(', ') : 'ALPA Platform',
       totalAmount: totalAmount.toFixed(2),
       itemCount: cart.items.length,
       productNames: allProductTitles,

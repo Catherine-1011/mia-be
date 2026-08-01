@@ -184,6 +184,22 @@ function buildRetryTransferDescription({ order, customerName, customerEmail, ite
 // Use this everywhere instead of hardcoding role === 'ADMIN'.
 const isAdminRole = (role) => role === 'ADMIN' || role === 'SUPER_ADMIN';
 
+async function resolveActivePlatformAccount(platformOwnerId) {
+  const account = await prisma.platformAccount.findFirst({
+    where: {
+      userId: platformOwnerId,
+      active: true,
+      paymentType: 'PLATFORM',
+    },
+    include: { user: true },
+  });
+  return account;
+}
+
+function isPlatformProduct(product) {
+  return product?.ownerType === 'PLATFORM' || Boolean(product?.platformAccountId);
+}
+
 // ── Variant price enrichment ──────────────────────────────────────────────────
 // For VARIABLE products, replaces price (null) with the variant price range string.
 // Used by admin product list endpoints.
@@ -2467,6 +2483,7 @@ exports.createPlatformProduct = async (request, reply) => {
     if (!request.user || !isAdminRole(request.user.role)) {
       return reply.status(403).send({ success: false, message: 'Access denied. Admins only.' });
     }
+    const creatorId = request.user.userId || request.user.uid || request.user.id;
 
     const {
       title,
@@ -2520,29 +2537,14 @@ exports.createPlatformProduct = async (request, reply) => {
       return reply.status(400).send({ success: false, message: 'Stock must be a valid non-negative number' });
     }
 
-    const owner = await prisma.user.findUnique({
-      where: { id: platformOwnerId },
-      include: { sellerProfile: true },
-    });
-
-    if (!owner) {
-      return reply.status(500).send({ success: false, message: 'Configured ALPA platform owner was not found' });
-    }
-    if (owner.role !== 'SELLER') {
-      return reply.status(400).send({ success: false, message: 'Selected owner must be a SELLER user' });
-    }
-    if (!owner.sellerProfile) {
-      return reply.status(400).send({ success: false, message: 'Selected owner does not have a seller profile' });
-    }
-    if (!owner.sellerProfile.isActive || owner.sellerProfile.status !== 'ACTIVE') {
-      return reply.status(400).send({ success: false, message: 'Selected platform owner seller profile must be active' });
-    }
-    if (owner.sellerProfile.paymentAccountType !== 'PLATFORM') {
-      return reply.status(400).send({
+    const platformAccount = await resolveActivePlatformAccount(platformOwnerId);
+    if (!platformAccount) {
+      return reply.status(500).send({
         success: false,
-        message: 'Admin platform product creation requires a PLATFORM payment account owner',
+        message: 'Configured ALPA platform account was not found or is inactive',
       });
     }
+    const owner = platformAccount.user;
 
     const normalizeStringArray = (value) => {
       if (!value) return [];
@@ -2567,7 +2569,10 @@ exports.createPlatformProduct = async (request, reply) => {
         stock: numericStock,
         category: String(category).trim(),
         sellerId: owner.id,
-        sellerName: owner.sellerProfile.storeName || owner.sellerProfile.businessName || owner.name,
+        creatorId,
+        ownerType: 'PLATFORM',
+        platformAccountId: platformAccount.id,
+        sellerName: platformAccount.displayName || owner.name,
         artistName: artistName ? String(artistName).trim() : null,
         images: normalizedGalleryImages,
         status: 'PENDING',
@@ -2583,14 +2588,6 @@ exports.createPlatformProduct = async (request, reply) => {
       WHERE "id" = ${product.id}
     `;
 
-    await prisma.sellerProfile.update({
-      where: { userId: owner.id },
-      data: {
-        productCount: { increment: 1 },
-        minimumProductsUploaded: true,
-      },
-    });
-
     auditLog({
       entityType: ENTITY_TYPES.PRODUCT,
       entityId: product.id,
@@ -2599,8 +2596,10 @@ exports.createPlatformProduct = async (request, reply) => {
         ...product,
         isActive: false,
         featuredImage: normalizedFeaturedImage,
-        ownerPaymentAccountType: owner.sellerProfile.paymentAccountType,
-        createdByAdmin: request.user.userId,
+        ownerType: 'PLATFORM',
+        platformAccountId: platformAccount.id,
+        ownerPaymentAccountType: platformAccount.paymentType,
+        createdByAdmin: creatorId,
       },
       ...extractRequestMeta(request),
     });
@@ -4321,6 +4320,7 @@ exports.approveProduct = async (request, reply) => {
       ...extractRequestMeta(request),
     });
 
+    if (!isPlatformProduct(product)) {
     // Send notification to seller about product approval
     await notifySellerProductStatusChange(product.sellerId, productId, "ACTIVE", product.title);
 
@@ -4350,6 +4350,8 @@ exports.approveProduct = async (request, reply) => {
       }
     } else {
       console.error(`❌ [approveProduct] Seller email still not found for sellerId=${product.sellerId} — email skipped`);
+    }
+
     }
 
     // Fetch updated product with featuredImage via raw SQL
@@ -4431,6 +4433,7 @@ exports.rejectProduct = async (request, reply) => {
       ...extractRequestMeta(request),
     });
 
+    if (!isPlatformProduct(product)) {
     // Send notification to seller about product rejection
     await notifySellerProductStatusChange(product.sellerId, productId, "REJECTED", product.title, reason || "No specific reason provided");
 
@@ -4460,6 +4463,8 @@ exports.rejectProduct = async (request, reply) => {
       }
     } else {
       console.error(`❌ [rejectProduct] Seller email still not found for sellerId=${product.sellerId} — email skipped`);
+    }
+
     }
 
     await invalidateCache('products');
@@ -4518,6 +4523,7 @@ exports.activateProduct = async (request, reply) => {
       ...extractRequestMeta(request),
     });
 
+    if (!isPlatformProduct(product)) {
     // Send notification to seller
     await notifySellerProductStatusChange(product.sellerId, productId, "ACTIVE", product.title);
 
@@ -4531,6 +4537,8 @@ exports.activateProduct = async (request, reply) => {
           }).catch(err => console.error('Seller activated email error:', err.message));
         }
       }).catch(err => console.error('Seller lookup error (activate email):', err.message));
+
+    }
 
     await invalidateCache('products');
     reply.send({ success: true, message: 'Product activated successfully' });
@@ -4585,6 +4593,7 @@ exports.deactivateProduct = async (request, reply) => {
       ...extractRequestMeta(request),
     });
 
+    if (!isPlatformProduct(product)) {
     // Send notification to seller
     await notifySellerProductStatusChange(product.sellerId, productId, "INACTIVE", product.title, reason);
 
@@ -4599,6 +4608,8 @@ exports.deactivateProduct = async (request, reply) => {
           }).catch(err => console.error('Seller deactivated email error:', err.message));
         }
       }).catch(err => console.error('Seller lookup error (deactivate email):', err.message));
+
+    }
 
     await invalidateCache('products');
     reply.send({ success: true, message: 'Product deactivated successfully' });

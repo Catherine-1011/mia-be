@@ -593,6 +593,7 @@ exports.getMyProducts = async (request, reply) => {
              "rejectionReason", "createdAt", "updatedAt"
       FROM "products"
       WHERE "sellerId" = ${sellerId}
+        AND "owner_type" = 'SELLER'::"ProductOwnerType"
         AND "deletedAt" IS NULL
       ORDER BY "createdAt" DESC
     `;
@@ -1362,6 +1363,7 @@ exports.getRecycleBin = async (request, reply) => {
              "createdAt", "updatedAt"
       FROM "products"
       WHERE "sellerId" = ${sellerId}
+        AND "owner_type" = 'SELLER'::"ProductOwnerType"
         AND "deletedAt" IS NOT NULL
       ORDER BY "deletedAt" DESC
     `;

@@ -571,6 +571,21 @@ function buildPaymentRecordCommissionOverrides(paymentRecord) {
   };
 }
 
+function itemIsPlatformOwned(item) {
+  return item?.product?.ownerType === "PLATFORM" || Boolean(item?.product?.platformAccountId);
+}
+
+function sellerIdsForSellerOnlyWorkflows(items) {
+  return [
+    ...new Set(
+      (items || [])
+        .filter((item) => !itemIsPlatformOwned(item))
+        .map((item) => item.product?.sellerId)
+        .filter(Boolean)
+    ),
+  ];
+}
+
 async function getSellerPaymentAccountType(sellerId, tx = prisma) {
   try {
     const sellerProfile = await tx.sellerProfile.findUnique({
@@ -581,6 +596,38 @@ async function getSellerPaymentAccountType(sellerId, tx = prisma) {
   } catch (_) {
     return "CONNECTED";
   }
+}
+
+async function itemsBelongToPlatformOwner(items, tx = prisma) {
+  const products = (items || []).map((item) => item.product).filter(Boolean);
+  if (products.length > 0 && products.every((product) => Object.prototype.hasOwnProperty.call(product, "ownerType"))) {
+    return products.some((product) => product.ownerType === "PLATFORM");
+  }
+
+  const productIds = [
+    ...new Set(
+      (items || [])
+        .map((item) => item.product?.id || item.productId)
+        .filter(Boolean)
+    ),
+  ];
+  if (!productIds.length) return false;
+  if (!tx.product?.findFirst) return false;
+
+  const platformProduct = await tx.product.findFirst({
+    where: {
+      id: { in: productIds },
+      ownerType: "PLATFORM",
+      platformAccountId: { not: null },
+    },
+    select: { id: true },
+  });
+  return Boolean(platformProduct);
+}
+
+async function resolvePaymentAccountTypeForItems({ sellerId, items, tx = prisma }) {
+  if (await itemsBelongToPlatformOwner(items, tx)) return "PLATFORM";
+  return getSellerPaymentAccountType(sellerId, tx);
 }
 
 async function findSellerPaymentRecordForOrder({ orderId, sellerId }) {
@@ -600,7 +647,7 @@ async function findSellerPaymentRecordForOrder({ orderId, sellerId }) {
 }
 
 async function buildSellerPaymentPlan({ sellerId, items, cartCalculations, discountShare = 0 }) {
-  const paymentAccountType = await getSellerPaymentAccountType(sellerId);
+  const paymentAccountType = await resolvePaymentAccountTypeForItems({ sellerId, items });
   if (paymentAccountType === "PLATFORM") {
     return buildSellerPlatformPaymentPlan({ sellerId, items, cartCalculations, discountShare });
   }
@@ -937,7 +984,7 @@ exports.createPaymentIntent = async (request, reply) => {
       singleSellerIdForOperation = singleSellerId;
       const itemTotal = cart.items.reduce((s, i) => s + Number(i.productVariant?.price ?? i.product.price) * i.quantity, 0);
       const perSellerShipping  = parseFloat(cartCalculations.shippingCost);
-      const paymentAccountType = await getSellerPaymentAccountType(singleSellerId);
+      const paymentAccountType = await resolvePaymentAccountTypeForItems({ sellerId: singleSellerId, items: cart.items });
       if (paymentAccountType === "PLATFORM") {
         directChargePaymentRecord = {
           paymentAccountType: "PLATFORM",
@@ -2636,7 +2683,7 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
     ...(order.items || []),
     ...(order.subOrders?.flatMap(sub => sub.items) || [])
   ];
-  const completionSellerIds = [...new Set(allItems.map(i => i.product?.sellerId).filter(Boolean))];
+  const completionSellerIds = sellerIdsForSellerOnlyWorkflows(allItems);
 
   const cart = order.userId
     ? await prisma.cart.findUnique({ where: { userId: order.userId } })
@@ -2792,7 +2839,7 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
 
   // ── Notify admins ───────────────────────────────────────────────────────
   // Resolve seller display names and product titles from all items (direct + sub-order)
-  const sellerIdSet = [...new Set(allItems.map(i => i.product?.sellerId).filter(Boolean))];
+  const sellerIdSet = sellerIdsForSellerOnlyWorkflows(allItems);
   const sellerDisplayNames = await Promise.all(sellerIdSet.map(async sid => {
     const s = await prisma.user.findUnique({ where: { id: sid }, select: { name: true, sellerProfile: { select: { storeName: true, businessName: true } } } });
     return s?.name || s?.sellerProfile?.storeName || s?.sellerProfile?.businessName || 'Unknown';
@@ -3372,7 +3419,7 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       guestSingleSellerIdForOperation = singleSellerId;
       const itemTotal = cartItems.reduce((s, i) => s + (i.productVariant ? Number(i.productVariant.price) : Number(i.product.price)) * i.quantity, 0);
       const perSellerShipping  = parseFloat(cartCalculations.shippingCost);
-      const paymentAccountType = await getSellerPaymentAccountType(singleSellerId);
+      const paymentAccountType = await resolvePaymentAccountTypeForItems({ sellerId: singleSellerId, items: cartItems });
       if (paymentAccountType === "PLATFORM") {
         guestDirectChargePaymentRecord = {
           paymentAccountType: "PLATFORM",

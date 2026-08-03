@@ -4,7 +4,7 @@ const Stripe = require("stripe");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const { generateSalesReportCSV } = require("../utils/csvExport");
 const { calculateSellerPayout } = require("../utils/commissionCalculator");
-const { sendSellerApprovedEmail, sendSellerLowStockEmail, sendSellerProductApprovedEmail, sendSellerProductRejectedEmail, sendSellerProductActivatedEmail, sendSellerProductDeactivatedEmail, sendAdminLowStockDeactivationEmail, sendRefundStatusUpdateEmail, sendSellerRefundStatusEmail, sendSellerAccountDeactivatedEmail } = require("../utils/emailService");
+const { sendSellerApprovedEmail, sendSellerLowStockEmail, sendSellerProductApprovedEmail, sendSellerProductRejectedEmail, sendSellerProductActivatedEmail, sendSellerProductDeactivatedEmail, sendAdminLowStockDeactivationEmail, sendRefundStatusUpdateEmail, sendSellerRefundStatusEmail, sendSellerAccountDeactivatedEmail, sendAdminProductPendingEmail } = require("../utils/emailService");
 const { uploadToCloudinary } = require("../config/cloudinary");
 const fs = require('fs');
 const path = require('path');
@@ -228,11 +228,24 @@ function validateAdminProductListQuery(query = {}, overrides = {}) {
   const limit = parsePositiveInteger(query.limit, 50);
   if (!limit) return { error: 'Limit must be a positive integer' };
 
+  const rawOwnerType = query.ownerType === undefined || query.ownerType === null || query.ownerType === ''
+    ? null
+    : String(query.ownerType).trim().toUpperCase();
+  if (rawOwnerType && !['SELLER', 'PLATFORM'].includes(rawOwnerType)) {
+    return { error: `Invalid ownerType '${query.ownerType}'` };
+  }
+
+  const sellerId = query.sellerId ? String(query.sellerId).trim() : null;
+  if (sellerId && rawOwnerType === 'PLATFORM') {
+    return { error: 'sellerId cannot be combined with ownerType=PLATFORM' };
+  }
+
   const maxLimit = 100;
   return {
     status: rawStatus,
     dbStatus: ADMIN_PRODUCT_STATUS_MAP[rawStatus],
-    sellerId: query.sellerId ? String(query.sellerId).trim() : null,
+    sellerId,
+    ownerType: rawOwnerType,
     page,
     limit: Math.min(limit, maxLimit),
   };
@@ -291,13 +304,16 @@ async function listAdminProducts(query = {}, overrides = {}) {
     throw error;
   }
 
-  const { dbStatus, sellerId, page, limit, status } = validated;
+  const { dbStatus, sellerId, ownerType, page, limit, status } = validated;
   const offset = (page - 1) * limit;
   const statusFilter = dbStatus
     ? Prisma.sql`AND p.status = ${dbStatus}::"ProductStatus"`
     : Prisma.empty;
   const sellerFilter = sellerId
     ? Prisma.sql`AND p."sellerId" = ${sellerId}`
+    : Prisma.empty;
+  const ownerTypeFilter = ownerType
+    ? Prisma.sql`AND p."owner_type" = ${ownerType}::"ProductOwnerType"`
     : Prisma.empty;
 
   const products = await prisma.$queryRaw`
@@ -318,6 +334,7 @@ async function listAdminProducts(query = {}, overrides = {}) {
     WHERE p."deletedAt" IS NULL
       ${statusFilter}
       ${sellerFilter}
+      ${ownerTypeFilter}
     ORDER BY p."createdAt" DESC
     LIMIT ${limit} OFFSET ${offset}
   `;
@@ -328,14 +345,16 @@ async function listAdminProducts(query = {}, overrides = {}) {
     WHERE p."deletedAt" IS NULL
       ${statusFilter}
       ${sellerFilter}
+      ${ownerTypeFilter}
   `;
 
-  const countRows = sellerId
+  const countRows = (sellerId || ownerType)
     ? await prisma.$queryRaw`
         SELECT status::text, COUNT(*)::int AS count
         FROM "products"
-        WHERE "sellerId" = ${sellerId}
-          AND "deletedAt" IS NULL
+        WHERE "deletedAt" IS NULL
+          ${sellerFilter}
+          ${ownerTypeFilter}
         GROUP BY status
       `
     : await prisma.$queryRaw`
@@ -514,6 +533,7 @@ const {
   notifySellerProductStatusChange,
   notifySellerLowStock,
   notifyAdminLowStockDeactivation,
+  notifyAdminNewProduct,
   notifySellerBankChangeApproved,
   notifySellerBankChangeRejected
 } = require("./notification");
@@ -2685,6 +2705,48 @@ exports.createPlatformProduct = async (request, reply) => {
     });
 
     await invalidateCache('products');
+
+    const createdBy = request.user.name || request.user.email || creatorId || 'administrator';
+    const platformOwnerName = platformAccount.displayName || 'ALPA Platform';
+    const pendingDetails = {
+      productTitle: product.title,
+      sellerName: platformOwnerName,
+      productId: product.id,
+      ownerType: 'PLATFORM',
+      createdBy,
+      creatorId,
+    };
+
+    try {
+      await notifyAdminNewProduct(product.id, {
+        ...pendingDetails,
+        notificationTitle: 'New ALPA Platform product awaiting review',
+      });
+    } catch (notificationError) {
+      console.error('[createPlatformProduct] Super Admin in-app notification failed:', notificationError.message);
+    }
+
+    try {
+      const superAdmins = await prisma.user.findMany({
+        where: { role: 'SUPER_ADMIN', isDeleted: false },
+        select: { email: true, name: true },
+      });
+      for (const admin of superAdmins) {
+        if (!admin.email) continue;
+        const result = await sendAdminProductPendingEmail(admin.email, admin.name, {
+          productTitle: product.title,
+          sellerName: `${platformOwnerName} (Created by: ${createdBy})`,
+          productId: product.id,
+          ownerType: 'PLATFORM',
+        });
+        if (!result?.success) {
+          console.error(`[createPlatformProduct] Failed to email Super Admin ${admin.email}:`, result?.error);
+        }
+      }
+    } catch (emailError) {
+      console.error('[createPlatformProduct] Super Admin review email failed:', emailError.message);
+    }
+
     return reply.status(201).send({
       success: true,
       message: 'Platform product created and submitted for approval',
@@ -4991,51 +5053,68 @@ exports.getAdminRecycleBin = async (request, reply) => {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
-    const { sellerId, page = 1, limit = 50 } = request.query;
+    const { sellerId, ownerType, page = 1, limit = 50 } = request.query;
     const take   = Math.min(Number(limit), 200);
     const offset = (Number(page) - 1) * take;
+    const normalizedOwnerType = ownerType === undefined || ownerType === null || ownerType === ''
+      ? null
+      : String(ownerType).trim().toUpperCase();
 
-    let products;
-    if (sellerId) {
-      products = await prisma.$queryRaw`
-        SELECT p.id, p.title, p.price, p.category, p.stock, p."sellerId",
-               p."sellerName", p.status, p."featuredImage",
-               p."deletedAt", p."deletedBy", p."deletedByRole",
-               p."createdAt", p."updatedAt",
-               u.name AS "seller_name", u.email AS "seller_email"
-        FROM "products" p
-        JOIN "users" u ON u.id = p."sellerId"
-        WHERE p."deletedAt" IS NOT NULL
-          AND p."sellerId" = ${sellerId}
-        ORDER BY p."deletedAt" DESC
-        LIMIT ${take} OFFSET ${offset}
-      `;
-    } else {
-      products = await prisma.$queryRaw`
-        SELECT p.id, p.title, p.price, p.category, p.stock, p."sellerId",
-               p."sellerName", p.status, p."featuredImage",
-               p."deletedAt", p."deletedBy", p."deletedByRole",
-               p."createdAt", p."updatedAt",
-               u.name AS "seller_name", u.email AS "seller_email"
-        FROM "products" p
-        JOIN "users" u ON u.id = p."sellerId"
-        WHERE p."deletedAt" IS NOT NULL
-        ORDER BY p."deletedAt" DESC
-        LIMIT ${take} OFFSET ${offset}
-      `;
+    if (normalizedOwnerType && !['SELLER', 'PLATFORM'].includes(normalizedOwnerType)) {
+      return reply.status(400).send({ success: false, message: `Invalid ownerType '${ownerType}'` });
+    }
+    if (sellerId && normalizedOwnerType === 'PLATFORM') {
+      return reply.status(400).send({ success: false, message: 'sellerId cannot be combined with ownerType=PLATFORM' });
     }
 
-    const countRows = sellerId
-      ? await prisma.$queryRaw`SELECT COUNT(*)::int AS total FROM "products" WHERE "deletedAt" IS NOT NULL AND "sellerId" = ${sellerId}`
-      : await prisma.$queryRaw`SELECT COUNT(*)::int AS total FROM "products" WHERE "deletedAt" IS NOT NULL`;
+    const sellerFilter = sellerId ? Prisma.sql`AND p."sellerId" = ${String(sellerId).trim()}` : Prisma.empty;
+    const ownerTypeFilter = normalizedOwnerType
+      ? Prisma.sql`AND p."owner_type" = ${normalizedOwnerType}::"ProductOwnerType"`
+      : Prisma.empty;
+
+    const products = await prisma.$queryRaw`
+        SELECT p.id, p.title, p.price, p.category, p.stock, p."sellerId",
+               p."sellerName", p.status, p."featuredImage",
+               p."creator_id" AS "creatorId",
+               p."owner_type"::text AS "ownerType",
+               p."platform_account_id" AS "platformAccountId",
+               pa."display_name" AS "platformDisplayName",
+               p."deletedAt", p."deletedBy", p."deletedByRole",
+               p."createdAt", p."updatedAt",
+               u.name AS "seller_name", u.email AS "seller_email"
+        FROM "products" p
+        JOIN "users" u ON u.id = p."sellerId"
+        LEFT JOIN "platform_accounts" pa ON pa.id = p."platform_account_id"
+        WHERE p."deletedAt" IS NOT NULL
+          ${sellerFilter}
+          ${ownerTypeFilter}
+        ORDER BY p."deletedAt" DESC
+        LIMIT ${take} OFFSET ${offset}
+      `;
+
+    const countRows = await prisma.$queryRaw`
+      SELECT COUNT(*)::int AS total
+      FROM "products" p
+      WHERE p."deletedAt" IS NOT NULL
+        ${sellerFilter}
+        ${ownerTypeFilter}
+    `;
     const total = countRows[0]?.total ?? 0;
 
     return reply.send({
       success:  true,
-      products: products.map(({ seller_name, seller_email, ...p }) => ({
-        ...p,
-        seller: { id: p.sellerId, name: seller_name, email: seller_email }
-      })),
+      products: products.map(({ seller_name, seller_email, ...p }) => {
+        const mapped = {
+          ...p,
+          ownerType: p.ownerType || 'SELLER',
+          creatorId: p.creatorId || null,
+          platformAccountId: p.platformAccountId || null,
+          platformDisplayName: p.platformDisplayName || null,
+          seller: { id: p.sellerId, name: seller_name, email: seller_email }
+        };
+        mapped.ownership = buildOwnership(mapped);
+        return mapped;
+      }),
       meta: { total, page: Number(page), limit: take, pages: Math.ceil(total / take) }
     });
   } catch (error) {

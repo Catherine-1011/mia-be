@@ -360,10 +360,13 @@ const notifyAdminNewOrder = async (orderId, orderDetails = {}) => {
 };
 
 const notifyAdminNewProduct = async (productId, productDetails = {}) => {
-  const { productTitle, sellerName } = productDetails;
+  const { productTitle, sellerName, ownerType, notificationTitle } = productDetails;
   
-  const title = 'New Product Submitted';
-  const message = `Seller ${sellerName || 'Unknown'} submitted a new product "${productTitle || 'Untitled'}" for approval`;
+  const isPlatform = ownerType === 'PLATFORM';
+  const title = notificationTitle || (isPlatform ? 'New ALPA Platform product awaiting review' : 'New Product Submitted');
+  const message = isPlatform
+    ? `Product owner: ${sellerName || 'ALPA Platform'} submitted "${productTitle || 'Untitled'}" for approval`
+    : `Seller ${sellerName || 'Unknown'} submitted a new product "${productTitle || 'Untitled'}" for approval`;
 
   const admins = await prisma.user.findMany({
     where: { role: { in: ['ADMIN', 'SUPER_ADMIN'] } },

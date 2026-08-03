@@ -36,6 +36,7 @@ function loadAdminController(prismaMock, mocks = {}) {
     notifySellerProductStatusChange: mocks.notifySellerProductStatusChange || (async () => undefined),
     notifySellerLowStock: async () => undefined,
     notifyAdminLowStockDeactivation: async () => undefined,
+    notifyAdminNewProduct: mocks.notifyAdminNewProduct || (async () => undefined),
     notifySellerBankChangeApproved: async () => undefined,
     notifySellerBankChangeRejected: async () => undefined,
   });
@@ -50,6 +51,7 @@ function loadAdminController(prismaMock, mocks = {}) {
     sendRefundStatusUpdateEmail: async () => ({ success: true }),
     sendSellerRefundStatusEmail: async () => ({ success: true }),
     sendSellerAccountDeactivatedEmail: async () => ({ success: true }),
+    sendAdminProductPendingEmail: mocks.sendAdminProductPendingEmail || (async () => ({ success: true })),
   });
   return require("../controllers/admin");
 }
@@ -145,6 +147,20 @@ test("admin product listing rejects invalid status and invalid pagination", () =
   assert.equal(validateAdminProductListQuery({ page: "0" }).error, "Page must be a positive integer");
   assert.equal(validateAdminProductListQuery({ limit: "abc" }).error, "Limit must be a positive integer");
   assert.equal(validateAdminProductListQuery({ limit: "1000" }).limit, 100);
+});
+
+test("admin product listing validates ownerType filters", () => {
+  const admin = loadAdminController({ product: {}, user: {}, $queryRaw: async () => [] });
+  const { validateAdminProductListQuery } = admin._adminProductTestHelpers;
+
+  assert.equal(validateAdminProductListQuery({ ownerType: "platform" }).ownerType, "PLATFORM");
+  assert.equal(validateAdminProductListQuery({ ownerType: "SELLER", sellerId: "seller-1" }).ownerType, "SELLER");
+  assert.equal(validateAdminProductListQuery({}).ownerType, null);
+  assert.equal(validateAdminProductListQuery({ ownerType: "admin" }).error, "Invalid ownerType 'admin'");
+  assert.equal(
+    validateAdminProductListQuery({ ownerType: "PLATFORM", sellerId: "seller-1" }).error,
+    "sellerId cannot be combined with ownerType=PLATFORM"
+  );
 });
 
 test("pending and status=pending admin routes return the same platform product IDs", async () => {
@@ -446,4 +462,118 @@ test("seller approval rejects inactive and missing SellerProfile records", async
   const missingReply = await callApprove(missingAdmin, "seller-missing");
   assert.equal(missingReply.code, 400);
   assert.match(missingReply.payload.message, /SellerProfile missing/);
+});
+
+function makePlatformCreatePrisma(calls = {}) {
+  return {
+    $queryRaw: async () => [],
+    $executeRaw: async (...args) => {
+      calls.executeRaw = (calls.executeRaw || 0) + 1;
+      calls.executeRawArgs = args;
+      return { count: 1 };
+    },
+    platformAccount: {
+      findFirst: async () => ({
+        id: "platform-account-1",
+        displayName: "ALPA Platform",
+        active: true,
+        paymentType: "PLATFORM",
+        user: { id: "platform-owner", name: "ALPA Admin", email: "platform@example.com" },
+      }),
+    },
+    product: {
+      create: async (args) => {
+        calls.productCreate = args;
+        return {
+          id: "platform-product-1",
+          title: args.data.title,
+          sellerId: args.data.sellerId,
+          creatorId: args.data.creatorId,
+          ownerType: args.data.ownerType,
+          platformAccountId: args.data.platformAccountId,
+          status: args.data.status,
+          isActive: false,
+        };
+      },
+    },
+    user: {
+      findMany: async (args) => {
+        calls.superAdminQuery = args;
+        return [
+          { email: "super1@example.com", name: "Super One" },
+          { email: "super2@example.com", name: "Super Two" },
+        ];
+      },
+    },
+    sellerProfile: {
+      create: async () => {
+        calls.sellerProfileCreate = (calls.sellerProfileCreate || 0) + 1;
+      },
+    },
+  };
+}
+
+async function callCreatePlatformProduct(admin) {
+  const reply = makeReply();
+  await admin.createPlatformProduct({
+    body: {
+      title: "Platform pending product",
+      category: "Art",
+      price: "20",
+      weight: "1.5",
+      stock: "3",
+      featuredImage: "https://example.com/image.jpg",
+    },
+    user: {
+      userId: "creator-admin",
+      role: "ADMIN",
+      name: "Creator Admin",
+      email: "creator@example.com",
+    },
+  }, reply);
+  return reply;
+}
+
+test("platform product creation notifies reviewers and emails all Super Admins", async () => {
+  const oldOwner = process.env.ALPA_PLATFORM_OWNER_ID;
+  process.env.ALPA_PLATFORM_OWNER_ID = "platform-owner";
+  const calls = { notify: [], emails: [], cache: 0, audit: 0 };
+  const admin = loadAdminController(makePlatformCreatePrisma(calls), {
+    invalidateCache: async () => { calls.cache += 1; },
+    auditLog: () => { calls.audit += 1; },
+    notifyAdminNewProduct: async (...args) => { calls.notify.push(args); },
+    sendAdminProductPendingEmail: async (...args) => {
+      calls.emails.push(args);
+      return { success: true };
+    },
+  });
+
+  const reply = await callCreatePlatformProduct(admin);
+  process.env.ALPA_PLATFORM_OWNER_ID = oldOwner;
+
+  assert.equal(reply.code, 201);
+  assert.equal(calls.productCreate.data.ownerType, "PLATFORM");
+  assert.equal(calls.productCreate.data.platformAccountId, "platform-account-1");
+  assert.equal(calls.productCreate.data.status, "PENDING");
+  assert.equal(calls.sellerProfileCreate || 0, 0);
+  assert.equal(calls.notify.length, 1);
+  assert.equal(calls.notify[0][1].sellerName, "ALPA Platform");
+  assert.equal(calls.notify[0][1].ownerType, "PLATFORM");
+  assert.equal(calls.emails.length, 2);
+  assert.match(calls.emails[0][2].sellerName, /ALPA Platform/);
+});
+
+test("platform product creation succeeds when notification and email fail", async () => {
+  const oldOwner = process.env.ALPA_PLATFORM_OWNER_ID;
+  process.env.ALPA_PLATFORM_OWNER_ID = "platform-owner";
+  const admin = loadAdminController(makePlatformCreatePrisma(), {
+    notifyAdminNewProduct: async () => { throw new Error("notification down"); },
+    sendAdminProductPendingEmail: async () => { throw new Error("email down"); },
+  });
+
+  const reply = await callCreatePlatformProduct(admin);
+  process.env.ALPA_PLATFORM_OWNER_ID = oldOwner;
+
+  assert.equal(reply.code, 201);
+  assert.equal(reply.payload.success, true);
 });

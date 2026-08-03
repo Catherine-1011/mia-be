@@ -1566,6 +1566,7 @@ exports.getAllProducts = async (request, reply) => {
       SELECT
         p.id, p.title, p.description, p.type, p.price, p.weight, p.category, p.stock,
         p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
+        p."owner_type" AS "ownerType", p."platform_account_id" AS "platformAccountId",
         p.featured, p.tags, p."featuredImage", p.images,
         p."createdAt", p."updatedAt",
         u.name AS "sellerUserName",
@@ -1573,10 +1574,25 @@ exports.getAllProducts = async (request, reply) => {
         COUNT(r.id)::int                  AS "ratingCount"
       FROM "products" p
       JOIN "users" u ON p."sellerId" = u.id
-      JOIN "seller_profiles" sp ON u.id = sp."userId"
+      LEFT JOIN "seller_profiles" sp ON u.id = sp."userId"
+      LEFT JOIN "platform_accounts" pa ON pa.id = p."platform_account_id"
       LEFT JOIN "ratings" r ON r."productId" = p.id
-      WHERE p."isActive" = true AND sp.status = 'ACTIVE'
-        AND p."deletedAt" IS NULL
+      WHERE p."deletedAt" IS NULL
+        AND p.status = 'ACTIVE'::"ProductStatus"
+        AND p."isActive" = true
+        AND (
+          (
+            p."owner_type" = 'SELLER'::"ProductOwnerType"
+            AND sp.status = 'ACTIVE'
+          )
+          OR
+          (
+            p."owner_type" = 'PLATFORM'::"ProductOwnerType"
+            AND pa.id IS NOT NULL
+            AND pa.active = true
+            AND pa."payment_type" = 'PLATFORM'::"PaymentAccountType"
+          )
+        )
         ${sellerFilter}
       GROUP BY p.id, u.name
       ORDER BY p."createdAt" DESC

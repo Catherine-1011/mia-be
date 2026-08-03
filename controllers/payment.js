@@ -575,6 +575,34 @@ function itemIsPlatformOwned(item) {
   return item?.product?.ownerType === "PLATFORM" || Boolean(item?.product?.platformAccountId);
 }
 
+function createOwnerGroup(item) {
+  const product = item.product;
+
+  if (itemIsPlatformOwned(item)) {
+    return {
+      groupKey: `PLATFORM:${product.platformAccountId || "default"}`,
+      ownerType: "PLATFORM",
+      sellerId: product.sellerId,
+      platformAccountId: product.platformAccountId || null,
+      items: [],
+    };
+  }
+
+  return {
+    groupKey: `SELLER:${product.sellerId}`,
+    ownerType: "SELLER",
+    sellerId: product.sellerId,
+    platformAccountId: null,
+    items: [],
+  };
+}
+
+// Structured, PII/secret-free diagnostic log for the multi-seller setup
+// endpoints — never include JWTs, client secrets, or Stripe secrets here.
+function logMultiSellerSetupOutcome(entry) {
+  console.log("[multi-seller-setup]", JSON.stringify(entry));
+}
+
 function sellerIdsForSellerOnlyWorkflows(items) {
   return [
     ...new Set(
@@ -1565,6 +1593,7 @@ exports.createPaymentIntent = async (request, reply) => {
 // ─────────────────────────────────────────────────────────────────────────────
 exports.createMultiSellerCheckoutSetup = async (request, reply) => {
   let checkoutApiOperationKey = null;
+  const requestId = request.id;
   try {
     const userId = request.user.userId;
     const {
@@ -1583,6 +1612,7 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
     const isInternational = !!effectiveIntlCountry && effectiveIntlCountry.toLowerCase() !== 'australia';
 
     if (!shippingAddress || (!shippingMethodId && !isInternational)) {
+      logMultiSellerSetupOutcome({ requestId, userId, shippingMethodId, isInternational, result: "REJECTED_MISSING_SHIPPING" });
       return reply.status(400).send({
         success: false,
         message: "shippingAddress and a shipping method (or international destination country) are required",
@@ -1591,6 +1621,7 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
+      logMultiSellerSetupOutcome({ requestId, userId, result: "REJECTED_USER_NOT_FOUND" });
       return reply.status(404).send({ success: false, message: "User not found" });
     }
 
@@ -1600,6 +1631,7 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
     });
 
     if (!cart || cart.items.length === 0) {
+      logMultiSellerSetupOutcome({ requestId, userId, cartId: cart?.id, itemCount: 0, result: "REJECTED_EMPTY_CART" });
       return reply.status(400).send({ success: false, message: "Cart is empty" });
     }
 
@@ -1618,6 +1650,7 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
         where: { id: shippingMethodId, isActive: true },
       });
       if (!shippingMethod) {
+        logMultiSellerSetupOutcome({ requestId, userId, cartId: cart.id, shippingMethodId, result: "REJECTED_INVALID_SHIPPING_METHOD" });
         return reply.status(400).send({ success: false, message: "Invalid or inactive shipping method" });
       }
     }
@@ -1625,6 +1658,7 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
     for (const item of cart.items) {
       const availableStock = item.productVariant ? item.productVariant.stock : (item.product.stock ?? 0);
       if (availableStock < item.quantity) {
+        logMultiSellerSetupOutcome({ requestId, userId, cartId: cart.id, productId: item.product.id, result: "REJECTED_INSUFFICIENT_STOCK" });
         return reply.status(400).send({ success: false, message: `Insufficient stock for: ${item.product.title}` });
       }
     }
@@ -1638,19 +1672,42 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
     const totalAmount = parseFloat(cartCalculations.grandTotal);
     const amountInCents = Math.round(totalAmount * 100);
 
+    // Group by commercial ownership (PLATFORM vs SELLER), not the legacy
+    // per-item sellerId — a platform-owned item's `sellerId` is a placeholder
+    // admin user and must never be merged into (or mistaken for) a real
+    // seller's payment group. See buildSellerPaymentPlan/itemsBelongToPlatformOwner.
     const sellerItemsMap = new Map();
     for (const item of cart.items) {
-      const sid = item.product.sellerId;
-      if (!sellerItemsMap.has(sid)) sellerItemsMap.set(sid, []);
-      sellerItemsMap.get(sid).push(item);
+      const group = createOwnerGroup(item);
+      if (!sellerItemsMap.has(group.groupKey)) sellerItemsMap.set(group.groupKey, group);
+      sellerItemsMap.get(group.groupKey).items.push(item);
     }
 
     if (sellerItemsMap.size <= 1) {
+      logMultiSellerSetupOutcome({
+        requestId, userId, cartId: cart.id, itemCount: cart.items.length,
+        sellerGroupCount: sellerItemsMap.size, result: "REJECTED_SINGLE_SELLER",
+      });
       return reply.status(400).send({
         success: false,
         message: "This cart has a single seller — use /api/payments/create-intent instead.",
       });
     }
+
+    logMultiSellerSetupOutcome({
+      requestId,
+      userId,
+      cartId: cart.id,
+      itemCount: cart.items.length,
+      productIds: cart.items.map((item) => item.product.id),
+      sellerIds: cart.items.map((item) => item.product.sellerId),
+      ownerTypes: cart.items.map((item) => item.product.ownerType),
+      platformAccountIds: cart.items.map((item) => item.product.platformAccountId).filter(Boolean),
+      sellerGroupCount: sellerItemsMap.size,
+      shippingMethodId: shippingMethodId || null,
+      isInternational,
+      result: "VALIDATION_PASSED",
+    });
 
     const displayId = await generateDisplayId();
 
@@ -1704,6 +1761,7 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
       }
     }
     if (!checkoutOperation.claimedNew && checkoutOperation.status === "STARTED") {
+      logMultiSellerSetupOutcome({ requestId, userId, cartId: cart.id, result: "202_PAYMENT_CREATION_IN_PROGRESS" });
       return reply.status(202).send({ success: true, status: "PAYMENT_CREATION_IN_PROGRESS", idempotent: true });
     }
 
@@ -1711,8 +1769,14 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
     // math as the single-request multi-seller flow so amounts can never drift
     // between what's shown at checkout and what's charged at finalize time.
     const sellerPlans = [];
-    for (const [sellerId, items] of sellerItemsMap) {
-      sellerPlans.push(await buildSellerPaymentPlan({ sellerId, items, cartCalculations }));
+    for (const [, group] of sellerItemsMap) {
+      // Keep groupKey separate from the canonical DB seller ID. Platform groups
+      // are detected from authoritative product ownership inside the items.
+      sellerPlans.push(await buildSellerPaymentPlan({
+        sellerId: group.sellerId,
+        items: group.items,
+        cartCalculations,
+      }));
     }
 
     const shippingAddressData =
@@ -1852,6 +1916,8 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
       orderId: order.id,
     });
 
+    logMultiSellerSetupOutcome({ requestId, userId, cartId: cart.id, orderId: order.id, sellerGroupCount: sellerPlans.length, result: "200_SETUP_INTENT_CREATED" });
+
     return reply.status(200).send({
       success: true,
       orderId: order.id,
@@ -1879,9 +1945,11 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
       } catch (_) { /* best effort */ }
     }
     if (error?.statusCode === 409 && error?.code) {
+      logMultiSellerSetupOutcome({ requestId, result: `409_${error.code}` });
       return reply.status(409).send({ success: false, code: error.code, message: error.message });
     }
     logStripeApiError(error);
+    logMultiSellerSetupOutcome({ requestId, result: "500_UNHANDLED_ERROR" });
     console.error("❌ createMultiSellerCheckoutSetup error:", error);
     return reply.status(500).send({
       success: false,
@@ -4135,9 +4203,9 @@ exports.createGuestMultiSellerCheckoutSetup = async (request, reply) => {
 
     const guestSellerMap = new Map();
     for (const { product, productVariant, quantity } of cartItems) {
-      const sid = product.sellerId;
-      if (!guestSellerMap.has(sid)) guestSellerMap.set(sid, []);
-      guestSellerMap.get(sid).push({ product, productVariant, quantity });
+      const group = createOwnerGroup({ product });
+      if (!guestSellerMap.has(group.groupKey)) guestSellerMap.set(group.groupKey, group);
+      guestSellerMap.get(group.groupKey).items.push({ product, productVariant, quantity });
     }
 
     if (guestSellerMap.size <= 1) {
@@ -4205,13 +4273,14 @@ exports.createGuestMultiSellerCheckoutSetup = async (request, reply) => {
       0,
     );
     const sellerPlans = [];
-    for (const [sellerId, sellerItems] of guestSellerMap) {
+    for (const [, group] of guestSellerMap) {
+      const sellerItems = group.items;
       const sellerSubtotal = getSellerItemsTotal(sellerItems);
       const discountShare = originalSubtotal > 0
         ? Number(discountAmount || 0) * (sellerSubtotal / originalSubtotal)
         : 0;
       sellerPlans.push(await buildSellerPaymentPlan({
-        sellerId,
+        sellerId: group.sellerId,
         items: sellerItems,
         cartCalculations,
         discountShare,

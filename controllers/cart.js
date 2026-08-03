@@ -20,7 +20,11 @@ const calculateCartTotals = async (cartItems, shippingMethodId = null, gstId = n
 
     // Count unique sellers in the cart
     const sellerCount = Math.max(
-      new Set(cartItems.map(i => i.product?.sellerId).filter(Boolean)).size,
+      new Set(cartItems.map((i) => (
+        i.product?.ownerType === 'PLATFORM'
+          ? `PLATFORM:${i.product?.platformAccountId || 'default'}`
+          : `SELLER:${i.product?.sellerId}`
+      )).filter(Boolean)).size,
       1
       );
 
@@ -241,7 +245,9 @@ exports.getMyCart = async (request, reply) => {
                 featuredImage: true,
                 stock: true,
                 category: true,
-                sellerId: true
+                sellerId: true,
+                ownerType: true,
+                platformAccountId: true
               }
             },
             productVariant: {
@@ -605,7 +611,9 @@ exports.calculateGuestCart = async (request, reply) => {
         featuredImage: true,
         stock: true,
         category: true,
-        sellerId: true
+        sellerId: true,
+        ownerType: true,
+        platformAccountId: true
       }
     });
 

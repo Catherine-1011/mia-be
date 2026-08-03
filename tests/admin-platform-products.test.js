@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const Fastify = require("fastify");
 
 function putMock(modulePath, exports) {
   require.cache[require.resolve(modulePath)] = {
@@ -576,4 +577,131 @@ test("platform product creation succeeds when notification and email fail", asyn
 
   assert.equal(reply.code, 201);
   assert.equal(reply.payload.success, true);
+});
+
+test("ADMIN moderation controller requests return 403 without database, email, or notification side effects", async () => {
+  const calls = { productUpdate: 0, executeRaw: 0, email: 0, notify: 0 };
+  const admin = loadAdminController({
+    $queryRaw: async () => [],
+    $executeRaw: async () => { calls.executeRaw += 1; },
+    product: {
+      findUnique: async () => ({ id: "product-1", title: "Pending", status: "PENDING" }),
+      findMany: async () => [{ id: "product-1", title: "Pending", status: "PENDING" }],
+      update: async () => { calls.productUpdate += 1; },
+    },
+    user: {},
+  }, {
+    notifySellerProductStatusChange: async () => { calls.notify += 1; },
+    sendSellerProductApprovedEmail: async () => {
+      calls.email += 1;
+      return { success: true };
+    },
+  });
+
+  const requests = [
+    ["approveProduct", { params: { productId: "product-1" }, user: { userId: "admin-1", role: "ADMIN" } }],
+    ["rejectProduct", { params: { productId: "product-1" }, body: { reason: "No" }, user: { userId: "admin-1", role: "ADMIN" } }],
+    ["bulkApproveProducts", { body: { productIds: ["product-1"] }, user: { userId: "admin-1", role: "ADMIN" } }],
+    ["activateProduct", { params: { productId: "product-1" }, user: { userId: "admin-1", role: "ADMIN" } }],
+    ["deactivateProduct", { params: { productId: "product-1" }, body: { reason: "No" }, user: { userId: "admin-1", role: "ADMIN" } }],
+  ];
+
+  for (const [handlerName, request] of requests) {
+    const reply = makeReply();
+    await admin[handlerName]({ id: `req-${handlerName}`, ...request }, reply);
+    assert.equal(reply.code, 403);
+    assert.deepEqual(reply.payload, {
+      success: false,
+      message: "Only Super Admins can approve, reject or change product approval status",
+    });
+  }
+
+  assert.equal(calls.productUpdate, 0);
+  assert.equal(calls.executeRaw, 0);
+  assert.equal(calls.email, 0);
+  assert.equal(calls.notify, 0);
+});
+
+test("admin product moderation routes reject ADMIN and allow SUPER_ADMIN middleware", async () => {
+  delete require.cache[require.resolve("../routes/adminRoutes")];
+  putMock("../middlewares/authMiddleware", {
+    isAdmin: async (request) => {
+      request.user = {
+        userId: request.headers["x-user-id"] || "user-1",
+        role: request.headers["x-user-role"],
+        email: "admin@example.com",
+      };
+    },
+    authenticateUser: async () => undefined,
+  });
+  putMock("../middlewares/checkRole", () => async () => undefined);
+  const controllerProxy = (overrides = {}) => new Proxy(overrides, {
+    get(target, prop) {
+      if (prop in target) return target[prop];
+      return async (_request, reply) => reply.send({ success: true });
+    },
+  });
+  putMock("../controllers/product", controllerProxy({
+    deleteProduct: async (_request, reply) => reply.send({ success: true }),
+    restoreProduct: async (_request, reply) => reply.send({ success: true }),
+  }));
+  putMock("../controllers/coupon", controllerProxy());
+  putMock("../controllers/feedback", controllerProxy());
+  putMock("../controllers/commission", controllerProxy());
+  putMock("../controllers/sellerOrders", controllerProxy());
+
+  const hits = [];
+  putMock("../controllers/admin", controllerProxy({
+    approveProduct: async (request, reply) => {
+      hits.push(["approve", request.user.role]);
+      return reply.send({ success: true });
+    },
+    rejectProduct: async (request, reply) => {
+      hits.push(["reject", request.user.role, request.method]);
+      return reply.send({ success: true });
+    },
+    bulkApproveProducts: async (request, reply) => {
+      hits.push(["bulk", request.user.role]);
+      return reply.send({ success: true });
+    },
+    activateProduct: async (request, reply) => {
+      hits.push(["activate", request.user.role]);
+      return reply.send({ success: true });
+    },
+    deactivateProduct: async (request, reply) => {
+      hits.push(["deactivate", request.user.role]);
+      return reply.send({ success: true });
+    },
+    getAllAdminProducts: async (_request, reply) => reply.send({ success: true, products: [] }),
+    createPlatformProduct: async (_request, reply) => reply.status(201).send({ success: true }),
+    getPendingProducts: async (_request, reply) => reply.send({ success: true, products: [] }),
+    getAdminRecycleBin: async (_request, reply) => reply.send({ success: true, products: [] }),
+  }));
+
+  const adminRoutes = require("../routes/adminRoutes");
+  const app = Fastify();
+  await app.register(adminRoutes, { prefix: "/api/admin" });
+  await app.ready();
+
+  const denied = await app.inject({
+    method: "POST",
+    url: "/api/admin/products/approve/product-1",
+    headers: { "x-user-role": "ADMIN" },
+  });
+  assert.equal(denied.statusCode, 403);
+  assert.deepEqual(JSON.parse(denied.payload), {
+    success: false,
+    message: "Only Super Admins can approve, reject or change product approval status",
+  });
+  assert.equal(hits.length, 0);
+
+  const allowed = await app.inject({
+    method: "POST",
+    url: "/api/admin/products/approve/product-1",
+    headers: { "x-user-role": "SUPER_ADMIN" },
+  });
+  assert.equal(allowed.statusCode, 200);
+  assert.deepEqual(hits, [["approve", "SUPER_ADMIN"]]);
+
+  await app.close();
 });

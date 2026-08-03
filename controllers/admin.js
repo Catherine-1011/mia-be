@@ -12,6 +12,32 @@ const { pipeline } = require('stream/promises');
 const { invalidateCache } = require('../utils/cacheInvalidation');
 
 const STRIPE_DESCRIPTION_MAX_LENGTH = 255;
+const PRODUCT_MODERATION_DENIED_MESSAGE = 'Only Super Admins can approve, reject or change product approval status';
+
+function isSuperAdminRole(role) {
+  return role === 'SUPER_ADMIN';
+}
+
+function logDeniedProductModeration(request, action, productId) {
+  console.warn('[product-moderation] denied', {
+    userId: request.user?.userId || request.user?.uid || request.user?.id || null,
+    role: request.user?.role || null,
+    action,
+    productId: productId || null,
+    requestId: request.id || null,
+    result: 'denied',
+  });
+}
+
+function requireSuperAdminForProductModeration(request, reply, action, productId) {
+  if (isSuperAdminRole(request.user?.role)) return true;
+  logDeniedProductModeration(request, action, productId);
+  reply.status(403).send({
+    success: false,
+    message: PRODUCT_MODERATION_DENIED_MESSAGE,
+  });
+  return false;
+}
 
 function toRefundStatus(isFullRefund) {
   return isFullRefund ? 'FULL' : 'PARTIAL';
@@ -4379,12 +4405,8 @@ exports.getPendingProducts = async (request, reply) => {
 // APPROVE PRODUCT (Admin only)
 exports.approveProduct = async (request, reply) => {
   try {
-    // Only admin can access
-    if (!request.user || !isAdminRole(request.user.role)) {
-      return reply.status(403).send({ message: 'Access denied. Admins only.' });
-    }
-
     const { productId } = request.params;
+    if (!requireSuperAdminForProductModeration(request, reply, 'approveProduct', productId)) return;
 
     const product = await prisma.product.findUnique({
       where: { id: productId },
@@ -4523,12 +4545,8 @@ exports.approveProduct = async (request, reply) => {
 // REJECT PRODUCT (Admin only)
 exports.rejectProduct = async (request, reply) => {
   try {
-    // Only admin can access
-    if (!request.user || !isAdminRole(request.user.role)) {
-      return reply.status(403).send({ message: 'Access denied. Admins only.' });
-    }
-
     const { productId } = request.params;
+    if (!requireSuperAdminForProductModeration(request, reply, 'rejectProduct', productId)) return;
     const body = request.body || {};
     const query = request.query || {};
     
@@ -4626,11 +4644,8 @@ exports.rejectProduct = async (request, reply) => {
 // ACTIVATE PRODUCT (Admin only) - set product live
 exports.activateProduct = async (request, reply) => {
   try {
-    if (!request.user || !isAdminRole(request.user.role)) {
-      return reply.status(403).send({ message: 'Access denied. Admins only.' });
-    }
-
     const { productId } = request.params;
+    if (!requireSuperAdminForProductModeration(request, reply, 'activateProduct', productId)) return;
 
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) {
@@ -4695,11 +4710,8 @@ exports.activateProduct = async (request, reply) => {
 // DEACTIVATE PRODUCT (Admin only) - hide product from public
 exports.deactivateProduct = async (request, reply) => {
   try {
-    if (!request.user || !isAdminRole(request.user.role)) {
-      return reply.status(403).send({ message: 'Access denied. Admins only.' });
-    }
-
     const { productId } = request.params;
+    if (!requireSuperAdminForProductModeration(request, reply, 'deactivateProduct', productId)) return;
     const body = request.body || {};
     const query = request.query || {};
     const reason = body.reason || body.rejectionReason || query.reason || query.rejectionReason;
@@ -4766,12 +4778,9 @@ exports.deactivateProduct = async (request, reply) => {
 // BULK APPROVE PRODUCTS (Admin only)
 exports.bulkApproveProducts = async (request, reply) => {
   try {
-    // Only admin can access
-    if (!request.user || !isAdminRole(request.user.role)) {
-      return reply.status(403).send({ message: 'Access denied. Admins only.' });
-    }
+    if (!requireSuperAdminForProductModeration(request, reply, 'bulkApproveProducts', 'BULK')) return;
 
-    const { productIds } = request.body;
+    const { productIds } = request.body || {};
 
     if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
       return reply.status(400).send({

@@ -11,6 +11,16 @@ const sellerOrderController = require("../controllers/sellerOrders");
 async function adminRoutes(fastify, options) {
   // Apply admin middleware to all routes
   const adminAuth = isAdmin;
+  const productModerationSuperAdminOnly = [
+    isAdmin,
+    async (request, reply) => {
+      if (request.user?.role === 'SUPER_ADMIN') return;
+      return reply.status(403).send({
+        success: false,
+        message: 'Only Super Admins can approve, reject or change product approval status',
+      });
+    },
+  ];
 
   // ---------------- REFUND MANAGEMENT ----------------
   fastify.get("/refund-requests", { preHandler: adminAuth }, adminController.getAllRefundRequests);
@@ -94,18 +104,18 @@ async function adminRoutes(fastify, options) {
   fastify.get("/products/pending", { preHandler: adminAuth }, adminController.getPendingProducts);
   
   // Approve a product
-  fastify.post("/products/approve/:productId", { preHandler: adminAuth }, adminController.approveProduct);
+  fastify.post("/products/approve/:productId", { preHandler: productModerationSuperAdminOnly }, adminController.approveProduct);
   
   // Reject a product (supports both DELETE and POST for body parsing reliability)
-  fastify.post("/products/reject/:productId", { preHandler: adminAuth }, adminController.rejectProduct);
-  fastify.delete("/products/reject/:productId", { preHandler: adminAuth }, adminController.rejectProduct);
+  fastify.post("/products/reject/:productId", { preHandler: productModerationSuperAdminOnly }, adminController.rejectProduct);
+  fastify.delete("/products/reject/:productId", { preHandler: productModerationSuperAdminOnly }, adminController.rejectProduct);
   
   // Bulk approve products
-  fastify.post("/products/approve-bulk", { preHandler: adminAuth }, adminController.bulkApproveProducts);
+  fastify.post("/products/approve-bulk", { preHandler: productModerationSuperAdminOnly }, adminController.bulkApproveProducts);
 
   // Activate / Deactivate a product
-  fastify.put("/products/activate/:productId", { preHandler: adminAuth }, adminController.activateProduct);
-  fastify.put("/products/deactivate/:productId", { preHandler: adminAuth }, adminController.deactivateProduct);
+  fastify.put("/products/activate/:productId", { preHandler: productModerationSuperAdminOnly }, adminController.activateProduct);
+  fastify.put("/products/deactivate/:productId", { preHandler: productModerationSuperAdminOnly }, adminController.deactivateProduct);
 
   // ── Recycle Bin (admin) ────────────────────────────────────────────────────
   // DELETE /admin/products/:productId               — soft delete (move to Recycle Bin)

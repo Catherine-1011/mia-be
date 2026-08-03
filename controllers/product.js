@@ -942,6 +942,25 @@ exports.updateProduct = async (request, reply) => {
 
     // Support both JSON and form/multipart bodies
     const body = request.body || {};
+    const protectedProductFields = [
+      "status",
+      "isActive",
+      "rejectionReason",
+      "ownerType",
+      "platformAccountId",
+      "creatorId",
+      "sellerId",
+    ];
+    const submittedProtectedFields = protectedProductFields.filter((field) => body[field] !== undefined);
+    if (submittedProtectedFields.length > 0) {
+      console.warn("[product-update] ignored protected fields", {
+        userId,
+        role: userRole,
+        productId: request.params.id,
+        fields: submittedProtectedFields,
+        requestId: request.id || null,
+      });
+    }
     let { title, description, price, weight, stock, category, featured, tags, artistName, "artist name": artistNameWithSpace } = body;
     
     // Handle both artistName and "artist name" field formats
@@ -1082,7 +1101,7 @@ exports.updateProduct = async (request, reply) => {
 
     // Determine if product needs re-approval after update
     let newStatus = product.status; // Keep current status by default
-    let newIsActive = true; // Assume active for now
+    let newIsActive = !!product.isActive;
     
     if (userRole === "SELLER" && product.sellerId === userId) {
       // Seller editing their own product - always goes back to PENDING for re-approval
@@ -1090,7 +1109,7 @@ exports.updateProduct = async (request, reply) => {
       newStatus = "PENDING";
       newIsActive = false;
     }
-    // Admin edits don't change approval status
+    // Admin edits don't change approval status or activation state
 
     // Only update fields that are not undefined and not empty string
     const updateData = {};

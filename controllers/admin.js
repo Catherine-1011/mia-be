@@ -1,4 +1,5 @@
 const prisma = require("../config/prisma");
+const { Prisma } = require("@prisma/client");
 const Stripe = require("stripe");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const { generateSalesReportCSV } = require("../utils/csvExport");
@@ -199,6 +200,198 @@ async function resolveActivePlatformAccount(platformOwnerId) {
 function isPlatformProduct(product) {
   return product?.ownerType === 'PLATFORM' || Boolean(product?.platformAccountId);
 }
+
+const ADMIN_PRODUCT_STATUS_MAP = {
+  pending: 'PENDING',
+  approved: 'ACTIVE',
+  active: 'ACTIVE',
+  rejected: 'REJECTED',
+  inactive: 'INACTIVE',
+  all: null,
+};
+
+function parsePositiveInteger(value, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function validateAdminProductListQuery(query = {}, overrides = {}) {
+  const rawStatus = String(overrides.status || query.status || 'all').toLowerCase();
+  if (!Object.prototype.hasOwnProperty.call(ADMIN_PRODUCT_STATUS_MAP, rawStatus)) {
+    return { error: `Invalid status '${rawStatus}'` };
+  }
+
+  const page = parsePositiveInteger(query.page, 1);
+  if (!page) return { error: 'Page must be a positive integer' };
+
+  const limit = parsePositiveInteger(query.limit, 50);
+  if (!limit) return { error: 'Limit must be a positive integer' };
+
+  const maxLimit = 100;
+  return {
+    status: rawStatus,
+    dbStatus: ADMIN_PRODUCT_STATUS_MAP[rawStatus],
+    sellerId: query.sellerId ? String(query.sellerId).trim() : null,
+    page,
+    limit: Math.min(limit, maxLimit),
+  };
+}
+
+function buildOwnership(product) {
+  const displayName = product.ownerType === 'PLATFORM'
+    ? product.platformDisplayName || product.sellerName || 'ALPA Platform'
+    : product.storeName || product.businessName || product.sellerName || product.seller?.name || null;
+
+  return {
+    type: product.ownerType,
+    creatorId: product.creatorId || null,
+    platformAccountId: product.platformAccountId || null,
+    displayName,
+  };
+}
+
+function mapAdminProductRows(products) {
+  return products.map(({
+    seller_name,
+    seller_email,
+    seller_id,
+    storeName,
+    businessName,
+    seller_profile_status,
+    ...p
+  }) => {
+    const mapped = {
+      ...p,
+      ownerType: p.ownerType || 'SELLER',
+      creatorId: p.creatorId || null,
+      platformAccountId: p.platformAccountId || null,
+      platformDisplayName: p.platformDisplayName || null,
+      storeName: storeName || null,
+      businessName: businessName || null,
+      seller: {
+        id: seller_id || p.sellerId,
+        name: seller_name,
+        email: seller_email,
+        storeName: storeName || null,
+        businessName: businessName || null,
+      },
+    };
+    mapped.sellerProfileStatus = seller_profile_status || 'UNKNOWN';
+    mapped.ownership = buildOwnership(mapped);
+    return mapped;
+  });
+}
+
+async function listAdminProducts(query = {}, overrides = {}) {
+  const validated = validateAdminProductListQuery(query, overrides);
+  if (validated.error) {
+    const error = new Error(validated.error);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const { dbStatus, sellerId, page, limit, status } = validated;
+  const offset = (page - 1) * limit;
+  const statusFilter = dbStatus
+    ? Prisma.sql`AND p.status = ${dbStatus}::"ProductStatus"`
+    : Prisma.empty;
+  const sellerFilter = sellerId
+    ? Prisma.sql`AND p."sellerId" = ${sellerId}`
+    : Prisma.empty;
+
+  const products = await prisma.$queryRaw`
+    SELECT p.id, p.title, p.description, p.type, p.price, p.weight, p.category, p.stock,
+           p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
+           p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
+           p."rejectionReason", p."createdAt", p."updatedAt",
+           p."creator_id" AS "creatorId",
+           p."owner_type"::text AS "ownerType",
+           p."platform_account_id" AS "platformAccountId",
+           u.id AS "seller_id", u.name AS "seller_name", u.email AS "seller_email",
+           sp."storeName", sp."businessName", sp.status AS "seller_profile_status",
+           pa."display_name" AS "platformDisplayName"
+    FROM "products" p
+    JOIN "users" u ON p."sellerId" = u.id
+    LEFT JOIN "seller_profiles" sp ON sp."userId" = p."sellerId"
+    LEFT JOIN "platform_accounts" pa ON pa.id = p."platform_account_id"
+    WHERE p."deletedAt" IS NULL
+      ${statusFilter}
+      ${sellerFilter}
+    ORDER BY p."createdAt" DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `;
+
+  const totalRows = await prisma.$queryRaw`
+    SELECT COUNT(*)::int AS total
+    FROM "products" p
+    WHERE p."deletedAt" IS NULL
+      ${statusFilter}
+      ${sellerFilter}
+  `;
+
+  const countRows = sellerId
+    ? await prisma.$queryRaw`
+        SELECT status::text, COUNT(*)::int AS count
+        FROM "products"
+        WHERE "sellerId" = ${sellerId}
+          AND "deletedAt" IS NULL
+        GROUP BY status
+      `
+    : await prisma.$queryRaw`
+        SELECT status::text, COUNT(*)::int AS count
+        FROM "products"
+        WHERE "deletedAt" IS NULL
+        GROUP BY status
+      `;
+
+  const countMap = { PENDING: 0, ACTIVE: 0, REJECTED: 0, INACTIVE: 0 };
+  for (const row of countRows) countMap[row.status] = row.count;
+
+  const mapped = mapAdminProductRows(products);
+  const enriched = await enrichProductPrice(mapped);
+  const total = totalRows[0]?.total || 0;
+
+  return {
+    products: enriched,
+    count: enriched.length,
+    counts: {
+      all: Object.values(countMap).reduce((a, b) => a + b, 0),
+      pending: countMap.PENDING,
+      approved: countMap.ACTIVE,
+      rejected: countMap.REJECTED,
+      inactive: countMap.INACTIVE,
+    },
+    pagination: {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit),
+    },
+    status,
+  };
+}
+
+function logAdminProductListError({ request, controller, status, page, limit, error }) {
+  console.error('Admin product listing error:', {
+    route: request?.routerPath || request?.url,
+    controller,
+    requestId: request?.id,
+    userId: request?.user?.userId,
+    role: request?.user?.role,
+    status,
+    page,
+    limit,
+    message: error?.message,
+  });
+}
+
+exports._adminProductTestHelpers = {
+  validateAdminProductListQuery,
+  mapAdminProductRows,
+  buildOwnership,
+  isPlatformProduct,
+};
 
 // ── Variant price enrichment ──────────────────────────────────────────────────
 // For VARIABLE products, replaces price (null) with the variant price range string.
@@ -2338,141 +2531,28 @@ exports.getProductsBySeller = async (request, reply) => {
 // GET /admin/products?status=pending|approved|rejected|inactive|all&sellerId=xxx&page=1&limit=20
 exports.getAllAdminProducts = async (request, reply) => {
   try {
-    const { status = 'all', sellerId, page = 1, limit = 50 } = request.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-
-    // Map friendly status names to DB enum values
-    const statusMap = {
-      pending:  'PENDING',
-      approved: 'ACTIVE',
-      active:   'ACTIVE',
-      rejected: 'REJECTED',
-      inactive: 'INACTIVE',
-      all:      null
-    };
-
-    const dbStatus = statusMap[status.toLowerCase()] ?? null;
-
-    // Build dynamic WHERE clause
-    let products;
-    if (dbStatus && sellerId) {
-      products = await prisma.$queryRaw`
-        SELECT p.id, p.title, p.description, p.type, p.price, p.weight, p.category, p.stock,
-               p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
-               p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
-               p."rejectionReason", p."createdAt", p."updatedAt",
-               u.name AS "seller_name", u.email AS "seller_email",
-               sp."storeName", sp."businessName"
-        FROM "products" p
-        JOIN "users" u ON p."sellerId" = u.id
-        LEFT JOIN "seller_profiles" sp ON sp."userId" = p."sellerId"
-        WHERE p.status = ${dbStatus}::"ProductStatus"
-          AND p."sellerId" = ${sellerId}
-          AND p."deletedAt" IS NULL
-        ORDER BY p."createdAt" DESC
-        LIMIT ${parseInt(limit)} OFFSET ${offset}
-      `;
-    } else if (dbStatus) {
-      products = await prisma.$queryRaw`
-        SELECT p.id, p.title, p.description, p.type, p.price, p.weight, p.category, p.stock,
-               p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
-               p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
-               p."rejectionReason", p."createdAt", p."updatedAt",
-               u.name AS "seller_name", u.email AS "seller_email",
-               sp."storeName", sp."businessName"
-        FROM "products" p
-        JOIN "users" u ON p."sellerId" = u.id
-        LEFT JOIN "seller_profiles" sp ON sp."userId" = p."sellerId"
-        WHERE p.status = ${dbStatus}::"ProductStatus"
-          AND p."deletedAt" IS NULL
-        ORDER BY p."createdAt" DESC
-        LIMIT ${parseInt(limit)} OFFSET ${offset}
-      `;
-    } else if (sellerId) {
-      products = await prisma.$queryRaw`
-        SELECT p.id, p.title, p.description, p.type, p.price, p.weight, p.category, p.stock,
-               p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
-               p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
-               p."rejectionReason", p."createdAt", p."updatedAt",
-               u.name AS "seller_name", u.email AS "seller_email",
-               sp."storeName", sp."businessName"
-        FROM "products" p
-        JOIN "users" u ON p."sellerId" = u.id
-        LEFT JOIN "seller_profiles" sp ON sp."userId" = p."sellerId"
-        WHERE p."sellerId" = ${sellerId}
-          AND p."deletedAt" IS NULL
-        ORDER BY p."createdAt" DESC
-        LIMIT ${parseInt(limit)} OFFSET ${offset}
-      `;
-    } else {
-      products = await prisma.$queryRaw`
-        SELECT p.id, p.title, p.description, p.type, p.price, p.weight, p.category, p.stock,
-               p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
-               p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
-               p."rejectionReason", p."createdAt", p."updatedAt",
-               u.name AS "seller_name", u.email AS "seller_email",
-               sp."storeName", sp."businessName"
-        FROM "products" p
-        JOIN "users" u ON p."sellerId" = u.id
-        LEFT JOIN "seller_profiles" sp ON sp."userId" = p."sellerId"
-        WHERE p."deletedAt" IS NULL
-        ORDER BY p."createdAt" DESC
-        LIMIT ${parseInt(limit)} OFFSET ${offset}
-      `;
-    }
-
-    // Counts per status tab (always all sellers or filtered by sellerId)
-    let counts;
-    if (sellerId) {
-      counts = await prisma.$queryRaw`
-        SELECT status::text, COUNT(*)::int AS count
-        FROM "products"
-        WHERE "sellerId" = ${sellerId}
-          AND "deletedAt" IS NULL
-        GROUP BY status
-      `;
-    } else {
-      counts = await prisma.$queryRaw`
-        SELECT status::text, COUNT(*)::int AS count
-        FROM "products"
-        WHERE "deletedAt" IS NULL
-        GROUP BY status
-      `;
-    }
-
-    const countMap = { PENDING: 0, ACTIVE: 0, REJECTED: 0, INACTIVE: 0 };
-    for (const row of counts) countMap[row.status] = row.count;
-
-    // Shape each product
-    const mapped = products.map(({ seller_name, seller_email, storeName, businessName, ...p }) => ({
-      ...p,
-      seller: {
-        id: p.sellerId,
-        name: seller_name,
-        email: seller_email,
-        storeName: storeName || null,
-        businessName: businessName || null
-      }
-    }));
-
-    // Enrich VARIABLE products with variant price range
-    const enriched = await enrichProductPrice(mapped);
+    const result = await listAdminProducts(request.query);
 
     return reply.send({
       success: true,
-      products: enriched,
-      count: enriched.length,
-      counts: {
-        all:      Object.values(countMap).reduce((a, b) => a + b, 0),
-        pending:  countMap.PENDING,
-        approved: countMap.ACTIVE,
-        rejected: countMap.REJECTED,
-        inactive: countMap.INACTIVE
-      }
+      products: result.products,
+      count: result.count,
+      counts: result.counts,
+      pagination: result.pagination,
     });
   } catch (err) {
-    console.error("Get all admin products error:", err);
-    reply.status(500).send({ success: false, error: err.message });
+    if (err.statusCode === 400) {
+      return reply.status(400).send({ success: false, message: err.message });
+    }
+    logAdminProductListError({
+      request,
+      controller: 'getAllAdminProducts',
+      status: request.query?.status,
+      page: request.query?.page,
+      limit: request.query?.limit,
+      error: err,
+    });
+    reply.status(500).send({ success: false, message: 'Unable to retrieve admin products' });
   }
 };
 
@@ -4208,37 +4288,29 @@ exports.getPendingProducts = async (request, reply) => {
       return reply.status(403).send({ message: 'Access denied. Admins only.' });
     }
 
-    const products = await prisma.$queryRaw`
-      SELECT p.id, p.title, p.description, p.type, p.price, p.weight, p.category, p.stock,
-             p."sellerId", p."sellerName", p."artistName", p.status, p."isActive",
-             p.featured, p.tags, p."featuredImage", p.images AS "galleryImages",
-             p."rejectionReason", p."createdAt", p."updatedAt",
-             u.id AS "seller_id", u.name AS "seller_name", u.email AS "seller_email",
-             sp.status AS "seller_profile_status"
-      FROM "products" p
-      JOIN "users" u ON p."sellerId" = u.id
-      LEFT JOIN "SellerProfile" sp ON u.id = sp."userId"
-      WHERE p.status = 'PENDING'
-      ORDER BY p."createdAt" DESC
-    `;
-
-    const mapped = products.map(({ seller_id, seller_name, seller_email, seller_profile_status, ...p }) => ({
-      ...p,
-      seller: { id: seller_id, name: seller_name, email: seller_email },
-      sellerProfileStatus: seller_profile_status || 'UNKNOWN'
-    }));
-
-    const enriched = await enrichProductPrice(mapped);
+    const result = await listAdminProducts(request.query, { status: 'pending' });
 
     reply.send({ 
       success: true, 
-      products: enriched, 
-      count: enriched.length,
-      message: `${enriched.length} products pending approval`
+      products: result.products,
+      count: result.count,
+      counts: result.counts,
+      pagination: result.pagination,
+      message: `${result.count} products pending approval`
     });
   } catch (error) {
-    console.error("Get pending products error:", error);
-    reply.status(500).send({ success: false, message: error.message });
+    if (error.statusCode === 400) {
+      return reply.status(400).send({ success: false, message: error.message });
+    }
+    logAdminProductListError({
+      request,
+      controller: 'getPendingProducts',
+      status: 'pending',
+      page: request.query?.page,
+      limit: request.query?.limit,
+      error,
+    });
+    reply.status(500).send({ success: false, message: 'Unable to retrieve admin products' });
   }
 };
 
@@ -4278,10 +4350,17 @@ exports.approveProduct = async (request, reply) => {
     }
 
     const sellerStatus = product.seller?.sellerProfile?.status;
-    if (sellerStatus && sellerStatus !== 'ACTIVE') {
+    const platformOwned = isPlatformProduct(product);
+    if (!platformOwned && !product.seller?.sellerProfile) {
       return reply.status(400).send({
         success: false,
-        message: `Cannot approve product. The seller's account is currently '${sellerStatus}'. Please activate the Seller Account first!`
+        message: "Cannot approve product. SellerProfile missing for seller-owned product."
+      });
+    }
+    if (!platformOwned && sellerStatus !== 'ACTIVE') {
+      return reply.status(400).send({
+        success: false,
+        message: `Cannot approve product. The seller's account is currently '${sellerStatus || 'MISSING'}'. Please activate the Seller Account first!`
       });
     }
 
@@ -4320,7 +4399,7 @@ exports.approveProduct = async (request, reply) => {
       ...extractRequestMeta(request),
     });
 
-    if (!isPlatformProduct(product)) {
+    if (!platformOwned) {
     // Send notification to seller about product approval
     await notifySellerProductStatusChange(product.sellerId, productId, "ACTIVE", product.title);
 
@@ -4359,7 +4438,10 @@ exports.approveProduct = async (request, reply) => {
       SELECT id, title, description, price, category, stock, "sellerId", "sellerName",
              "artistName", status, "isActive", featured, tags,
              "featuredImage", images AS "galleryImages",
-             "rejectionReason", "createdAt", "updatedAt"
+             "rejectionReason", "createdAt", "updatedAt",
+             "creator_id" AS "creatorId",
+             "owner_type"::text AS "ownerType",
+             "platform_account_id" AS "platformAccountId"
       FROM "products"
       WHERE id = ${productId}
     `;
@@ -4636,34 +4718,114 @@ exports.bulkApproveProducts = async (request, reply) => {
       });
     }
 
-    const result = await prisma.product.updateMany({
+    const uniqueProductIds = [...new Set(
+      productIds
+        .filter((id) => typeof id === 'string' && id.trim())
+        .map((id) => id.trim())
+    )];
+
+    if (uniqueProductIds.length === 0) {
+      return reply.status(400).send({
+        success: false,
+        message: "Product IDs array is required"
+      });
+    }
+
+    const products = await prisma.product.findMany({
       where: {
-        id: { in: productIds },
-        status: "PENDING" // Only approve pending products
+        id: { in: uniqueProductIds },
       },
-      data: {
-        status: "ACTIVE"
+      include: {
+        seller: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            sellerProfile: {
+              select: { status: true }
+            }
+          }
+        }
       }
     });
 
-    // Update isActive using raw SQL for bulk approval
-    await prisma.$executeRaw`UPDATE "products" SET "isActive" = true WHERE "id" = ANY(${productIds})`;
+    const productById = new Map(products.map((product) => [product.id, product]));
+    const approved = [];
+    const skipped = [];
+    const failed = [];
+
+    for (const productId of uniqueProductIds) {
+      const product = productById.get(productId);
+      if (!product) {
+        skipped.push({ productId, reason: 'Product not found' });
+        continue;
+      }
+      if (product.status !== 'PENDING') {
+        skipped.push({ productId, reason: `Product status is ${product.status}` });
+        continue;
+      }
+      if (product.deletedAt) {
+        skipped.push({ productId, reason: 'Product is soft-deleted' });
+        continue;
+      }
+
+      const platformOwned = isPlatformProduct(product);
+      const sellerStatus = product.seller?.sellerProfile?.status;
+      if (!platformOwned && !product.seller?.sellerProfile) {
+        skipped.push({
+          productId,
+          reason: 'SellerProfile missing for seller-owned product',
+        });
+        continue;
+      }
+      if (!platformOwned && sellerStatus !== 'ACTIVE') {
+        skipped.push({
+          productId,
+          reason: `SellerProfile is ${sellerStatus}`,
+        });
+        continue;
+      }
+
+      try {
+        await prisma.product.update({
+          where: { id: productId },
+          data: {
+            status: 'ACTIVE',
+            rejectionReason: null,
+          },
+        });
+        await prisma.$executeRaw`UPDATE "products" SET "isActive" = true WHERE "id" = ${productId}`;
+        approved.push({
+          productId,
+          ownerType: platformOwned ? 'PLATFORM' : 'SELLER',
+        });
+      } catch (err) {
+        failed.push({ productId, reason: err.message });
+      }
+    }
+
+    const approvedCount = approved.length;
 
     // ── Audit log: bulk approved ─────────────────────────────────────────────
     auditLog({
       entityType: ENTITY_TYPES.PRODUCT,
       entityId:   'BULK',
       action:     AUDIT_ACTIONS.PRODUCT_BULK_APPROVED,
-      newData:    { productIds, approvedCount: result.count },
-      reason:     `Bulk approval of ${result.count} product(s)`,
+      newData:    { productIds: uniqueProductIds, approved, skipped, failed, approvedCount },
+      reason:     `Bulk approval of ${approvedCount} product(s)`,
       ...extractRequestMeta(request),
     });
 
-    await invalidateCache('products');
+    if (approvedCount > 0) {
+      await invalidateCache('products');
+    }
     reply.send({
       success: true,
-      message: `${result.count} products approved successfully`,
-      approvedCount: result.count
+      message: `${approvedCount} products approved successfully`,
+      approved,
+      skipped,
+      failed,
+      approvedCount
     });
   } catch (error) {
     console.error("Bulk approve products error:", error);

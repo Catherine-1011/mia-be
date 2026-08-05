@@ -524,6 +524,7 @@ function buildSellerDirectChargePlan({ sellerId, items, cartCalculations, discou
 }
 
 function buildSellerPlatformPaymentPlan({ sellerId, items, cartCalculations, discountShare = 0 }) {
+  const platformAccountId = items.find((item) => item?.product?.platformAccountId)?.product?.platformAccountId || null;
   const productAmount = getSellerItemsTotal(items);
   const shippingAmount = Number(cartCalculations.shippingCost || 0);
   const gstRatePct = getGstRateFromCartCalculations(cartCalculations);
@@ -533,6 +534,7 @@ function buildSellerPlatformPaymentPlan({ sellerId, items, cartCalculations, dis
 
   return {
     sellerId,
+    platformAccountId,
     items,
     paymentAccountType: "PLATFORM",
     productAmount,
@@ -575,12 +577,28 @@ function itemIsPlatformOwned(item) {
   return item?.product?.ownerType === "PLATFORM" || Boolean(item?.product?.platformAccountId);
 }
 
+function createCheckoutOwnershipError(message, code = "INVALID_PRODUCT_OWNERSHIP") {
+  const error = new Error(message);
+  error.statusCode = 400;
+  error.code = code;
+  return error;
+}
+
+function isCheckoutOwnershipError(error) {
+  return error?.statusCode === 400 && error?.code === "INVALID_PRODUCT_OWNERSHIP";
+}
+
 function createOwnerGroup(item) {
   const product = item.product;
 
   if (itemIsPlatformOwned(item)) {
+    if (product.ownerType === "PLATFORM" && !product.platformAccountId) {
+      throw createCheckoutOwnershipError(
+        `Platform product "${product.title || product.id}" is missing platformAccountId`
+      );
+    }
     return {
-      groupKey: `PLATFORM:${product.platformAccountId || "default"}`,
+      groupKey: `PLATFORM:${product.platformAccountId}`,
       ownerType: "PLATFORM",
       sellerId: product.sellerId,
       platformAccountId: product.platformAccountId || null,
@@ -959,6 +977,9 @@ exports.createPaymentIntent = async (request, reply) => {
           message: `Insufficient stock for: ${item.product.title}`,
         });
       }
+    }
+    for (const item of cart.items) {
+      createOwnerGroup(item);
     }
 
     // Calculate totals — pass international cost as 4th arg when applicable
@@ -1553,6 +1574,9 @@ exports.createPaymentIntent = async (request, reply) => {
         await markApiOperationFailed({ operationKey: checkoutApiOperationKey, error });
       } catch (_) { /* best effort */ }
     }
+    if (isCheckoutOwnershipError(error)) {
+      return reply.status(400).send({ success: false, code: error.code, message: error.message });
+    }
     if (error?.statusCode === 409 && error?.code) {
       console.warn("[STRIPE TEST] Direct Charge readiness blocked checkout", {
         code: error.code,
@@ -1856,6 +1880,8 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
         });
         breakdown.push({
           sellerId: plan.sellerId,
+          ownerType: plan.paymentAccountType === "PLATFORM" ? "PLATFORM" : "SELLER",
+          platformAccountId: plan.paymentAccountType === "PLATFORM" ? plan.platformAccountId || null : null,
           subOrderId: subOrder.id,
           stripeAccountId: plan.paymentAccountType === "PLATFORM" ? null : plan.stripeAccountId,
           paymentAccountType: plan.paymentAccountType,
@@ -1944,6 +1970,10 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
         await markApiOperationFailed({ operationKey: checkoutApiOperationKey, error });
       } catch (_) { /* best effort */ }
     }
+    if (isCheckoutOwnershipError(error)) {
+      logMultiSellerSetupOutcome({ requestId, result: `400_${error.code}` });
+      return reply.status(400).send({ success: false, code: error.code, message: error.message });
+    }
     if (error?.statusCode === 409 && error?.code) {
       logMultiSellerSetupOutcome({ requestId, result: `409_${error.code}` });
       return reply.status(409).send({ success: false, code: error.code, message: error.message });
@@ -1966,9 +1996,71 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
 // identical, so this is the single place that logic lives.
 async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPlans, platformPaymentMethodId, extraMetadata = {} }) {
   const results = [];
+  const existingRecords = await prisma.orderPaymentRecord.findMany({ where: { orderId: order.id } }).catch(() => []);
+  const isPlatformPlan = (plan) => plan.paymentAccountType === "PLATFORM" || plan.paymentFlow === "PLATFORM_ACCOUNT";
+  const resultIdentity = (plan, stripeAccountId = null) => ({
+    ownerType: isPlatformPlan(plan) ? "PLATFORM" : "SELLER",
+    platformAccountId: isPlatformPlan(plan) ? plan.platformAccountId || null : null,
+    sellerId: plan.sellerId || null,
+    stripeAccountId: isPlatformPlan(plan) ? null : stripeAccountId,
+  });
+  const shouldReturnClientSecret = (status) => ["requires_action", "requires_confirmation"].includes(status);
+  const recordsForPlan = (plan) => {
+    const flow = isPlatformPlan(plan) ? "PLATFORM_ACCOUNT" : "DIRECT_CHARGE";
+    return existingRecords.filter((record) => record.sellerId === plan.sellerId && record.paymentFlow === flow);
+  };
+
   for (const plan of sellerPlans) {
     try {
-      if (plan.paymentAccountType === "PLATFORM" || plan.paymentFlow === "PLATFORM_ACCOUNT") {
+      const priorRecords = recordsForPlan(plan);
+      const paidRecord = priorRecords.find((record) => record.paymentStatus === "PAID");
+      if (paidRecord) {
+        results.push({
+          ...resultIdentity(plan, paidRecord.stripeAccountId),
+          sellerId: plan.sellerId,
+          paymentFlow: paidRecord.paymentFlow,
+          paymentIntentId: paidRecord.stripePaymentIntentId,
+          status: "succeeded",
+          amount: paidRecord.grossAmount,
+          currency: paidRecord.currency || "aud",
+          idempotent: true,
+        });
+        continue;
+      }
+
+      const pendingRecord = priorRecords.find((record) => record.paymentStatus === "PENDING");
+      if (pendingRecord?.stripePaymentIntentId) {
+        const retrieveOptions = pendingRecord.stripeAccountId ? { stripeAccount: pendingRecord.stripeAccountId } : undefined;
+        const existingPaymentIntent = await stripe.paymentIntents.retrieve(pendingRecord.stripePaymentIntentId, retrieveOptions).catch(() => null);
+        if (existingPaymentIntent && ["succeeded", "processing", "requires_action", "requires_capture", "requires_confirmation"].includes(existingPaymentIntent.status)) {
+          if (existingPaymentIntent.status === "succeeded") {
+            await prisma.orderPaymentRecord.updateMany({
+              where: { stripePaymentIntentId: pendingRecord.stripePaymentIntentId, paymentStatus: { not: "PAID" } },
+              data: { paymentStatus: "PAID" },
+            }).catch(() => {});
+          }
+          results.push({
+            ...resultIdentity(plan, pendingRecord.stripeAccountId),
+            sellerId: plan.sellerId,
+            paymentFlow: pendingRecord.paymentFlow,
+            paymentIntentId: pendingRecord.stripePaymentIntentId,
+            status: existingPaymentIntent.status,
+            clientSecret: shouldReturnClientSecret(existingPaymentIntent.status) ? existingPaymentIntent.client_secret : undefined,
+            amount: pendingRecord.grossAmount,
+            currency: pendingRecord.currency || "aud",
+            idempotent: true,
+          });
+          continue;
+        }
+      }
+
+      const retryAttempt = priorRecords.filter((record) => record.paymentStatus === "FAILED").length;
+      const groupKey = isPlatformPlan(plan)
+        ? `platform:${plan.sellerId}`
+        : `seller:${plan.sellerId}`;
+      const chargeAttemptSuffix = retryAttempt > 0 ? `:retry:${retryAttempt}` : "";
+
+      if (isPlatformPlan(plan)) {
         const paymentIntent = await stripe.paymentIntents.create(
           {
             amount: plan.grossAmountCents,
@@ -1997,7 +2089,7 @@ async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPla
               chargeType: "platform",
             },
           },
-          { idempotencyKey: `charge:${order.id}:${plan.sellerId}:platform` },
+          { idempotencyKey: `charge:${order.id}:${groupKey}${chargeAttemptSuffix}` },
         );
 
         await prisma.orderPaymentRecord.create({
@@ -2014,12 +2106,12 @@ async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPla
         });
 
         results.push({
+          ...resultIdentity(plan, null),
           sellerId: plan.sellerId,
-          stripeAccountId: null,
           paymentFlow: "PLATFORM_ACCOUNT",
           paymentIntentId: paymentIntent.id,
           status: paymentIntent.status,
-          clientSecret: paymentIntent.status === "requires_action" ? paymentIntent.client_secret : undefined,
+          clientSecret: shouldReturnClientSecret(paymentIntent.status) ? paymentIntent.client_secret : undefined,
           amount: plan.grossAmountCents,
           currency: "aud",
         });
@@ -2030,7 +2122,7 @@ async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPla
       // Verified: docs.stripe.com/connect/direct-charges-multiple-accounts.
       const cloned = await stripe.paymentMethods.create(
         { customer: session.platformCustomerId, payment_method: platformPaymentMethodId },
-        { stripeAccount: plan.stripeAccountId, idempotencyKey: `clone:${order.id}:${plan.sellerId}` },
+        { stripeAccount: plan.stripeAccountId, idempotencyKey: `clone:${order.id}:${groupKey}${chargeAttemptSuffix}` },
       );
 
       const metadata = buildDirectChargeStripeMetadata({
@@ -2070,7 +2162,7 @@ async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPla
           // Charges apart, per spec.
           metadata: { ...metadata, paymentFlow: "DIRECT_CHARGE_MULTI_SELLER", ...extraMetadata, chargeType: "direct" },
         },
-        { idempotencyKey: `charge:${order.id}:${plan.sellerId}`, stripeAccount: plan.stripeAccountId },
+        { idempotencyKey: `charge:${order.id}:${groupKey}${chargeAttemptSuffix}`, stripeAccount: plan.stripeAccountId },
       );
 
       // plan is the persisted breakdown snapshot (cents-only fields) — convert
@@ -2090,12 +2182,12 @@ async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPla
       await prisma.orderPaymentRecord.create({ data: paymentRecordData });
 
       results.push({
+        ...resultIdentity(plan, plan.stripeAccountId),
         sellerId: plan.sellerId,
-        stripeAccountId: plan.stripeAccountId,
         paymentFlow: "DIRECT_CHARGE",
         paymentIntentId: paymentIntent.id,
         status: paymentIntent.status,
-        clientSecret: paymentIntent.status === "requires_action" ? paymentIntent.client_secret : undefined,
+        clientSecret: shouldReturnClientSecret(paymentIntent.status) ? paymentIntent.client_secret : undefined,
         amount: plan.grossAmountCents,
         currency: "aud",
       });
@@ -2123,9 +2215,9 @@ async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPla
       }).catch(() => {});
 
       results.push({
+        ...resultIdentity(plan, plan.stripeAccountId),
         sellerId: plan.sellerId,
-        stripeAccountId: plan.stripeAccountId,
-        paymentFlow: plan.paymentAccountType === "PLATFORM" ? "PLATFORM_ACCOUNT" : "DIRECT_CHARGE",
+        paymentFlow: isPlatformPlan(plan) ? "PLATFORM_ACCOUNT" : "DIRECT_CHARGE",
         status: "failed",
         error: sellerError.message,
       });
@@ -2166,7 +2258,7 @@ exports.finalizeMultiSellerCheckout = async (request, reply) => {
 
     // Idempotent finalize: if already charging/completed, return the
     // payment records already on file instead of charging sellers twice.
-    if (session.status !== "COLLECTING_PAYMENT_METHOD") {
+    if (session.status === "COMPLETED") {
       const existingRecords = await prisma.orderPaymentRecord.findMany({ where: { orderId: order.id } });
       return reply.status(200).send({
         success: true,
@@ -2193,10 +2285,12 @@ exports.finalizeMultiSellerCheckout = async (request, reply) => {
 
     // Atomically claim the session so a concurrent/duplicate finalize call
     // can't charge every seller twice (same pattern as claimStripeWebhookEvent).
-    const claimed = await prisma.multiSellerCheckoutSession.updateMany({
-      where: { orderId: order.id, status: "COLLECTING_PAYMENT_METHOD" },
-      data: { status: "CHARGING_SELLERS", platformPaymentMethodId },
-    });
+    const claimed = session.status === "COLLECTING_PAYMENT_METHOD"
+      ? await prisma.multiSellerCheckoutSession.updateMany({
+          where: { orderId: order.id, status: "COLLECTING_PAYMENT_METHOD" },
+          data: { status: "CHARGING_SELLERS", platformPaymentMethodId },
+        })
+      : { count: 1 };
     if (claimed.count !== 1) {
       const existingRecords = await prisma.orderPaymentRecord.findMany({ where: { orderId: order.id } });
       return reply.status(200).send({
@@ -3458,9 +3552,9 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     // for single-seller guest orders (same logic as logged-in flow)
     const guestSellerMap = new Map();
     for (const { product, productVariant, quantity } of cartItems) {
-      const sid = product.sellerId;
-      if (!guestSellerMap.has(sid)) guestSellerMap.set(sid, []);
-      guestSellerMap.get(sid).push({ product, productVariant, quantity });
+      const group = createOwnerGroup({ product });
+      if (!guestSellerMap.has(group.groupKey)) guestSellerMap.set(group.groupKey, group);
+      guestSellerMap.get(group.groupKey).items.push({ product, productVariant, quantity });
     }
     const guestIsMultiSeller = guestSellerMap.size > 1;
     if (guestIsMultiSeller) {
@@ -3483,11 +3577,12 @@ exports.createGuestPaymentIntent = async (request, reply) => {
     let guestDirectChargePaymentRecord = null;
     let guestSingleSellerIdForOperation = null;
     if (!guestIsMultiSeller && USE_DIRECT_CHARGES_FOR_SINGLE_SELLER) {
-      const [singleSellerId] = guestSellerMap.keys();
-      guestSingleSellerIdForOperation = singleSellerId;
+      const [singleOwnerGroup] = guestSellerMap.values();
+      const singleSellerId = singleOwnerGroup.sellerId;
+      guestSingleSellerIdForOperation = singleOwnerGroup.groupKey;
       const itemTotal = cartItems.reduce((s, i) => s + (i.productVariant ? Number(i.productVariant.price) : Number(i.product.price)) * i.quantity, 0);
       const perSellerShipping  = parseFloat(cartCalculations.shippingCost);
-      const paymentAccountType = await resolvePaymentAccountTypeForItems({ sellerId: singleSellerId, items: cartItems });
+      const paymentAccountType = await resolvePaymentAccountTypeForItems({ sellerId: singleSellerId, items: singleOwnerGroup.items });
       if (paymentAccountType === "PLATFORM") {
         guestDirectChargePaymentRecord = {
           paymentAccountType: "PLATFORM",
@@ -3585,7 +3680,9 @@ exports.createGuestPaymentIntent = async (request, reply) => {
         0,
       );
       const guestSellerPlans = [];
-      for (const [sellerId, sellerItems] of guestSellerMap) {
+      for (const [, group] of guestSellerMap) {
+        const sellerId = group.sellerId;
+        const sellerItems = group.items;
         const sellerSubtotal = getSellerItemsTotal(sellerItems);
         const discountShare = originalSubtotal > 0
           ? Number(discountAmount || 0) * (sellerSubtotal / originalSubtotal)
@@ -3900,7 +3997,9 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       const perSellerShipping = parseFloat(cartCalculations.shippingCost);
       order = await prisma.$transaction(async (tx) => {
         const parentOrder = await tx.order.create({ data: guestOrderBaseData });
-        for (const [sellerId, sellerItems] of guestSellerMap) {
+        for (const [, group] of guestSellerMap) {
+          const sellerId = group.sellerId;
+          const sellerItems = group.items;
           const productsSubtotal = sellerItems.reduce((sum, i) => sum + (i.productVariant ? Number(i.productVariant.price) : Number(i.product.price)) * i.quantity, 0);
           const subOrderSubtotal = productsSubtotal + perSellerShipping;
           const subOrder = await tx.subOrder.create({
@@ -3919,7 +4018,8 @@ exports.createGuestPaymentIntent = async (request, reply) => {
         return parentOrder;
       });
     } else {
-      const [singleSellerId] = guestSellerMap.keys();
+      const [singleOwnerGroup] = guestSellerMap.values();
+      const singleSellerId = singleOwnerGroup.sellerId;
       order = await prisma.$transaction(async (tx) => {
         const createdOrder = await tx.order.create({
           data: {
@@ -4050,6 +4150,9 @@ exports.createGuestPaymentIntent = async (request, reply) => {
       try {
         await markApiOperationFailed({ operationKey: guestCheckoutApiOperationKey, error });
       } catch (_) { /* best effort */ }
+    }
+    if (isCheckoutOwnershipError(error)) {
+      return reply.status(400).send({ success: false, code: error.code, message: error.message });
     }
     if (error?.statusCode === 409 && error?.code) {
       console.warn("[STRIPE TEST] Direct Charge readiness blocked guest checkout", {
@@ -4360,6 +4463,8 @@ exports.createGuestMultiSellerCheckoutSetup = async (request, reply) => {
         });
         breakdown.push({
           sellerId: plan.sellerId,
+          ownerType: plan.paymentAccountType === "PLATFORM" ? "PLATFORM" : "SELLER",
+          platformAccountId: plan.paymentAccountType === "PLATFORM" ? plan.platformAccountId || null : null,
           subOrderId: subOrder.id,
           stripeAccountId: plan.paymentAccountType === "PLATFORM" ? null : plan.stripeAccountId,
           paymentAccountType: plan.paymentAccountType,
@@ -4441,6 +4546,9 @@ exports.createGuestMultiSellerCheckoutSetup = async (request, reply) => {
     if (guestCheckoutApiOperationKey) {
       try { await markApiOperationFailed({ operationKey: guestCheckoutApiOperationKey, error }); } catch (_) {}
     }
+    if (isCheckoutOwnershipError(error)) {
+      return reply.status(400).send({ success: false, code: error.code, message: error.message });
+    }
     if (error?.statusCode === 409 && error?.code) {
       return reply.status(409).send({ success: false, code: error.code, message: error.message });
     }
@@ -4480,7 +4588,7 @@ exports.finalizeGuestMultiSellerCheckout = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "No seller plan found for this order" });
     }
 
-    if (session.status !== "COLLECTING_PAYMENT_METHOD") {
+    if (session.status === "COMPLETED") {
       const existingRecords = await prisma.orderPaymentRecord.findMany({ where: { orderId: order.id } });
       return reply.status(200).send({
         success: true,
@@ -4502,10 +4610,12 @@ exports.finalizeGuestMultiSellerCheckout = async (request, reply) => {
     }
     const platformPaymentMethodId = setupIntent.payment_method;
 
-    const claimed = await prisma.multiSellerCheckoutSession.updateMany({
-      where: { orderId: order.id, status: "COLLECTING_PAYMENT_METHOD" },
-      data: { status: "CHARGING_SELLERS", platformPaymentMethodId },
-    });
+    const claimed = session.status === "COLLECTING_PAYMENT_METHOD"
+      ? await prisma.multiSellerCheckoutSession.updateMany({
+          where: { orderId: order.id, status: "COLLECTING_PAYMENT_METHOD" },
+          data: { status: "CHARGING_SELLERS", platformPaymentMethodId },
+        })
+      : { count: 1 };
     if (claimed.count !== 1) {
       const existingRecords = await prisma.orderPaymentRecord.findMany({ where: { orderId: order.id } });
       return reply.status(200).send({

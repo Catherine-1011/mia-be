@@ -427,6 +427,31 @@ test("guest setup succeeds for seller plus seller and seller plus platform with 
   assert.equal(platformPrisma._subOrderCreateCalls.some((c) => String(c.data.sellerId).startsWith("PLATFORM:")), false);
 });
 
+test("platform products missing platformAccountId are rejected before Stripe setup", async () => {
+  const a = sellerProduct("prod_a", "seller_a", "acct_seller_a");
+  const malformedAlpa = platformProduct("prod_alpa", null, "seller_a");
+
+  const registeredPrisma = makePrisma({ cartItems: [cartItem(a), cartItem(malformedAlpa)], sellerProfiles: readyProfiles() });
+  const registeredStripe = makeStripe();
+  const registeredController = loadController({ prisma: registeredPrisma, stripe: registeredStripe });
+  const registeredReply = await callRegistered(registeredController);
+
+  assert.equal(registeredReply.statusCode, 400);
+  assert.equal(registeredReply.payload.code, "INVALID_PRODUCT_OWNERSHIP");
+  assert.equal(registeredPrisma._orderCreateCalls.length, 0);
+  assert.equal(registeredStripe.setupIntents.createCalls.length, 0);
+
+  const guestPrisma = makePrisma({ products: [a, malformedAlpa], sellerProfiles: readyProfiles() });
+  const guestStripe = makeStripe();
+  const guestController = loadController({ prisma: guestPrisma, stripe: guestStripe });
+  const guestReply = await callGuest(guestController, [{ productId: "prod_a", quantity: 1 }, { productId: "prod_alpa", quantity: 1 }]);
+
+  assert.equal(guestReply.statusCode, 400);
+  assert.equal(guestReply.payload.code, "INVALID_PRODUCT_OWNERSHIP");
+  assert.equal(guestPrisma._orderCreateCalls.length, 0);
+  assert.equal(guestStripe.setupIntents.createCalls.length, 0);
+});
+
 test("guest readiness failure occurs before database or Stripe object creation", async () => {
   const a = sellerProduct("prod_a", "seller_a", "acct_seller_a");
   const b = sellerProduct("prod_b", "seller_b", "acct_seller_b");

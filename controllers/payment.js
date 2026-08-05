@@ -2027,7 +2027,7 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
 // seller's own Direct Charge PaymentIntent. `extraMetadata` differs between
 // the two callers (userId vs isGuest/customerEmail) — everything else is
 // identical, so this is the single place that logic lives.
-async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPlans, platformPaymentMethodId, extraMetadata = {} }) {
+async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPlans, platformPaymentMethodId, platformCustomerId = null, extraMetadata = {} }) {
   const results = [];
   const existingRecords = await prisma.orderPaymentRecord.findMany({ where: { orderId: order.id } }).catch(() => []);
   const isPlatformPlan = (plan) => plan.paymentAccountType === "PLATFORM" || plan.paymentFlow === "PLATFORM_ACCOUNT";
@@ -2098,6 +2098,7 @@ async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPla
           {
             amount: plan.grossAmountCents,
             currency: "aud",
+            ...(platformCustomerId && { customer: platformCustomerId }),
             payment_method: platformPaymentMethodId,
             confirm: true,
             automatic_payment_methods: { enabled: true, allow_redirects: "never" },
@@ -2315,6 +2316,7 @@ exports.finalizeMultiSellerCheckout = async (request, reply) => {
       });
     }
     const platformPaymentMethodId = setupIntent.payment_method;
+    const platformCustomerId = typeof setupIntent.customer === "string" ? setupIntent.customer : setupIntent.customer?.id || null;
 
     // Atomically claim the session so a concurrent/duplicate finalize call
     // can't charge every seller twice (same pattern as claimStripeWebhookEvent).
@@ -2345,6 +2347,7 @@ exports.finalizeMultiSellerCheckout = async (request, reply) => {
       session,
       sellerPlans,
       platformPaymentMethodId,
+      platformCustomerId,
       extraMetadata: { userId },
     });
 
@@ -4642,6 +4645,7 @@ exports.finalizeGuestMultiSellerCheckout = async (request, reply) => {
       return reply.status(400).send({ success: false, message: `Card setup not complete. Stripe SetupIntent status: ${setupIntent.status}` });
     }
     const platformPaymentMethodId = setupIntent.payment_method;
+    const platformCustomerId = typeof setupIntent.customer === "string" ? setupIntent.customer : setupIntent.customer?.id || null;
 
     const claimed = session.status === "COLLECTING_PAYMENT_METHOD"
       ? await prisma.multiSellerCheckoutSession.updateMany({
@@ -4670,6 +4674,7 @@ exports.finalizeGuestMultiSellerCheckout = async (request, reply) => {
       session,
       sellerPlans,
       platformPaymentMethodId,
+      platformCustomerId,
       extraMetadata: { isGuest: "true", customerEmail: order.customerEmail },
     });
 

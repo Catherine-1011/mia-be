@@ -132,7 +132,7 @@ function makePrisma({ records: initialRecords = null, sellerPlans = null, sessio
 function makeStripe({ createdStatus = "succeeded", retrieveById = {} } = {}) {
   return {
     setupIntents: {
-      retrieve: async () => ({ id: "seti_1", status: "succeeded", payment_method: "pm_platform" }),
+      retrieve: async () => ({ id: "seti_1", status: "succeeded", payment_method: "pm_platform", customer: "cus_platform" }),
     },
     paymentMethods: {
       createCalls: [],
@@ -344,4 +344,92 @@ test("requires_action results include explicit platform and seller commercial ow
   assert.equal(sellerPayment.paymentIntentId, "pi_created_1");
   assert.equal(sellerPayment.clientSecret, "pi_created_1_secret");
   assert.equal(sellerPayment.status, "requires_action");
+});
+
+test("platform group reuses SetupIntent customer and PaymentMethod on the platform account", async () => {
+  const prisma = makePrisma({
+    records: [],
+    sellerPlans: [
+      {
+        sellerId: "platform_operator",
+        ownerType: "PLATFORM",
+        platformAccountId: "platform_alpa",
+        paymentAccountType: "PLATFORM",
+        paymentFlow: "PLATFORM_ACCOUNT",
+        productAmountCents: 11000,
+        shippingAmountCents: 1000,
+        gstAmountCents: 1000,
+        grossAmountCents: 12000,
+        commission: { commissionBase: 0, applicationFeeAmount: 0, currency: "aud" },
+      },
+    ],
+  });
+  const stripe = makeStripe();
+  const controller = loadController({ prisma, stripe });
+  const reply = makeReply();
+
+  await controller.finalizeMultiSellerCheckout({
+    user: { userId: "user_1" },
+    body: { orderId: "order_1" },
+  }, reply);
+
+  assert.equal(reply.statusCode, 200);
+  assert.equal(stripe.paymentIntents.createCalls.length, 1);
+  const call = stripe.paymentIntents.createCalls[0];
+  assert.equal(call.body.customer, "cus_platform");
+  assert.equal(call.body.payment_method, "pm_platform");
+  assert.equal(call.options.stripeAccount, undefined);
+  assert.equal(call.body.application_fee_amount, undefined);
+  assert.equal(call.body.transfer_data, undefined);
+  assert.equal(reply.payload.payments[0].ownerType, "PLATFORM");
+  assert.equal(reply.payload.payments[0].platformAccountId, "platform_alpa");
+  assert.equal(reply.payload.payments[0].stripeAccountId, null);
+  assert.equal(prisma._records[0].applicationFeeAmount, 0);
+});
+
+test("seller Direct Charge does not receive platform customer and keeps Connect fee context", async () => {
+  const prisma = makePrisma({
+    records: [],
+    sellerPlans: [
+      {
+        sellerId: "seller_a",
+        ownerType: "SELLER",
+        platformAccountId: null,
+        stripeAccountId: "acct_seller_a",
+        paymentAccountType: "CONNECTED",
+        paymentFlow: "DIRECT_CHARGE",
+        productAmountCents: 11000,
+        shippingAmountCents: 1000,
+        gstAmountCents: 1000,
+        grossAmountCents: 12000,
+        commission: { commissionBase: 10000, applicationFeeAmount: 1000, currency: "aud" },
+      },
+    ],
+  });
+  const stripe = makeStripe();
+  const controller = loadController({ prisma, stripe });
+  const reply = makeReply();
+
+  await controller.finalizeMultiSellerCheckout({
+    user: { userId: "user_1" },
+    body: { orderId: "order_1" },
+  }, reply);
+
+  assert.equal(reply.statusCode, 200);
+  assert.equal(stripe.paymentMethods.createCalls.length, 1);
+  assert.deepEqual(stripe.paymentMethods.createCalls[0].body, {
+    customer: "cus_platform",
+    payment_method: "pm_platform",
+  });
+  assert.equal(stripe.paymentMethods.createCalls[0].options.stripeAccount, "acct_seller_a");
+
+  assert.equal(stripe.paymentIntents.createCalls.length, 1);
+  const call = stripe.paymentIntents.createCalls[0];
+  assert.equal(call.body.customer, undefined);
+  assert.equal(call.body.payment_method, "pm_clone_seller_a");
+  assert.equal(call.body.application_fee_amount, 1000);
+  assert.equal(call.body.transfer_data, undefined);
+  assert.equal(call.options.stripeAccount, "acct_seller_a");
+  assert.equal(reply.payload.payments[0].ownerType, "SELLER");
+  assert.equal(reply.payload.payments[0].paymentFlow, "DIRECT_CHARGE");
 });

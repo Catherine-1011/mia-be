@@ -59,7 +59,7 @@ function cartItem(product, overrides = {}) {
   };
 }
 
-function makePrisma({ cartItems = [], products = null, sellerProfiles = {}, operationStatus = null, invalidShipping = false } = {}) {
+function makePrisma({ cartItems = [], products = null, sellerProfiles = {}, platformAccounts = {}, operationStatus = null, invalidShipping = false } = {}) {
   const productMap = new Map((products || cartItems.map((item) => item.product)).map((product) => [product.id, product]));
   const prisma = {
     _sellerProfileLookups: [],
@@ -83,6 +83,9 @@ function makePrisma({ cartItems = [], products = null, sellerProfiles = {}, oper
         prisma._sellerProfileLookups.push(where.userId);
         return sellerProfiles[where.userId] || null;
       },
+    },
+    platformAccount: {
+      findUnique: async ({ where }) => platformAccounts[where.id] || null,
     },
     product: {
       findUnique: async ({ where }) => productMap.get(where.id) || null,
@@ -293,6 +296,13 @@ function readyProfiles() {
   return {
     seller_a: { stripeAccountId: "acct_seller_a", stripeChargesEnabled: true, stripePayoutsEnabled: true },
     seller_b: { stripeAccountId: "acct_seller_b", stripeChargesEnabled: true, stripePayoutsEnabled: true },
+    platform_operator: { userId: "platform_operator", paymentAccountType: "PLATFORM" },
+  };
+}
+
+function readyPlatformAccounts() {
+  return {
+    platform_alpa: { id: "platform_alpa", userId: "platform_operator", active: true, paymentType: "PLATFORM" },
   };
 }
 
@@ -319,8 +329,12 @@ test("registered setup keeps owner group keys separate from canonical seller IDs
 
 test("platform groups skip seller readiness and connected account routing", async () => {
   const a = sellerProduct("prod_a", "seller_a", "acct_seller_a");
-  const alpa = platformProduct("prod_alpa", "platform_alpa", "seller_a");
-  const prisma = makePrisma({ cartItems: [cartItem(a), cartItem(alpa)], sellerProfiles: readyProfiles() });
+  const alpa = platformProduct("prod_alpa", "platform_alpa", "legacy_platform_creator");
+  const prisma = makePrisma({
+    cartItems: [cartItem(a), cartItem(alpa)],
+    sellerProfiles: readyProfiles(),
+    platformAccounts: readyPlatformAccounts(),
+  });
   const stripe = makeStripe();
   const controller = loadController({ prisma, stripe });
 
@@ -328,11 +342,14 @@ test("platform groups skip seller readiness and connected account routing", asyn
 
   assert.equal(reply.statusCode, 200);
   assert.equal(prisma._subOrderCreateCalls.length, 2);
-  assert.deepEqual(Array.from(new Set(prisma._sellerProfileLookups)), ["seller_a"]);
+  assert.deepEqual(Array.from(new Set(prisma._sellerProfileLookups)), ["seller_a", "platform_operator"]);
   assert.deepEqual(stripe.accounts.retrieveCalls, ["acct_seller_a"]);
   const breakdown = prisma._orderUpdateCalls.at(-1).data.shippingAddress.orderSummary.multiSellerPlan;
   const platformLine = breakdown.find((line) => line.paymentAccountType === "PLATFORM");
-  assert.equal(platformLine.sellerId, "seller_a");
+  assert.equal(platformLine.sellerId, "platform_operator");
+  assert.notEqual(platformLine.sellerId, "legacy_platform_creator");
+  const platformSubOrder = prisma._subOrderCreateCalls.find((call) => call.data.sellerId === "platform_operator");
+  assert.ok(platformSubOrder);
   assert.equal(platformLine.stripeAccountId, null);
   assert.equal(platformLine.commission.applicationFeeAmount, 0);
   assert.equal(stripe.paymentIntents.createCalls.length, 0);
@@ -343,7 +360,11 @@ test("three commercial owners create three groups with external sellers remainin
   const a = sellerProduct("prod_a", "seller_a", "acct_seller_a");
   const b = sellerProduct("prod_b", "seller_b", "acct_seller_b");
   const alpa = platformProduct("prod_alpa", "platform_alpa", "legacy_platform_creator");
-  const prisma = makePrisma({ cartItems: [cartItem(a), cartItem(b), cartItem(alpa)], sellerProfiles: readyProfiles() });
+  const prisma = makePrisma({
+    cartItems: [cartItem(a), cartItem(b), cartItem(alpa)],
+    sellerProfiles: readyProfiles(),
+    platformAccounts: readyPlatformAccounts(),
+  });
   const stripe = makeStripe();
   const controller = loadController({ prisma, stripe });
 
@@ -351,7 +372,7 @@ test("three commercial owners create three groups with external sellers remainin
 
   assert.equal(reply.statusCode, 200);
   assert.equal(prisma._subOrderCreateCalls.length, 3);
-  assert.deepEqual(Array.from(new Set(prisma._sellerProfileLookups)).sort(), ["seller_a", "seller_b"]);
+  assert.deepEqual(Array.from(new Set(prisma._sellerProfileLookups)).sort(), ["platform_operator", "seller_a", "seller_b"]);
   assert.deepEqual(stripe.accounts.retrieveCalls.sort(), ["acct_seller_a", "acct_seller_b"]);
 });
 
@@ -364,7 +385,9 @@ test("unready external seller fails before order or Stripe object creation while
     sellerProfiles: {
       seller_a: readyProfiles().seller_a,
       seller_b: { stripeAccountId: null, stripeChargesEnabled: false, stripePayoutsEnabled: false },
+      platform_operator: readyProfiles().platform_operator,
     },
+    platformAccounts: readyPlatformAccounts(),
   });
   const stripe = makeStripe();
   const controller = loadController({ prisma, stripe });
@@ -418,13 +441,51 @@ test("guest setup succeeds for seller plus seller and seller plus platform with 
   assert.equal(sellerReply.statusCode, 200);
   assert.deepEqual(sellerPrisma._subOrderCreateCalls.map((c) => c.data.sellerId).sort(), ["seller_a", "seller_b"]);
 
-  const platformPrisma = makePrisma({ products, sellerProfiles: readyProfiles() });
+  const platformPrisma = makePrisma({ products, sellerProfiles: readyProfiles(), platformAccounts: readyPlatformAccounts() });
   const platformStripe = makeStripe();
   const platformController = loadController({ prisma: platformPrisma, stripe: platformStripe });
   const platformReply = await callGuest(platformController, [{ productId: "prod_a", quantity: 1 }, { productId: "prod_alpa", quantity: 1 }]);
   assert.equal(platformReply.statusCode, 200);
-  assert.deepEqual(Array.from(new Set(platformPrisma._sellerProfileLookups)), ["seller_a"]);
+  assert.deepEqual(Array.from(new Set(platformPrisma._sellerProfileLookups)), ["seller_a", "platform_operator"]);
+  assert.deepEqual(platformPrisma._subOrderCreateCalls.map((c) => c.data.sellerId).sort(), ["platform_operator", "seller_a"]);
   assert.equal(platformPrisma._subOrderCreateCalls.some((c) => String(c.data.sellerId).startsWith("PLATFORM:")), false);
+});
+
+test("platform groups fail clearly when the operational SellerProfile is not configured", async () => {
+  const a = sellerProduct("prod_a", "seller_a", "acct_seller_a");
+  const alpa = platformProduct("prod_alpa", "platform_alpa", "legacy_platform_creator");
+  const sellerProfiles = { seller_a: readyProfiles().seller_a };
+
+  const registeredPrisma = makePrisma({
+    cartItems: [cartItem(a), cartItem(alpa)],
+    sellerProfiles,
+    platformAccounts: readyPlatformAccounts(),
+  });
+  const registeredStripe = makeStripe();
+  const registeredController = loadController({ prisma: registeredPrisma, stripe: registeredStripe });
+  const registeredReply = await callRegistered(registeredController);
+
+  assert.equal(registeredReply.statusCode, 400);
+  assert.equal(registeredReply.payload.code, "PLATFORM_SELLER_PROFILE_NOT_CONFIGURED");
+  assert.equal(registeredPrisma._orderCreateCalls.length, 0);
+  assert.equal(registeredStripe.customers.createCalls.length, 0);
+  assert.equal(registeredStripe.setupIntents.createCalls.length, 0);
+  assert.equal(registeredPrisma._subOrderCreateCalls.some((c) => c.data.sellerId === "legacy_platform_creator"), false);
+
+  const guestPrisma = makePrisma({
+    products: [a, alpa],
+    sellerProfiles,
+    platformAccounts: readyPlatformAccounts(),
+  });
+  const guestStripe = makeStripe();
+  const guestController = loadController({ prisma: guestPrisma, stripe: guestStripe });
+  const guestReply = await callGuest(guestController, [{ productId: "prod_a", quantity: 1 }, { productId: "prod_alpa", quantity: 1 }]);
+
+  assert.equal(guestReply.statusCode, 400);
+  assert.equal(guestReply.payload.code, "PLATFORM_SELLER_PROFILE_NOT_CONFIGURED");
+  assert.equal(guestPrisma._orderCreateCalls.length, 0);
+  assert.equal(guestStripe.customers.createCalls.length, 0);
+  assert.equal(guestStripe.setupIntents.createCalls.length, 0);
 });
 
 test("platform products missing platformAccountId are rejected before Stripe setup", async () => {

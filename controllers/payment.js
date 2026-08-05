@@ -523,8 +523,37 @@ function buildSellerDirectChargePlan({ sellerId, items, cartCalculations, discou
   };
 }
 
-function buildSellerPlatformPaymentPlan({ sellerId, items, cartCalculations, discountShare = 0 }) {
+async function resolvePlatformOperationalSellerId({ platformAccountId, tx = prisma }) {
+  const platformAccount = await tx.platformAccount?.findUnique?.({
+    where: { id: platformAccountId },
+    select: { id: true, userId: true, active: true, paymentType: true },
+  });
+
+  if (!platformAccount?.userId) {
+    throw createCheckoutOwnershipError(
+      `Platform account "${platformAccountId}" is not configured with an operational seller profile`,
+      "PLATFORM_SELLER_PROFILE_NOT_CONFIGURED"
+    );
+  }
+
+  const sellerProfile = await tx.sellerProfile.findUnique({
+    where: { userId: platformAccount.userId },
+    select: { userId: true },
+  });
+
+  if (!sellerProfile?.userId) {
+    throw createCheckoutOwnershipError(
+      `Platform account "${platformAccountId}" operational user is missing a SellerProfile`,
+      "PLATFORM_SELLER_PROFILE_NOT_CONFIGURED"
+    );
+  }
+
+  return sellerProfile.userId;
+}
+
+async function buildSellerPlatformPaymentPlan({ sellerId, items, cartCalculations, discountShare = 0, tx = prisma }) {
   const platformAccountId = items.find((item) => item?.product?.platformAccountId)?.product?.platformAccountId || null;
+  const operationalSellerId = await resolvePlatformOperationalSellerId({ platformAccountId, tx });
   const productAmount = getSellerItemsTotal(items);
   const shippingAmount = Number(cartCalculations.shippingCost || 0);
   const gstRatePct = getGstRateFromCartCalculations(cartCalculations);
@@ -533,7 +562,8 @@ function buildSellerPlatformPaymentPlan({ sellerId, items, cartCalculations, dis
   const grossAmountCents = moneyToMinorUnits(discountedProductAmount + shippingAmount);
 
   return {
-    sellerId,
+    sellerId: operationalSellerId,
+    productSellerId: sellerId,
     platformAccountId,
     items,
     paymentAccountType: "PLATFORM",
@@ -585,7 +615,10 @@ function createCheckoutOwnershipError(message, code = "INVALID_PRODUCT_OWNERSHIP
 }
 
 function isCheckoutOwnershipError(error) {
-  return error?.statusCode === 400 && error?.code === "INVALID_PRODUCT_OWNERSHIP";
+  return error?.statusCode === 400 && (
+    error?.code === "INVALID_PRODUCT_OWNERSHIP" ||
+    error?.code === "PLATFORM_SELLER_PROFILE_NOT_CONFIGURED"
+  );
 }
 
 function createOwnerGroup(item) {

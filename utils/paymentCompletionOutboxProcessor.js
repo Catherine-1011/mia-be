@@ -101,6 +101,26 @@ function isValidEmailAddress(email) {
   return typeof email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function filenamePart(value, fallback) {
+  const cleaned = String(value || "")
+    .trim()
+    .replace(/[^a-z0-9._-]+/gi, "-")
+    .replace(/^-+|-+$/g, "");
+  return cleaned || fallback;
+}
+
+function sellerInvoiceFilename(order, sellerId, seller, sellerDetails) {
+  const orderReference = filenamePart(order.displayId || order.id, "order");
+  const displayReference = sellerDetails.displayId && sellerDetails.displayId !== order.displayId
+    ? sellerDetails.displayId
+    : null;
+  const sellerReference = filenamePart(
+    displayReference || seller?.sellerProfile?.storeName || seller?.name || sellerId,
+    filenamePart(sellerId, "seller")
+  );
+  return `Invoice-${orderReference}-${sellerReference}.pdf`;
+}
+
 function completeOrderItems(order) {
   const items = [
     ...(order.items || []),
@@ -505,12 +525,14 @@ async function processJob(job) {
       const sellerDetails = sellerEmailDetails(order, orderDetails, sellerId, sellerItems);
       const invoicePDFBuffer = await generateInvoiceBuffer(sellerInvoiceShape(order, sellerId, sellerItems, sellerDetails));
       assertValidInvoiceBuffer(invoicePDFBuffer, `seller payment notification ${sellerId}`);
+      const invoiceFilename = sellerInvoiceFilename(order, sellerId, seller, sellerDetails);
       const result = await sendSellerPaymentReceivedEmail(seller.email, seller.name || "Seller", {
         orderId: order.id,
         orderDisplayId: sellerDetails.displayId || order.displayId || order.id,
         amount,
         currency: "AUD",
         invoicePDFBuffer,
+        invoiceFilename,
       });
       if (!result || result.success !== true) {
         failures.push(`${seller.email}: ${result?.error || "unknown error"}`);

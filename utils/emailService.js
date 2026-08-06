@@ -2821,7 +2821,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
               <!-- Greeting -->
               <tr>
                 <td style="padding:28px 40px 16px;mso-padding-alt:28px 40px 16px;">
-                  <p style="color:#3D1009;font-size:16px;margin:0 0 6px;">Hi <strong>${adminName}</strong>,</p>
+                  <p style="color:#3D1009;font-size:16px;margin:0 0 6px;">Hi Super Admin,</p>
                   <p style="color:#555;font-size:14px;line-height:1.7;margin:0;">A new order has been placed on the marketplace. Here are the full details.</p>
                 </td>
               </tr>
@@ -4806,10 +4806,22 @@ const sendNewsletterSubscriptionAlertEmail = async ({ subscribedEmail, subscribe
   return sendWithFallback(msg, 'Newsletter Admin Alert');
 };
 
+const buildPdfEmailAttachment = (pdfBuffer, filename) => {
+  if (!Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {
+    throw new Error('PDF attachment requires a non-empty Buffer');
+  }
+  return {
+    content: pdfBuffer.toString('base64'),
+    filename: filename && filename.endsWith('.pdf') ? filename : `${filename || 'invoice'}.pdf`,
+    type: 'application/pdf',
+    disposition: 'attachment'
+  };
+};
+
 // ─── Seller: payment received notification ──────────────────────────────────
 // Sent after a verified payment completion. Direct Charge orders do not create
 // a Stripe Transfer; seller funds are on the connected account charge.
-const sendSellerPaymentReceivedEmail = async (sellerEmail, sellerName, { orderId, orderDisplayId, amount, currency = 'AUD', invoicePDFBuffer } = {}) => {
+const sendSellerPaymentReceivedEmail = async (sellerEmail, sellerName, { orderId, orderDisplayId, amount, currency = 'AUD', invoicePDFBuffer, invoiceFilename } = {}) => {
   if (isDevelopmentMode) {
     return { success: true };
   }
@@ -4882,12 +4894,9 @@ const sendSellerPaymentReceivedEmail = async (sellerEmail, sellerName, { orderId
   };
 
   if (invoicePDFBuffer) {
-    msg.attachments = [{
-      content: invoicePDFBuffer.toString('base64'),
-      filename: `invoice-${orderDisplayId || orderId}.pdf`,
-      type: 'application/pdf',
-      disposition: 'attachment'
-    }];
+    msg.attachments = [
+      buildPdfEmailAttachment(invoicePDFBuffer, invoiceFilename || `invoice-${orderDisplayId || orderId}.pdf`)
+    ];
   }
 
   return sendWithFallback(msg, 'Seller Payment Received Email');

@@ -201,12 +201,20 @@ function loadProcessor({ ordersById, jobs, emailResults = {}, notificationImpls 
         return nextResult("sendFinanceOrderInvoiceEmail");
       },
       sendSellerPaymentReceivedEmail: async (email, name, details) => {
+        const invoiceAttachment = details.invoicePDFBuffer ? {
+          content: details.invoicePDFBuffer.toString("base64"),
+          filename: details.invoiceFilename,
+          type: "application/pdf",
+          disposition: "attachment",
+        } : null;
         calls.sellerEmail.push({
           email,
           name,
           amount: details.amount,
           orderDisplayId: details.orderDisplayId,
           invoicePDFBuffer: details.invoicePDFBuffer,
+          invoiceFilename: details.invoiceFilename,
+          invoiceAttachment,
         });
         return nextResult("sendSellerPaymentReceivedEmail");
       },
@@ -334,6 +342,11 @@ test("a successful payment creates customer, super admin, and seller job outcome
   assert.equal(calls.sellerEmail.length, 1);
   assert.equal(calls.sellerEmail[0].email, SELLER_A.email);
   assert.ok(Buffer.isBuffer(calls.sellerEmail[0].invoicePDFBuffer));
+  assert.equal(calls.sellerEmail[0].invoiceFilename, "Invoice-ABC123-Store-A.pdf");
+  assert.equal(calls.sellerEmail[0].invoiceAttachment.filename, "Invoice-ABC123-Store-A.pdf");
+  assert.equal(calls.sellerEmail[0].invoiceAttachment.type, "application/pdf");
+  assert.equal(calls.sellerEmail[0].invoiceAttachment.disposition, "attachment");
+  assert.ok(Buffer.from(calls.sellerEmail[0].invoiceAttachment.content, "base64").length > 0);
 });
 
 test("multi-seller payment creates seller notifications and payment emails for every seller", async () => {
@@ -367,6 +380,9 @@ test("single-seller payment sends exactly one seller payment email for the full 
   assert.equal(calls.sellerEmail.length, 1);
   assert.equal(calls.sellerEmail[0].amount, 100);
   assert.ok(Buffer.isBuffer(calls.sellerEmail[0].invoicePDFBuffer));
+  assert.equal(calls.sellerEmail[0].invoiceAttachment.filename, "Invoice-ABC123-Store-A.pdf");
+  assert.equal(calls.sellerEmail[0].invoiceAttachment.type, "application/pdf");
+  assert.ok(Buffer.from(calls.sellerEmail[0].invoiceAttachment.content, "base64").length > 0);
 });
 
 test("parent plus suborder items feed customer, super admin, and seller-scoped emails", async () => {
@@ -408,6 +424,7 @@ test("parent plus suborder items feed customer, super admin, and seller-scoped e
   assert.deepEqual(calls.customerEmail[0].details.products.map((item) => item.title).sort(), ["Sub Item A", "Sub Item B"]);
   assert.deepEqual(calls.adminEmail[0].details.items.map((item) => item.title).sort(), ["Sub Item A", "Sub Item B"]);
   assert.deepEqual(calls.sellerEmail.map((call) => call.email).sort(), [SELLER_A.email, SELLER_B.email].sort());
+  assert.deepEqual(calls.sellerEmail.map((call) => call.invoiceFilename).sort(), ["Invoice-MULTI1-sub_a.pdf", "Invoice-MULTI1-sub_b.pdf"]);
   const sellerInvoiceOrders = invoiceOrders.filter((invoiceOrder) => invoiceOrder.items?.length === 1);
   assert.equal(sellerInvoiceOrders.length, 2);
   assert.deepEqual(
@@ -491,6 +508,7 @@ test("sub-order seller invoices resolve seller ownership from authoritative SubO
 
   assert.deepEqual(calls.sellerEmail.map((call) => call.email).sort(), [SELLER_A.email, SELLER_B.email].sort());
   assert.deepEqual(calls.sellerEmail.map((call) => call.orderDisplayId).sort(), ["MULTI1-A", "MULTI1-B"]);
+  assert.deepEqual(calls.sellerEmail.map((call) => call.invoiceFilename).sort(), ["Invoice-MULTI1-MULTI1-A.pdf", "Invoice-MULTI1-MULTI1-B.pdf"]);
   assert.deepEqual(invoiceOrders.map((invoiceOrder) => invoiceOrder.displayId).sort(), ["MULTI1-A", "MULTI1-B"]);
   for (const invoiceOrder of invoiceOrders) {
     const sellerIds = new Set(invoiceOrder.items.map((item) => item.product.sellerId));
@@ -526,6 +544,8 @@ test("mixed platform and external seller invoices stay separated without fee fie
   await processor.processPaymentCompletionOutboxOnce();
 
   assert.deepEqual(calls.sellerEmail.map((call) => call.email).sort(), [PLATFORM_SELLER.email, SELLER_A.email].sort());
+  assert.deepEqual(calls.sellerEmail.map((call) => call.invoiceAttachment.type), ["application/pdf", "application/pdf"]);
+  assert.deepEqual(calls.sellerEmail.map((call) => call.invoiceAttachment.filename).sort(), ["Invoice-MULTI1-ALPA.pdf", "Invoice-MULTI1-Store-A.pdf"]);
   assert.equal(invoiceOrders.length, 2);
   for (const invoiceOrder of invoiceOrders) {
     const titles = invoiceOrder.items.map((item) => item.product.title);
@@ -715,6 +735,23 @@ test("invalid invoice buffers fail customer jobs so they remain retryable", asyn
   assert.equal(jobs.get("job_1").status, "FAILED");
   assert.match(jobs.get("job_1").lastError, /invalid buffer/);
   assert.equal(calls.customerEmail.length, 0);
+});
+
+test("invalid seller invoice buffers fail seller payment jobs before email delivery", async () => {
+  const order = makeSingleSellerOrder();
+  const { processor, jobs, calls } = loadProcessor({
+    ordersById: { [order.id]: order },
+    jobs: [{ id: "seller-payment", orderId: order.id, type: "SELLER_PAYMENT_NOTIFICATION", payload: { sellerIds: [SELLER_A.id] } }],
+    invoiceImpl: async () => Buffer.alloc(0),
+  });
+
+  const result = await processor.processPaymentCompletionOutboxOnce();
+
+  assert.equal(result.processed, 0);
+  assert.equal(jobs.get("seller-payment").status, "FAILED");
+  assert.match(jobs.get("seller-payment").lastError, /invalid buffer/);
+  assert.equal(calls.sellerEmail.length, 0);
+  assert.deepEqual(jobs.get("seller-payment").payload.sellerPaymentEmailDeliveredSellerIds || [], []);
 });
 
 test("stale PROCESSING outbox jobs are reclaimed and processed once", async () => {

@@ -7,6 +7,7 @@ const emailPath = path.resolve(__dirname, "../utils/emailService.js");
 const notificationPath = path.resolve(__dirname, "../controllers/notification.js");
 const ordersPath = path.resolve(__dirname, "../controllers/orders.js");
 const processorPath = path.resolve(__dirname, "../utils/paymentCompletionOutboxProcessor.js");
+const emailServiceSourcePath = path.resolve(__dirname, "../utils/emailService.js");
 
 function resetModules() {
   for (const modulePath of [prismaPath, emailPath, notificationPath, ordersPath, processorPath]) {
@@ -200,7 +201,13 @@ function loadProcessor({ ordersById, jobs, emailResults = {}, notificationImpls 
         return nextResult("sendFinanceOrderInvoiceEmail");
       },
       sendSellerPaymentReceivedEmail: async (email, name, details) => {
-        calls.sellerEmail.push({ email, name, amount: details.amount, invoicePDFBuffer: details.invoicePDFBuffer });
+        calls.sellerEmail.push({
+          email,
+          name,
+          amount: details.amount,
+          orderDisplayId: details.orderDisplayId,
+          invoicePDFBuffer: details.invoicePDFBuffer,
+        });
         return nextResult("sendSellerPaymentReceivedEmail");
       },
       sendAdminNewOrderEmail: async (email, name, details) => {
@@ -434,6 +441,264 @@ test("multi-seller payment generates each seller invoice from only that seller's
     const sellerIds = new Set(invoiceOrder.items.map((item) => item.product?.sellerId));
     assert.equal(sellerIds.size, 1);
   }
+});
+
+test("Order ID email typography uses the Outlook-safe font stack instead of monospace", () => {
+  const fs = require("node:fs");
+  const source = fs.readFileSync(emailServiceSourcePath, "utf8");
+  const orderIdCells = source.match(/<td style="[^"]*font-size:14px;[^"]*font-weight:700;[^"]*font-family:[^"]*">\$\{(?:orderDetails|refundDetails)\.displayId\}<\/td>|<td style="[^"]*font-size:14px;[^"]*font-weight:700;[^"]*font-family:[^"]*">\$\{orderId \|\| 'N\/A'\}<\/td>/g) || [];
+
+  assert.ok(orderIdCells.length >= 6);
+  for (const cell of orderIdCells) {
+    assert.match(cell, /font-family:Arial, Helvetica, sans-serif/);
+    assert.doesNotMatch(cell, /font-family:monospace/);
+    assert.match(cell, /font-size:14px/);
+    assert.match(cell, /font-weight:700/);
+  }
+});
+
+test("sub-order seller invoices resolve seller ownership from authoritative SubOrder data", async () => {
+  const itemA = {
+    id: "sub_item_a",
+    quantity: 1,
+    price: 75,
+    product: { title: "Sub Item A", sellerId: SELLER_A.id },
+  };
+  const itemB = {
+    id: "sub_item_b",
+    quantity: 2,
+    price: 55,
+    product: { title: "Sub Item B", sellerId: SELLER_B.id },
+  };
+  const order = makeMultiSellerOrder({
+    items: [],
+    subOrders: [
+      { id: "sub_a", subDisplayId: "MULTI1-A", sellerId: SELLER_A.id, items: [itemA], seller: SELLER_A },
+      { id: "sub_b", subDisplayId: "MULTI1-B", sellerId: SELLER_B.id, items: [itemB], seller: SELLER_B },
+    ],
+  });
+  const invoiceOrders = [];
+  const { processor, calls } = loadProcessor({
+    ordersById: { [order.id]: order },
+    jobs: [{ id: "seller-payment", orderId: order.id, type: "SELLER_PAYMENT_NOTIFICATION", payload: { sellerIds: [SELLER_A.id, SELLER_B.id] } }],
+    invoiceImpl: async (invoiceOrder) => {
+      invoiceOrders.push(invoiceOrder);
+      return Buffer.from("pdf");
+    },
+  });
+
+  await processor.processPaymentCompletionOutboxOnce();
+
+  assert.deepEqual(calls.sellerEmail.map((call) => call.email).sort(), [SELLER_A.email, SELLER_B.email].sort());
+  assert.deepEqual(calls.sellerEmail.map((call) => call.orderDisplayId).sort(), ["MULTI1-A", "MULTI1-B"]);
+  assert.deepEqual(invoiceOrders.map((invoiceOrder) => invoiceOrder.displayId).sort(), ["MULTI1-A", "MULTI1-B"]);
+  for (const invoiceOrder of invoiceOrders) {
+    const sellerIds = new Set(invoiceOrder.items.map((item) => item.product.sellerId));
+    assert.equal(sellerIds.size, 1);
+    assert.equal(invoiceOrder.subOrders.length, 1);
+  }
+});
+
+test("mixed platform and external seller invoices stay separated without fee fields", async () => {
+  const PLATFORM_SELLER = {
+    id: "platform_seller",
+    email: "platform@example.com",
+    name: "ALPA Platform",
+    sellerProfile: { storeName: "ALPA" },
+  };
+  const order = makeMultiSellerOrder({
+    items: [
+      { id: "platform_item", quantity: 1, price: 120, product: { title: "ALPA Owned Item", sellerId: PLATFORM_SELLER.id, seller: PLATFORM_SELLER } },
+      { id: "external_item", quantity: 1, price: 80, product: { title: "External Seller Item", sellerId: SELLER_A.id, seller: SELLER_A } },
+    ],
+    subOrders: [],
+  });
+  const invoiceOrders = [];
+  const { processor, calls } = loadProcessor({
+    ordersById: { [order.id]: order },
+    jobs: [{ id: "seller-payment", orderId: order.id, type: "SELLER_PAYMENT_NOTIFICATION", payload: { sellerIds: [PLATFORM_SELLER.id, SELLER_A.id] } }],
+    invoiceImpl: async (invoiceOrder) => {
+      invoiceOrders.push(invoiceOrder);
+      return Buffer.from("pdf");
+    },
+  });
+
+  await processor.processPaymentCompletionOutboxOnce();
+
+  assert.deepEqual(calls.sellerEmail.map((call) => call.email).sort(), [PLATFORM_SELLER.email, SELLER_A.email].sort());
+  assert.equal(invoiceOrders.length, 2);
+  for (const invoiceOrder of invoiceOrders) {
+    const titles = invoiceOrder.items.map((item) => item.product.title);
+    assert.equal(titles.length, 1);
+    assert.equal(invoiceOrder.applicationFeeAmount, undefined);
+    assert.equal(invoiceOrder.commissionAmount, undefined);
+  }
+});
+
+test("seller invoice clears parent order discount and coupon when there is no seller allocation", async () => {
+  const order = makeMultiSellerOrder({
+    discountAmount: 45,
+    couponCode: "FULLCART",
+    shippingAddress: {
+      orderSummary: {
+        shippingCost: 12,
+        totalShippingCost: 36,
+        gstPercentage: 10,
+        discountAmount: 45,
+        couponCode: "FULLCART",
+        adjustmentAmount: 9,
+        credits: [{ amount: 5 }],
+      },
+    },
+  });
+  const invoiceOrders = [];
+  const { processor } = loadProcessor({
+    ordersById: { [order.id]: order },
+    jobs: [{ id: "seller-payment", orderId: order.id, type: "SELLER_PAYMENT_NOTIFICATION", payload: { sellerIds: [SELLER_A.id, SELLER_B.id] } }],
+    invoiceImpl: async (invoiceOrder) => {
+      invoiceOrders.push(invoiceOrder);
+      return Buffer.from("pdf");
+    },
+  });
+
+  await processor.processPaymentCompletionOutboxOnce();
+
+  assert.equal(invoiceOrders.length, 2);
+  for (const invoiceOrder of invoiceOrders) {
+    assert.equal(invoiceOrder.discountAmount, 0);
+    assert.equal(invoiceOrder.couponCode, null);
+    assert.equal(invoiceOrder.adjustmentAmount, 0);
+    assert.deepEqual(invoiceOrder.adjustments, []);
+    assert.deepEqual(invoiceOrder.credits, []);
+    assert.equal(invoiceOrder.shippingAddress.orderSummary.discountAmount, 0);
+    assert.equal(invoiceOrder.shippingAddress.orderSummary.couponCode, null);
+    assert.equal(invoiceOrder.shippingAddress.orderSummary.adjustmentAmount, 0);
+    assert.deepEqual(invoiceOrder.shippingAddress.orderSummary.credits, []);
+  }
+});
+
+test("seller invoice uses only authoritative sub-order discount and coupon allocation", async () => {
+  const itemA = {
+    id: "seller_a_discounted_item",
+    quantity: 1,
+    price: 100,
+    product: { title: "Discounted Seller Item", sellerId: SELLER_A.id, seller: SELLER_A },
+  };
+  const itemB = {
+    id: "seller_b_full_price_item",
+    quantity: 1,
+    price: 80,
+    product: { title: "Full Price Seller Item", sellerId: SELLER_B.id, seller: SELLER_B },
+  };
+  const order = makeMultiSellerOrder({
+    items: [],
+    discountAmount: 50,
+    couponCode: "PARENT",
+    shippingAddress: {
+      orderSummary: {
+        shippingCost: 10,
+        totalShippingCost: 20,
+        gstPercentage: 10,
+        discountAmount: 50,
+        couponCode: "PARENT",
+      },
+    },
+    subOrders: [
+      { id: "sub_a", subDisplayId: "MULTI1-A", sellerId: SELLER_A.id, items: [itemA], seller: SELLER_A, discountAmount: 15, couponCode: "SELLERA" },
+      { id: "sub_b", subDisplayId: "MULTI1-B", sellerId: SELLER_B.id, items: [itemB], seller: SELLER_B },
+    ],
+  });
+  const invoiceOrders = [];
+  const { processor } = loadProcessor({
+    ordersById: { [order.id]: order },
+    jobs: [{ id: "seller-payment", orderId: order.id, type: "SELLER_PAYMENT_NOTIFICATION", payload: { sellerIds: [SELLER_A.id, SELLER_B.id] } }],
+    invoiceImpl: async (invoiceOrder) => {
+      invoiceOrders.push(invoiceOrder);
+      return Buffer.from("pdf");
+    },
+  });
+
+  await processor.processPaymentCompletionOutboxOnce();
+
+  const sellerAInvoice = invoiceOrders.find((invoiceOrder) => invoiceOrder.displayId === "MULTI1-A");
+  const sellerBInvoice = invoiceOrders.find((invoiceOrder) => invoiceOrder.displayId === "MULTI1-B");
+  assert.equal(sellerAInvoice.discountAmount, 15);
+  assert.equal(sellerAInvoice.couponCode, "SELLERA");
+  assert.equal(sellerAInvoice.shippingAddress.orderSummary.discountAmount, 15);
+  assert.equal(sellerAInvoice.shippingAddress.orderSummary.couponCode, "SELLERA");
+  assert.equal(sellerBInvoice.discountAmount, 0);
+  assert.equal(sellerBInvoice.couponCode, null);
+  assert.equal(sellerBInvoice.shippingAddress.orderSummary.discountAmount, 0);
+  assert.equal(sellerBInvoice.shippingAddress.orderSummary.couponCode, null);
+});
+
+test("seller invoice uses seller-authoritative shipping and reconciles displayed arithmetic", async () => {
+  const order = makeSingleSellerOrder({
+    totalAmount: 999,
+    shippingAddress: {
+      orderSummary: {
+        shippingCost: 7,
+        totalShippingCost: 40,
+        gstPercentage: 10,
+        discountAmount: 33,
+        couponCode: "PARENT",
+      },
+    },
+  });
+  const invoiceOrders = [];
+  const { processor } = loadProcessor({
+    ordersById: { [order.id]: order },
+    jobs: [{ id: "seller-payment", orderId: order.id, type: "SELLER_PAYMENT_NOTIFICATION", payload: { sellerIds: [SELLER_A.id] } }],
+    invoiceImpl: async (invoiceOrder) => {
+      invoiceOrders.push(invoiceOrder);
+      return Buffer.from("pdf");
+    },
+  });
+
+  await processor.processPaymentCompletionOutboxOnce();
+
+  const invoiceOrder = invoiceOrders[0];
+  const summary = invoiceOrder.shippingAddress.orderSummary;
+  const subtotal = invoiceOrder.items.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0);
+  assert.equal(subtotal, 100);
+  assert.equal(summary.shippingCost, 7);
+  assert.equal(summary.totalShippingCost, 7);
+  assert.equal(summary.discountAmount, 0);
+  assert.equal(invoiceOrder.totalAmount, 107);
+  assert.equal(invoiceOrder.totalAmount, subtotal + summary.shippingCost - summary.discountAmount);
+});
+
+test("customer invoice still receives the complete parent order financial fields unchanged", async () => {
+  const order = makeSingleSellerOrder({
+    discountAmount: 25,
+    couponCode: "CUSTOMER",
+    shippingAddress: {
+      orderSummary: {
+        shippingCost: 8,
+        totalShippingCost: 8,
+        gstPercentage: 10,
+        discountAmount: 25,
+        couponCode: "CUSTOMER",
+      },
+    },
+  });
+  const invoiceOrders = [];
+  const { processor } = loadProcessor({
+    ordersById: { [order.id]: order },
+    jobs: [{ id: "customer", orderId: order.id, type: "CUSTOMER_CONFIRMATION" }],
+    invoiceImpl: async (invoiceOrder) => {
+      invoiceOrders.push(invoiceOrder);
+      return Buffer.from("pdf");
+    },
+  });
+
+  await processor.processPaymentCompletionOutboxOnce();
+
+  assert.equal(invoiceOrders.length, 1);
+  assert.equal(invoiceOrders[0].discountAmount, 25);
+  assert.equal(invoiceOrders[0].couponCode, "CUSTOMER");
+  assert.equal(invoiceOrders[0].shippingAddress.orderSummary.discountAmount, 25);
+  assert.equal(invoiceOrders[0].shippingAddress.orderSummary.couponCode, "CUSTOMER");
 });
 
 test("invalid invoice buffers fail customer jobs so they remain retryable", async () => {

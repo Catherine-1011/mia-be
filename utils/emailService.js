@@ -1121,7 +1121,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-                        <td style="padding:6px 0;color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:monospace;">${orderDetails.displayId}</td>
+                        <td style="padding:6px 0;color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:Arial, Helvetica, sans-serif;">${orderDetails.displayId}</td>
                       </tr>
                       <tr>
                         <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Date</strong></td>
@@ -1515,7 +1515,7 @@ const sendSLAWarningEmail = async (sellerId, orderId, notificationType, slaStatu
                       <table width="100%" cellpadding="0" cellspacing="0">
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-                          <td style="padding:6px 0;color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:monospace;">${orderId || 'N/A'}</td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:Arial, Helvetica, sans-serif;">${orderId || 'N/A'}</td>
                         </tr>
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Action Required</strong></td>
@@ -2833,7 +2833,7 @@ const sendAdminNewOrderEmail = async (adminEmail, adminName, orderDetails) => {
                     <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
                       <tr>
                         <td style="padding:6px 0;mso-padding-alt:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-                        <td style="padding:6px 0;mso-padding-alt:6px 0;color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:monospace;">${orderDetails.displayId}</td>
+                        <td style="padding:6px 0;mso-padding-alt:6px 0;color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:Arial, Helvetica, sans-serif;">${orderDetails.displayId}</td>
                       </tr>
                       <tr>
                         <td style="padding:6px 0;mso-padding-alt:6px 0;color:#7D2E1E;font-size:14px;"><strong>Date</strong></td>
@@ -3007,7 +3007,7 @@ const sendSellerOrderStatusEmail = async (email, sellerName, orderDetails) => {
               <tr><td style="padding:0 40px 20px;">
                 <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-radius:8px;border-top:3px solid #5A1E12;"><tr><td style="padding:20px;">
                   <table width="100%" cellpadding="0" cellspacing="0">
-                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:monospace;">${orderDetails.displayId}</td></tr>
+                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:Arial, Helvetica, sans-serif;">${orderDetails.displayId}</td></tr>
                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Customer</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.customerName || 'N/A'}</td></tr>
                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>New Status</strong></td><td style="padding:6px 0;text-align:right;"><table cellpadding="0" cellspacing="0" align="right"><tr><td bgcolor="${statusColor}" style="background-color:${statusColor};color:#ffffff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;-webkit-text-fill-color:#ffffff;">${statusLabel.toUpperCase()}</td></tr></table></td></tr>
                     ${orderDetails.totalAmount ? `<tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order Total</strong></td><td style="padding:6px 0;color:#5A1E12;font-size:14px;font-weight:700;text-align:right;">$${parseFloat(orderDetails.totalAmount).toFixed(2)}</td></tr>` : ''}
@@ -3092,7 +3092,7 @@ const sendAdminOrderStatusEmail = async (adminEmail, adminName, orderDetails) =>
               <tr><td style="padding:0 40px 20px;">
                 <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#F9EDE9" style="background-color:#F9EDE9;border-radius:8px;border-top:3px solid #5A1E12;"><tr><td style="padding:20px;">
                   <table width="100%" cellpadding="0" cellspacing="0">
-                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:monospace;">${orderDetails.displayId}</td></tr>
+                    <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:Arial, Helvetica, sans-serif;">${orderDetails.displayId}</td></tr>
                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Updated By</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${updatedBy}${orderDetails.sellerName ? ` &bull; ${orderDetails.sellerName}` : ''}</td></tr>
                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Customer</strong></td><td style="padding:6px 0;color:#3D1009;font-size:14px;text-align:right;">${orderDetails.customerName || 'N/A'}</td></tr>
                     <tr><td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>New Status</strong></td><td style="padding:6px 0;text-align:right;"><table cellpadding="0" cellspacing="0" align="right"><tr><td bgcolor="${statusColor}" style="background-color:${statusColor};color:#ffffff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;-webkit-text-fill-color:#ffffff;">${st.toUpperCase()}</td></tr></table></td></tr>
@@ -4064,7 +4064,7 @@ const sendRefundRequestConfirmationEmail = async (email, customerName, refundDet
                         </tr>
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-                          <td style="padding:6px 0;color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:monospace;">${refundDetails.displayId}</td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:Arial, Helvetica, sans-serif;">${refundDetails.displayId}</td>
                         </tr>
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Request Type</strong></td>
@@ -4307,7 +4307,7 @@ const sendRefundStatusUpdateEmail = async (email, customerName, refundDetails, i
                       <table width="100%" cellpadding="0" cellspacing="0">
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-                          <td style="padding:6px 0;color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:monospace;">${refundDetails.displayId}</td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:Arial, Helvetica, sans-serif;">${refundDetails.displayId}</td>
                         </tr>
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Refund Type</strong></td>
@@ -4505,7 +4505,7 @@ const sendSellerRefundStatusEmail = async (email, sellerName, refundDetails) => 
                       <table width="100%" cellpadding="0" cellspacing="0">
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Order ID</strong></td>
-                          <td style="padding:6px 0;color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:monospace;">${refundDetails.displayId}</td>
+                          <td style="padding:6px 0;color:#3D1009;font-size:14px;font-weight:700;text-align:right;font-family:Arial, Helvetica, sans-serif;">${refundDetails.displayId}</td>
                         </tr>
                         <tr>
                           <td style="padding:6px 0;color:#7D2E1E;font-size:14px;"><strong>Customer</strong></td>

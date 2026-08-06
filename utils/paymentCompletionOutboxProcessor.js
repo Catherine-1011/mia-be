@@ -104,7 +104,16 @@ function isValidEmailAddress(email) {
 function completeOrderItems(order) {
   const items = [
     ...(order.items || []),
-    ...(order.subOrders || []).flatMap((subOrder) => subOrder.items || []),
+    ...(order.subOrders || []).flatMap((subOrder) =>
+      (subOrder.items || []).map((item) => ({
+        ...item,
+        product: {
+          ...(item.product || {}),
+          sellerId: item.product?.sellerId || subOrder.sellerId || subOrder.seller?.id,
+          seller: item.product?.seller || subOrder.seller,
+        },
+      }))
+    ),
   ];
   const seen = new Set();
   return items.filter((item) => {
@@ -174,6 +183,7 @@ function sellerEmailDetails(order, orderDetails, sellerId, sellerItems) {
   return {
     ...orderDetails,
     isSellerCopy: true,
+    displayId: sellerSubOrder?.subDisplayId || sellerSubOrder?.id || orderDetails.displayId,
     subOrderId: sellerSubOrder?.id,
     products: sellerItems.map((item) => ({
       title: productTitle(item),
@@ -182,26 +192,104 @@ function sellerEmailDetails(order, orderDetails, sellerId, sellerItems) {
     })),
     totalAmount: itemTotal + sellerShipping,
     orderSummary: {
-      ...(order.shippingAddress?.orderSummary || {}),
       subtotal: itemTotal,
       subtotalExGST: sellerSubtotalExGST,
       gstAmount: sellerGstAmount,
       shippingCost: sellerShipping,
+      totalShippingCost: sellerShipping,
+      gstPercentage: gstPct,
+      shippingMethod: order.shippingAddress?.orderSummary?.shippingMethod || null,
+      discountAmount: 0,
+      couponCode: null,
     },
+  };
+}
+
+function moneyOrZero(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function sellerDiscountDetails(sellerSubOrder) {
+  const discountAmount = moneyOrZero(
+    sellerSubOrder?.discountAmount
+      ?? sellerSubOrder?.discount
+      ?? sellerSubOrder?.adjustmentAmount
+  );
+  return {
+    discountAmount,
+    couponCode: discountAmount > 0
+      ? (sellerSubOrder?.couponCode || sellerSubOrder?.coupon || sellerSubOrder?.promoCode || null)
+      : null,
   };
 }
 
 function sellerInvoiceShape(order, sellerId, sellerItems, sellerDetails) {
   const sellerSubOrder = order.subOrders?.find((sub) => sub.sellerId === sellerId || sub.seller?.id === sellerId);
+  const { discountAmount, couponCode } = sellerDiscountDetails(sellerSubOrder);
+  const sellerOrderSummary = {
+    ...(sellerDetails.orderSummary || {}),
+    discountAmount,
+    couponCode,
+    coupon: null,
+    promoCode: null,
+    promotion: null,
+    adjustmentAmount: 0,
+    adjustments: [],
+    credits: [],
+    storeCredit: 0,
+    shippingDiscount: 0,
+    taxDiscount: 0,
+  };
   const isolatedSubOrder = sellerSubOrder
-    ? { ...sellerSubOrder, items: sellerItems }
+    ? {
+        id: sellerSubOrder.id,
+        sellerId: sellerSubOrder.sellerId,
+        subDisplayId: sellerSubOrder.subDisplayId,
+        subtotal: sellerSubOrder.subtotal,
+        status: sellerSubOrder.status,
+        createdAt: sellerSubOrder.createdAt,
+        seller: sellerSubOrder.seller || sellerItems[0]?.product?.seller,
+        sellerProfile: sellerSubOrder.sellerProfile,
+        items: sellerItems,
+      }
     : null;
+  const seller = sellerItems[0]?.product?.seller || sellerSubOrder?.seller;
+  const sellerProfile = sellerSubOrder?.sellerProfile || seller?.sellerProfile;
   return {
-    ...order,
     id: sellerSubOrder?.id || order.id,
-    displayId: sellerSubOrder?.subDisplayId || sellerSubOrder?.id || order.displayId || order.id,
+    displayId: sellerDetails.displayId || sellerSubOrder?.subDisplayId || sellerSubOrder?.id || order.displayId || order.id,
     subDisplayId: sellerSubOrder?.subDisplayId,
+    createdAt: sellerSubOrder?.createdAt || order.createdAt,
+    status: sellerSubOrder?.status || order.status,
+    overallStatus: sellerSubOrder?.status || order.overallStatus || order.status,
+    paymentMethod: order.paymentMethod || "STRIPE",
+    customerName: order.customerName || sellerDetails.customerName,
+    customerEmail: order.customerEmail || sellerDetails.customerEmail,
+    customerPhone: order.customerPhone || sellerDetails.customerPhone,
+    shippingPhone: order.shippingPhone || order.customerPhone || sellerDetails.customerPhone,
+    shippingAddressLine: order.shippingAddressLine,
+    shippingCity: order.shippingCity,
+    shippingState: order.shippingState,
+    shippingZipCode: order.shippingZipCode,
+    shippingCountry: order.shippingCountry,
+    shippingAddress: { orderSummary: sellerOrderSummary },
+    sellerName: seller?.name || sellerDetails.sellerName || null,
+    sellerAbn: sellerProfile?.abn || null,
+    sellerAddress: sellerProfile?.businessAddress || null,
     totalAmount: sellerDetails.totalAmount,
+    discountAmount,
+    discount: 0,
+    couponCode,
+    coupon: null,
+    promoCode: null,
+    promotion: null,
+    adjustmentAmount: 0,
+    adjustments: [],
+    credits: [],
+    storeCredit: 0,
+    shippingDiscount: 0,
+    taxDiscount: 0,
     items: sellerItems.map((item) => ({
       ...item,
       price: itemPrice(item),
@@ -419,7 +507,7 @@ async function processJob(job) {
       assertValidInvoiceBuffer(invoicePDFBuffer, `seller payment notification ${sellerId}`);
       const result = await sendSellerPaymentReceivedEmail(seller.email, seller.name || "Seller", {
         orderId: order.id,
-        orderDisplayId: order.displayId || order.id,
+        orderDisplayId: sellerDetails.displayId || order.displayId || order.id,
         amount,
         currency: "AUD",
         invoicePDFBuffer,

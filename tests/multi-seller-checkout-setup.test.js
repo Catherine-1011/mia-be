@@ -59,7 +59,16 @@ function cartItem(product, overrides = {}) {
   };
 }
 
-function makePrisma({ cartItems = [], products = null, sellerProfiles = {}, platformAccounts = {}, operationStatus = null, invalidShipping = false } = {}) {
+function makePrisma({
+  cartItems = [],
+  products = null,
+  sellerProfiles = {},
+  platformAccounts = {},
+  operationStatus = null,
+  operationStatuses = null,
+  existingSession = null,
+  invalidShipping = false,
+} = {}) {
   const productMap = new Map((products || cartItems.map((item) => item.product)).map((product) => [product.id, product]));
   const prisma = {
     _sellerProfileLookups: [],
@@ -107,7 +116,7 @@ function makePrisma({ cartItems = [], products = null, sellerProfiles = {}, plat
           id: where.id,
           displayId: "ALPA-001",
           shippingAddress: { orderSummary: { multiSellerPlan: [{ sellerId: "seller_a" }] } },
-          multiSellerCheckoutSession: { platformSetupIntentId: "seti_existing" },
+          multiSellerCheckoutSession: existingSession || { platformSetupIntentId: "seti_existing", status: "COLLECTING_PAYMENT_METHOD", createdAt: new Date() },
         };
       },
       create: async ({ data }) => {
@@ -139,7 +148,8 @@ function makePrisma({ cartItems = [], products = null, sellerProfiles = {}, plat
     },
     apiIdempotencyOperation: {
       create: async ({ data }) => {
-        if (operationStatus === "STARTED" || operationStatus === "COMPLETED") {
+        const configuredStatus = operationStatuses?.[data.attemptNumber] || operationStatus;
+        if (configuredStatus === "STARTED" || configuredStatus === "COMPLETED") {
           prisma._lastOperationCreate = data;
           const error = new Error("Unique constraint failed");
           error.code = "P2002";
@@ -150,13 +160,15 @@ function makePrisma({ cartItems = [], products = null, sellerProfiles = {}, plat
         return row;
       },
       findUnique: async ({ where }) => {
-        if (operationStatus) {
+        const attemptNumber = Number(String(where.operationKey).split(":").at(-1));
+        const configuredStatus = operationStatuses?.[attemptNumber] || operationStatus;
+        if (configuredStatus) {
           return {
             operationKey: where.operationKey,
             operationType: "MULTI_SELLER_SETUP_CREATE",
             requestHash: prisma._lastOperationCreate?.requestHash,
-            status: operationStatus,
-            orderId: operationStatus === "COMPLETED" ? "order_existing" : null,
+            status: configuredStatus,
+            orderId: configuredStatus === "COMPLETED" ? "order_existing" : null,
           };
         }
         return null;
@@ -177,7 +189,7 @@ function makePrisma({ cartItems = [], products = null, sellerProfiles = {}, plat
   return prisma;
 }
 
-function makeStripe() {
+function makeStripe({ setupIntentStatus = "requires_payment_method" } = {}) {
   return {
     accounts: {
       retrieveCalls: [],
@@ -198,11 +210,11 @@ function makeStripe() {
       retrieveCalls: [],
       create: async function(body, options) {
         this.createCalls.push({ body, options });
-        return { id: `seti_${this.createCalls.length}`, client_secret: `seti_${this.createCalls.length}_secret` };
+        return { id: `seti_${this.createCalls.length}`, client_secret: `seti_${this.createCalls.length}_secret`, status: "requires_payment_method" };
       },
       retrieve: async function(id) {
         this.retrieveCalls.push(id);
-        return { id, client_secret: `${id}_secret` };
+        return { id, client_secret: `${id}_secret`, status: setupIntentStatus };
       },
     },
     paymentIntents: {
@@ -424,8 +436,88 @@ test("idempotency returns 202 for started operations and completed setup for com
   assert.equal(completedReply.payload.orderId, "order_existing");
   assert.equal(completedReply.payload.displayId, "ALPA-001");
   assert.equal(completedReply.payload.clientSecret, "seti_existing_secret");
+  assert.equal(completedReply.payload.idempotent, true);
   assert.equal(completedPrisma._orderCreateCalls.length, 0);
   assert.equal(completedStripe.setupIntents.createCalls.length, 0);
+});
+
+test("completed registered setup reuses only collectable current SetupIntents", async () => {
+  const a = sellerProduct("prod_a", "seller_a", "acct_seller_a");
+  const b = sellerProduct("prod_b", "seller_b", "acct_seller_b");
+  const prisma = makePrisma({
+    cartItems: [cartItem(a), cartItem(b)],
+    sellerProfiles: readyProfiles(),
+    operationStatus: "COMPLETED",
+    existingSession: {
+      platformSetupIntentId: "seti_existing",
+      status: "COLLECTING_PAYMENT_METHOD",
+      createdAt: new Date(),
+    },
+  });
+  const stripe = makeStripe({ setupIntentStatus: "requires_confirmation" });
+  const controller = loadController({ prisma, stripe });
+
+  const reply = await callRegistered(controller);
+
+  assert.equal(reply.statusCode, 200);
+  assert.equal(reply.payload.clientSecret, "seti_existing_secret");
+  assert.equal(reply.payload.idempotent, true);
+  assert.equal(prisma._orderCreateCalls.length, 0);
+  assert.equal(stripe.setupIntents.createCalls.length, 0);
+});
+
+test("completed registered setup creates a fresh attempt instead of returning canceled or succeeded SetupIntents", async () => {
+  for (const terminalStatus of ["canceled", "succeeded"]) {
+    const a = sellerProduct(`prod_a_${terminalStatus}`, "seller_a", "acct_seller_a");
+    const b = sellerProduct(`prod_b_${terminalStatus}`, "seller_b", "acct_seller_b");
+    const prisma = makePrisma({
+      cartItems: [cartItem(a), cartItem(b)],
+      sellerProfiles: readyProfiles(),
+      operationStatuses: { 1: "COMPLETED" },
+      existingSession: {
+        platformSetupIntentId: "seti_existing",
+        status: "COLLECTING_PAYMENT_METHOD",
+        createdAt: new Date(),
+      },
+    });
+    const stripe = makeStripe({ setupIntentStatus: terminalStatus });
+    const controller = loadController({ prisma, stripe });
+
+    const reply = await callRegistered(controller);
+
+    assert.equal(reply.statusCode, 200);
+    assert.equal(reply.payload.clientSecret, "seti_1_secret");
+    assert.equal(reply.payload.idempotent, undefined);
+    assert.equal(prisma._orderCreateCalls.length, 1);
+    assert.equal(stripe.setupIntents.createCalls.length, 1);
+    assert.deepEqual(stripe.setupIntents.retrieveCalls, ["seti_existing"]);
+  }
+});
+
+test("completed registered setup creates a fresh attempt when checkout session is stale or progressed", async () => {
+  const staleDate = new Date(Date.now() - 31 * 60 * 1000);
+  for (const session of [
+    { platformSetupIntentId: "seti_existing", status: "COLLECTING_PAYMENT_METHOD", createdAt: staleDate },
+    { platformSetupIntentId: "seti_existing", status: "COMPLETED", createdAt: new Date() },
+  ]) {
+    const a = sellerProduct(`prod_a_${session.status}_${session.createdAt.getTime()}`, "seller_a", "acct_seller_a");
+    const b = sellerProduct(`prod_b_${session.status}_${session.createdAt.getTime()}`, "seller_b", "acct_seller_b");
+    const prisma = makePrisma({
+      cartItems: [cartItem(a), cartItem(b)],
+      sellerProfiles: readyProfiles(),
+      operationStatuses: { 1: "COMPLETED" },
+      existingSession: session,
+    });
+    const stripe = makeStripe({ setupIntentStatus: "requires_payment_method" });
+    const controller = loadController({ prisma, stripe });
+
+    const reply = await callRegistered(controller);
+
+    assert.equal(reply.statusCode, 200);
+    assert.equal(reply.payload.clientSecret, "seti_1_secret");
+    assert.equal(prisma._orderCreateCalls.length, 1);
+    assert.equal(stripe.setupIntents.createCalls.length, 1);
+  }
 });
 
 test("guest setup succeeds for seller plus seller and seller plus platform with canonical seller IDs", async () => {

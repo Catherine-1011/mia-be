@@ -48,6 +48,7 @@ const USE_DIRECT_CHARGES_FOR_SINGLE_SELLER = true;
 const STRIPE_DESCRIPTION_MAX_LENGTH = 255;
 const STRIPE_WEBHOOK_PROCESSING_TIMEOUT_MS =
   Number(process.env.STRIPE_WEBHOOK_PROCESSING_TIMEOUT_MS || 10 * 60 * 1000);
+const MULTI_SELLER_SETUP_REUSE_WINDOW_MS = 30 * 60 * 1000;
 
 const MIXED_SELLER_CHECKOUT_MESSAGE =
   "Your cart contains products from multiple sellers. Please complete checkout for one seller at a time.";
@@ -80,6 +81,20 @@ function normalizeGuestItemsForOperation(items) {
 
 function checkoutOperationKey({ scope, subjectId, sellerId, amountInCents, requestHash, attemptNumber = 1 }) {
   return `payment:create:${scope}:${subjectId}:${sellerId || "seller"}:${amountInCents}:${requestHash.slice(0, 20)}:${attemptNumber}`;
+}
+
+function canReuseMultiSellerSetupSession({ session, setupIntent, now = Date.now() }) {
+  if (!session || !setupIntent?.client_secret) return false;
+  if (session.status !== "COLLECTING_PAYMENT_METHOD") return false;
+
+  if (session.createdAt) {
+    const createdAtMs = new Date(session.createdAt).getTime();
+    if (!Number.isFinite(createdAtMs) || now - createdAtMs > MULTI_SELLER_SETUP_REUSE_WINDOW_MS) {
+      return false;
+    }
+  }
+
+  return ["requires_payment_method", "requires_confirmation"].includes(setupIntent.status);
 }
 
 async function claimApiOperation({ operationKey, operationType, requestHash, attemptNumber = 1 }) {
@@ -1782,44 +1797,72 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
         quantity: item.quantity,
       })),
     });
-    checkoutApiOperationKey = checkoutOperationKey({
-      scope: "user",
-      subjectId: `${userId}:${cart.id}`,
-      sellerId: "multi-seller",
-      amountInCents,
-      requestHash: checkoutRequestHash,
-    });
-    const checkoutOperation = await claimApiOperation({
-      operationKey: checkoutApiOperationKey,
-      operationType: "MULTI_SELLER_SETUP_CREATE",
-      requestHash: checkoutRequestHash,
-      attemptNumber: 1,
-    });
-    if (checkoutOperation.status === "COMPLETED" && checkoutOperation.orderId) {
-      const existingOrder = await prisma.order.findUnique({
-        where: { id: checkoutOperation.orderId },
-        include: { multiSellerCheckoutSession: true },
+    let checkoutOperation = null;
+    for (let attemptNumber = 1; attemptNumber <= 5; attemptNumber++) {
+      checkoutApiOperationKey = checkoutOperationKey({
+        scope: "user",
+        subjectId: `${userId}:${cart.id}`,
+        sellerId: "multi-seller",
+        amountInCents,
+        requestHash: checkoutRequestHash,
+        attemptNumber,
       });
-      if (existingOrder?.multiSellerCheckoutSession) {
-        const existingSetupIntent = await stripe.setupIntents.retrieve(
-          existingOrder.multiSellerCheckoutSession.platformSetupIntentId,
-        );
-        return reply.status(200).send({
-          success: true,
-          orderId: existingOrder.id,
-          displayId: existingOrder.displayId,
-          clientSecret: existingSetupIntent.client_secret,
-          amount: amountInCents,
-          displayAmount: totalAmount,
-          currency: "aud",
-          sellerBreakdown: existingOrder.shippingAddress?.orderSummary?.multiSellerPlan || [],
-          idempotent: true,
+      checkoutOperation = await claimApiOperation({
+        operationKey: checkoutApiOperationKey,
+        operationType: "MULTI_SELLER_SETUP_CREATE",
+        requestHash: checkoutRequestHash,
+        attemptNumber,
+      });
+      if (checkoutOperation.status === "COMPLETED" && checkoutOperation.orderId) {
+        const existingOrder = await prisma.order.findUnique({
+          where: { id: checkoutOperation.orderId },
+          include: { multiSellerCheckoutSession: true },
         });
+        if (existingOrder?.multiSellerCheckoutSession) {
+          const existingSetupIntent = await stripe.setupIntents.retrieve(
+            existingOrder.multiSellerCheckoutSession.platformSetupIntentId,
+          );
+          if (canReuseMultiSellerSetupSession({
+            session: existingOrder.multiSellerCheckoutSession,
+            setupIntent: existingSetupIntent,
+          })) {
+            return reply.status(200).send({
+              success: true,
+              orderId: existingOrder.id,
+              displayId: existingOrder.displayId,
+              clientSecret: existingSetupIntent.client_secret,
+              amount: amountInCents,
+              displayAmount: totalAmount,
+              currency: "aud",
+              sellerBreakdown: existingOrder.shippingAddress?.orderSummary?.multiSellerPlan || [],
+              idempotent: true,
+            });
+          }
+          logMultiSellerSetupOutcome({
+            requestId,
+            userId,
+            cartId: cart.id,
+            orderId: existingOrder.id,
+            setupIntentStatus: existingSetupIntent.status,
+            sessionStatus: existingOrder.multiSellerCheckoutSession.status,
+            result: "SKIPPED_UNSAFE_IDEMPOTENT_SETUP",
+          });
+          continue;
+        }
       }
+      if (!checkoutOperation.claimedNew && checkoutOperation.status === "STARTED") {
+        logMultiSellerSetupOutcome({ requestId, userId, cartId: cart.id, result: "202_PAYMENT_CREATION_IN_PROGRESS" });
+        return reply.status(202).send({ success: true, status: "PAYMENT_CREATION_IN_PROGRESS", idempotent: true });
+      }
+      break;
     }
-    if (!checkoutOperation.claimedNew && checkoutOperation.status === "STARTED") {
-      logMultiSellerSetupOutcome({ requestId, userId, cartId: cart.id, result: "202_PAYMENT_CREATION_IN_PROGRESS" });
-      return reply.status(202).send({ success: true, status: "PAYMENT_CREATION_IN_PROGRESS", idempotent: true });
+    if (!checkoutOperation?.claimedNew) {
+      logMultiSellerSetupOutcome({ requestId, userId, cartId: cart.id, result: "409_NO_REUSABLE_SETUP_ATTEMPT" });
+      return reply.status(409).send({
+        success: false,
+        code: "NO_REUSABLE_SETUP_ATTEMPT",
+        message: "Unable to create a fresh checkout setup. Please try again.",
+      });
     }
 
     // Build each seller's Direct Charge plan up-front — reuses the exact same
@@ -4368,43 +4411,61 @@ exports.createGuestMultiSellerCheckoutSetup = async (request, reply) => {
       couponCode: couponCode || null,
       items: normalizeGuestItemsForOperation(items),
     });
-    guestCheckoutApiOperationKey = checkoutOperationKey({
-      scope: "guest",
-      subjectId: normalizedGuestEmail,
-      sellerId: "multi-seller",
-      amountInCents,
-      requestHash: guestCheckoutRequestHash,
-    });
-    const guestCheckoutOperation = await claimApiOperation({
-      operationKey: guestCheckoutApiOperationKey,
-      operationType: "GUEST_MULTI_SELLER_SETUP_CREATE",
-      requestHash: guestCheckoutRequestHash,
-      attemptNumber: 1,
-    });
-    if (guestCheckoutOperation.status === "COMPLETED" && guestCheckoutOperation.orderId) {
-      const existingOrder = await prisma.order.findUnique({
-        where: { id: guestCheckoutOperation.orderId },
-        include: { multiSellerCheckoutSession: true },
+    let guestCheckoutOperation = null;
+    for (let attemptNumber = 1; attemptNumber <= 5; attemptNumber++) {
+      guestCheckoutApiOperationKey = checkoutOperationKey({
+        scope: "guest",
+        subjectId: normalizedGuestEmail,
+        sellerId: "multi-seller",
+        amountInCents,
+        requestHash: guestCheckoutRequestHash,
+        attemptNumber,
       });
-      if (existingOrder?.multiSellerCheckoutSession) {
-        const existingSetupIntent = await stripe.setupIntents.retrieve(
-          existingOrder.multiSellerCheckoutSession.platformSetupIntentId,
-        );
-        return reply.status(200).send({
-          success: true,
-          orderId: existingOrder.id,
-          displayId: existingOrder.displayId,
-          clientSecret: existingSetupIntent.client_secret,
-          amount: amountInCents,
-          displayAmount: totalAmount,
-          currency: "aud",
-          sellerBreakdown: existingOrder.shippingAddress?.orderSummary?.multiSellerPlan || [],
-          idempotent: true,
+      guestCheckoutOperation = await claimApiOperation({
+        operationKey: guestCheckoutApiOperationKey,
+        operationType: "GUEST_MULTI_SELLER_SETUP_CREATE",
+        requestHash: guestCheckoutRequestHash,
+        attemptNumber,
+      });
+      if (guestCheckoutOperation.status === "COMPLETED" && guestCheckoutOperation.orderId) {
+        const existingOrder = await prisma.order.findUnique({
+          where: { id: guestCheckoutOperation.orderId },
+          include: { multiSellerCheckoutSession: true },
         });
+        if (existingOrder?.multiSellerCheckoutSession) {
+          const existingSetupIntent = await stripe.setupIntents.retrieve(
+            existingOrder.multiSellerCheckoutSession.platformSetupIntentId,
+          );
+          if (canReuseMultiSellerSetupSession({
+            session: existingOrder.multiSellerCheckoutSession,
+            setupIntent: existingSetupIntent,
+          })) {
+            return reply.status(200).send({
+              success: true,
+              orderId: existingOrder.id,
+              displayId: existingOrder.displayId,
+              clientSecret: existingSetupIntent.client_secret,
+              amount: amountInCents,
+              displayAmount: totalAmount,
+              currency: "aud",
+              sellerBreakdown: existingOrder.shippingAddress?.orderSummary?.multiSellerPlan || [],
+              idempotent: true,
+            });
+          }
+          continue;
+        }
       }
+      if (!guestCheckoutOperation.claimedNew && guestCheckoutOperation.status === "STARTED") {
+        return reply.status(202).send({ success: true, status: "PAYMENT_CREATION_IN_PROGRESS", idempotent: true });
+      }
+      break;
     }
-    if (!guestCheckoutOperation.claimedNew && guestCheckoutOperation.status === "STARTED") {
-      return reply.status(202).send({ success: true, status: "PAYMENT_CREATION_IN_PROGRESS", idempotent: true });
+    if (!guestCheckoutOperation?.claimedNew) {
+      return reply.status(409).send({
+        success: false,
+        code: "NO_REUSABLE_SETUP_ATTEMPT",
+        message: "Unable to create a fresh checkout setup. Please try again.",
+      });
     }
 
     const originalSubtotal = cartItems.reduce(

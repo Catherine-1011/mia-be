@@ -1,6 +1,7 @@
 const prisma = require("../config/prisma");
 const jwt = require("jsonwebtoken");
 const { isBlacklisted } = require("../utils/tokenDenylist");
+const { resolveAuthUserId } = require("../utils/authIdentity");
 
 const SAML_PASSWORD = 'SAML_MANAGED_ACCOUNT_NO_PASSWORD';
 
@@ -41,8 +42,7 @@ exports.authenticateSeller = async (request, reply) => {
         });
       }
 
-      // Support both userId and sellerId for backward compatibility
-      const userId = decoded.userId || decoded.sellerId;
+      const userId = resolveAuthUserId(decoded);
       
       if (!userId) {
         return reply.status(401).send({ 
@@ -130,8 +130,7 @@ exports.authenticateUser = async (request, reply) => {
         });
       }
 
-      // Support both userId and uid for backward compatibility
-      const userId = decoded.userId || decoded.uid;
+      const userId = resolveAuthUserId(decoded);
 
       if (!userId) {
         return reply.status(401).send({ 

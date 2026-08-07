@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const { isBlacklisted } = require("../utils/tokenDenylist");
+const { resolveAuthUserId } = require("../utils/authIdentity");
 
 module.exports = async (request, reply) => {
   try {
@@ -28,7 +29,15 @@ module.exports = async (request, reply) => {
         });
       }
 
-      request.user = decoded;
+      const userId = resolveAuthUserId(decoded);
+      if (!userId) {
+        return reply.status(401).send({
+          success: false,
+          message: "Invalid token - user ID not found"
+        });
+      }
+
+      request.user = { ...decoded, userId };
     } catch (jwtError) {
       console.log('JWT verification error:', jwtError);
       return reply.status(401).send({

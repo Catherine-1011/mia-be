@@ -98,34 +98,38 @@ async function reverseSeparateChargeCancellationTransfers(paymentRecord, display
 }
 
 async function triggerStripeRefund(paymentIntentId, reason, displayId) {
-  if (!paymentIntentId) return;
+  if (!paymentIntentId) return { status: 'skipped', reason: 'missing_payment_intent' };
   try {
     const paymentRecord = await prisma.orderPaymentRecord.findUnique({
       where: { stripePaymentIntentId: paymentIntentId },
     });
     if (!paymentRecord) {
       console.error(`Stripe refund/cancel blocked for order #${displayId}: missing payment record`);
-      return;
+      return { status: 'failed', error: 'missing payment record' };
+    }
+
+    if (paymentRecord.refundStatus === 'FULL') {
+      return { status: 'skipped', reason: 'already_refunded', paymentRecordId: paymentRecord.id };
     }
 
     if (!paymentRecord.stripePaymentIntentId) {
       console.error(`Stripe refund/cancel blocked for order #${displayId}: missing stored PaymentIntent`);
-      return;
+      return { status: 'failed', error: 'missing stored PaymentIntent', paymentRecordId: paymentRecord.id };
     }
 
     if (paymentRecord.paymentFlow === 'DIRECT_CHARGE' && !paymentRecord.stripeAccountId) {
       console.error(`Stripe refund/cancel blocked for order #${displayId}: missing stored Stripe account`);
-      return;
+      return { status: 'failed', error: 'missing stored Stripe account', paymentRecordId: paymentRecord.id };
     }
 
     if (paymentRecord.paymentFlow === 'LEGACY_OR_UNKNOWN') {
       console.error(`Stripe refund/cancel blocked for order #${displayId}: legacy or unknown payment flow requires manual review`);
-      return;
+      return { status: 'failed', error: 'legacy or unknown payment flow requires manual review', paymentRecordId: paymentRecord.id };
     }
 
     if (!['DIRECT_CHARGE', 'PLATFORM_ACCOUNT', 'DESTINATION_CHARGE', 'SEPARATE_CHARGE_AND_TRANSFER'].includes(paymentRecord.paymentFlow)) {
       console.error(`Stripe refund/cancel blocked for order #${displayId}: unsupported payment flow ${paymentRecord.paymentFlow || 'missing'}`);
-      return;
+      return { status: 'failed', error: `unsupported payment flow ${paymentRecord.paymentFlow || 'missing'}`, paymentRecordId: paymentRecord.id };
     }
 
     const accountOptions =
@@ -138,7 +142,7 @@ async function triggerStripeRefund(paymentIntentId, reason, displayId) {
       let separateChargeTransfers = null;
       if (paymentRecord.paymentFlow === 'SEPARATE_CHARGE_AND_TRANSFER') {
         separateChargeTransfers = await getSeparateChargeCancellationTransfers(paymentRecord, displayId);
-        if (!separateChargeTransfers.length) return;
+        if (!separateChargeTransfers.length) return { status: 'failed', error: 'missing historical transfer identifiers', paymentRecordId: paymentRecord.id };
       }
 
       await stripe.refunds.create(
@@ -157,16 +161,63 @@ async function triggerStripeRefund(paymentIntentId, reason, displayId) {
       if (separateChargeTransfers) {
         await reverseSeparateChargeCancellationTransfers(paymentRecord, displayId, separateChargeTransfers);
       }
+      await prisma.orderPaymentRecord.update({
+        where: { id: paymentRecord.id },
+        data: { refundStatus: 'FULL', paymentStatus: 'REFUNDED' },
+      });
+      return { status: 'refunded', paymentRecordId: paymentRecord.id };
     } else if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(pi.status)) {
       await stripe.paymentIntents.cancel(paymentRecord.stripePaymentIntentId, {}, {
         ...(accountOptions || {}),
         idempotencyKey: `payment:cancel:${paymentRecord.id}`,
       });
+      return { status: 'cancelled_payment_intent', paymentRecordId: paymentRecord.id };
     }
+    return { status: 'skipped', reason: `payment_intent_${pi.status}`, paymentRecordId: paymentRecord.id };
   } catch (err) {
     console.error(`Stripe refund/cancel error for order #${displayId}:`, err.message);
+    return { status: 'failed', error: err.message };
   }
 }// ─── Low Stock Alert Helper ───────────────────────────────────────────────────
+async function refundOrderPaymentsForCancellation({ orderId, displayId, reason, legacyPaymentIntentId }) {
+  const paymentRecords = await prisma.orderPaymentRecord.findMany({
+    where: { orderId },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const paymentIntentIds = paymentRecords.length
+    ? paymentRecords.map(record => record.stripePaymentIntentId).filter(Boolean)
+    : [legacyPaymentIntentId].filter(Boolean);
+
+  const results = [];
+  for (const paymentIntentId of paymentIntentIds) {
+    const paymentRecord = paymentRecords.find(record => record.stripePaymentIntentId === paymentIntentId);
+    const result = await triggerStripeRefund(paymentIntentId, reason, displayId);
+    if (result.status === 'failed' && paymentRecord?.id) {
+      await prisma.orderPaymentRecord.update({
+        where: { id: paymentRecord.id },
+        data: { refundStatus: 'FAILED' },
+      }).catch(updateErr => {
+        console.error(`Refund failure status update error for order #${displayId} payment record ${paymentRecord.id}:`, updateErr.message);
+      });
+    }
+    results.push({
+      ...result,
+      paymentRecordId: paymentRecord?.id || null,
+      paymentIntentId,
+    });
+  }
+
+  const failed = results.filter(result => result.status === 'failed').length;
+
+  return {
+    attempted: paymentIntentIds.length,
+    succeeded: results.length - failed,
+    failed,
+    results,
+  };
+}
+
 // Checks each ordered product's stock after decrement.
 // If stock <= 2: deactivates the product and fires notification + email (non-blocking).
 const LOW_STOCK_THRESHOLD = 2;
@@ -1593,7 +1644,12 @@ exports.cancelOrder = async (request, reply) => {
     });
 
     // Trigger Stripe refund / cancellation (non-blocking — DB is already updated)
-    triggerStripeRefund(order.stripePaymentIntentId, finalReason, order.displayId);
+    const refundOutcome = await refundOrderPaymentsForCancellation({
+      orderId,
+      displayId: order.displayId,
+      reason: finalReason,
+      legacyPaymentIntentId: order.stripePaymentIntentId,
+    });
 
     // Send email notification about cancellation
     const user = await prisma.user.findUnique({
@@ -1746,7 +1802,19 @@ exports.cancelOrder = async (request, reply) => {
       });
     }
 
-    return reply.status(200).send({ success: true, message: "Order cancelled successfully. Email notification sent." });
+    return reply.status(200).send({
+      success: true,
+      message: refundOutcome.failed
+        ? "Order cancelled successfully. Some refunds require retry or manual review."
+        : "Order cancelled successfully. Email notification sent.",
+      refunds: {
+        completed: refundOutcome.failed === 0,
+        attempted: refundOutcome.attempted,
+        succeeded: refundOutcome.succeeded,
+        failed: refundOutcome.failed,
+        results: refundOutcome.results,
+      },
+    });
 
   } catch (error) {
     console.error("Cancel order error:", error);
@@ -1855,7 +1923,12 @@ exports.cancelGuestOrder = async (request, reply) => {
     });
 
     // Trigger Stripe refund / cancellation (non-blocking — DB is already updated)
-    triggerStripeRefund(order.stripePaymentIntentId, finalReason, order.displayId);
+    const refundOutcome = await refundOrderPaymentsForCancellation({
+      orderId: orderId_internal,
+      displayId: order.displayId,
+      reason: finalReason,
+      legacyPaymentIntentId: order.stripePaymentIntentId,
+    });
 
     // ── In-app notifications (non-blocking) ─────────────────────────────────
     // Notify all sellers whose products are in this cancelled order
@@ -2003,7 +2076,16 @@ exports.cancelGuestOrder = async (request, reply) => {
 
     return reply.status(200).send({ 
       success: true, 
-      message: "Order cancelled successfully. Confirmation email sent to your email address." 
+      message: refundOutcome.failed
+        ? "Order cancelled successfully. Some refunds require retry or manual review."
+        : "Order cancelled successfully. Confirmation email sent to your email address.",
+      refunds: {
+        completed: refundOutcome.failed === 0,
+        attempted: refundOutcome.attempted,
+        succeeded: refundOutcome.succeeded,
+        failed: refundOutcome.failed,
+        results: refundOutcome.results,
+      },
     });
 
   } catch (error) {
@@ -4857,3 +4939,5 @@ exports.downloadPublicInvoice = async (request, reply) => {
 
 module.exports.generateInvoiceBuffer = generateInvoiceBuffer;
 module.exports.calcSellerCouponDiscount = _calcSellerCouponDiscount;
+module.exports._triggerStripeRefund = triggerStripeRefund;
+module.exports._refundOrderPaymentsForCancellation = refundOrderPaymentsForCancellation;

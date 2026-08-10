@@ -87,6 +87,7 @@ function makePrisma({ chargeType = "direct", claimSequence = [1], isGuest = fals
     _executeRawCalls: [],
     _orderPaymentRecordUpdateManyCalls: [],
     _orderPaymentRecordUpdateCalls: [],
+    _subOrderUpdateManyCalls: [],
     _commissionCreateCalls: [],
     _emailCalls: [],
     _orderNotificationCalls: [],
@@ -171,6 +172,7 @@ function makePrisma({ chargeType = "direct", claimSequence = [1], isGuest = fals
           order: {
             id: order.id,
             displayId: order.displayId,
+            stripePaymentIntentId: order.stripePaymentIntentId,
             user: { email: order.customerEmail },
           },
           seller: { email: "seller@example.com", name: "Seller" },
@@ -182,6 +184,12 @@ function makePrisma({ chargeType = "direct", claimSequence = [1], isGuest = fals
       },
       updateMany: async (args) => {
         prisma._orderPaymentRecordUpdateManyCalls.push(args);
+        return { count: 1 };
+      },
+    },
+    subOrder: {
+      updateMany: async (args) => {
+        prisma._subOrderUpdateManyCalls.push(args);
         return { count: 1 };
       },
     },
@@ -617,6 +625,46 @@ test("Direct Charge payment-success webhook creates no transfer", async () => {
       "SELLER_PAYMENT_NOTIFICATION",
     ],
   );
+});
+
+test("Direct Charge payment-success webhook confirms matching multi-seller sub-order", async () => {
+  const prisma = makePrisma({
+    chargeType: "direct",
+    orderOverrides: {
+      stripePaymentIntentId: null,
+      shippingAddress: {
+        orderSummary: {
+          multiSellerPlan: [
+            {
+              sellerId: "seller_1",
+              subOrderId: "sub_seller_1",
+              paymentFlow: "DIRECT_CHARGE",
+              paymentAccountType: "CONNECTED",
+            },
+            {
+              sellerId: "seller_2",
+              subOrderId: "sub_seller_2",
+              paymentFlow: "DIRECT_CHARGE",
+              paymentAccountType: "CONNECTED",
+            },
+          ],
+        },
+      },
+    },
+  });
+  const { controller } = loadPaymentController({ prisma, chargeType: "direct" });
+
+  const reply = await callWebhook(controller);
+
+  assert.equal(reply.statusCode, 200);
+  assert.equal(prisma._subOrderUpdateManyCalls.length, 1);
+  assert.deepEqual(prisma._subOrderUpdateManyCalls[0].where, {
+    id: "sub_seller_1",
+    parentOrderId: "order_1",
+    sellerId: "seller_1",
+    status: "PENDING",
+  });
+  assert.deepEqual(prisma._subOrderUpdateManyCalls[0].data, { status: "CONFIRMED" });
 });
 
 test("frontend callback before webhook leaves finalization to verified webhook", async () => {

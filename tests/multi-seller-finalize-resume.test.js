@@ -46,8 +46,9 @@ function makePrisma({ records: initialRecords = null, sellerPlans = null, sessio
     _records: records,
     _sessionUpdates: [],
     _orderUpdates: [],
+    _subOrderUpdates: [],
     order: {
-      findFirst: async () => ({
+      _row: {
         id: "order_1",
         userId: "user_1",
         displayId: "ALPA-001",
@@ -59,6 +60,7 @@ function makePrisma({ records: initialRecords = null, sellerPlans = null, sessio
               ...(sellerPlans || [
               {
                 sellerId: "platform_operator",
+                subOrderId: "sub_platform",
                 ownerType: "PLATFORM",
                 platformAccountId: "platform_alpa",
                 paymentAccountType: "PLATFORM",
@@ -71,6 +73,7 @@ function makePrisma({ records: initialRecords = null, sellerPlans = null, sessio
               },
               {
                 sellerId: "seller_a",
+                subOrderId: "sub_seller_a",
                 ownerType: "SELLER",
                 platformAccountId: null,
                 stripeAccountId: "acct_seller_a",
@@ -92,10 +95,22 @@ function makePrisma({ records: initialRecords = null, sellerPlans = null, sessio
           platformCustomerId: "cus_platform",
           platformSetupIntentId: "seti_1",
         },
-      }),
+      },
+      findFirst: async function() {
+        return this._row;
+      },
+      findUnique: async function() {
+        return this._row;
+      },
       update: async (args) => {
         prisma._orderUpdates.push(args);
         return args;
+      },
+    },
+    subOrder: {
+      updateMany: async (args) => {
+        prisma._subOrderUpdates.push(args);
+        return { count: 1 };
       },
     },
     multiSellerCheckoutSession: {
@@ -129,7 +144,7 @@ function makePrisma({ records: initialRecords = null, sellerPlans = null, sessio
   return prisma;
 }
 
-function makeStripe({ createdStatus = "succeeded", retrieveById = {} } = {}) {
+function makeStripe({ createdStatus = "succeeded", createStatuses = null, retrieveById = {} } = {}) {
   return {
     setupIntents: {
       retrieve: async () => ({ id: "seti_1", status: "succeeded", payment_method: "pm_platform", customer: "cus_platform" }),
@@ -146,7 +161,13 @@ function makeStripe({ createdStatus = "succeeded", retrieveById = {} } = {}) {
       retrieveCalls: [],
       create: async function(body, options) {
         this.createCalls.push({ body, options });
-        return { id: `pi_created_${this.createCalls.length}`, status: createdStatus, client_secret: `pi_created_${this.createCalls.length}_secret` };
+        const status = createStatuses?.[this.createCalls.length - 1] || createdStatus;
+        if (status === "throw") {
+          const error = new Error("simulated seller charge failure");
+          error.payment_intent = { id: `pi_created_${this.createCalls.length}` };
+          throw error;
+        }
+        return { id: `pi_created_${this.createCalls.length}`, status, client_secret: `pi_created_${this.createCalls.length}_secret` };
       },
       retrieve: async function(id, options) {
         this.retrieveCalls.push({ id, options });
@@ -205,6 +226,164 @@ test("finalize resumes partial checkout without duplicating a successful platfor
   assert.equal(reply.payload.payments.find((p) => p.paymentFlow === "PLATFORM_ACCOUNT").idempotent, true);
   assert.equal(prisma._records.filter((record) => record.paymentFlow === "PLATFORM_ACCOUNT").length, 1);
   assert.equal(prisma._records.filter((record) => record.paymentFlow === "DIRECT_CHARGE").length, 1);
+});
+
+test("platform payment success confirms only the matching platform sub-order", async () => {
+  const prisma = makePrisma({
+    records: [],
+    sellerPlans: [
+      {
+        sellerId: "platform_operator",
+        subOrderId: "sub_platform",
+        ownerType: "PLATFORM",
+        platformAccountId: "platform_alpa",
+        paymentAccountType: "PLATFORM",
+        paymentFlow: "PLATFORM_ACCOUNT",
+        productAmountCents: 11000,
+        shippingAmountCents: 1000,
+        gstAmountCents: 1000,
+        grossAmountCents: 12000,
+        commission: { commissionBase: 0, applicationFeeAmount: 0, currency: "aud" },
+      },
+    ],
+  });
+  const controller = loadController({ prisma, stripe: makeStripe() });
+  const reply = makeReply();
+
+  await controller.finalizeMultiSellerCheckout({ user: { userId: "user_1" }, body: { orderId: "order_1" } }, reply);
+
+  assert.equal(reply.statusCode, 200);
+  assert.equal(prisma._subOrderUpdates.length, 1);
+  assert.deepEqual(prisma._subOrderUpdates[0].where, {
+    id: "sub_platform",
+    parentOrderId: "order_1",
+    sellerId: "platform_operator",
+    status: "PENDING",
+  });
+  assert.deepEqual(prisma._subOrderUpdates[0].data, { status: "CONFIRMED" });
+});
+
+test("seller Direct Charge success confirms only the matching seller sub-order", async () => {
+  const prisma = makePrisma({
+    records: [],
+    sellerPlans: [
+      {
+        sellerId: "seller_a",
+        subOrderId: "sub_seller_a",
+        ownerType: "SELLER",
+        platformAccountId: null,
+        stripeAccountId: "acct_seller_a",
+        paymentAccountType: "CONNECTED",
+        paymentFlow: "DIRECT_CHARGE",
+        productAmountCents: 11000,
+        shippingAmountCents: 1000,
+        gstAmountCents: 1000,
+        grossAmountCents: 12000,
+        commission: { commissionBase: 10000, applicationFeeAmount: 1000, currency: "aud" },
+      },
+    ],
+  });
+  const controller = loadController({ prisma, stripe: makeStripe() });
+  const reply = makeReply();
+
+  await controller.finalizeMultiSellerCheckout({ user: { userId: "user_1" }, body: { orderId: "order_1" } }, reply);
+
+  assert.equal(reply.statusCode, 200);
+  assert.equal(prisma._subOrderUpdates.length, 1);
+  assert.equal(prisma._subOrderUpdates[0].where.id, "sub_seller_a");
+  assert.equal(prisma._subOrderUpdates[0].where.sellerId, "seller_a");
+  assert.equal(prisma._subOrderUpdates[0].where.status, "PENDING");
+});
+
+test("mixed platform and seller success confirms both sub-orders and paid parent state", async () => {
+  const prisma = makePrisma({ records: [] });
+  const controller = loadController({ prisma, stripe: makeStripe() });
+  const reply = makeReply();
+
+  await controller.finalizeMultiSellerCheckout({ user: { userId: "user_1" }, body: { orderId: "order_1" } }, reply);
+
+  assert.equal(reply.statusCode, 200);
+  assert.deepEqual(prisma._subOrderUpdates.map((call) => call.where.id).sort(), ["sub_platform", "sub_seller_a"]);
+  assert.equal(prisma._orderUpdates.at(-1).data.paymentStatus, "PAID");
+  assert.equal(prisma._sessionUpdates.at(-1).data.status, "COMPLETED");
+  assert.equal(reply.payload.paymentStatus, "PAID");
+});
+
+test("partial seller failure confirms only successful seller sub-order", async () => {
+  const prisma = makePrisma({
+    records: [],
+    sellerPlans: [
+      {
+        sellerId: "seller_a",
+        subOrderId: "sub_seller_a",
+        ownerType: "SELLER",
+        platformAccountId: null,
+        stripeAccountId: "acct_seller_a",
+        paymentAccountType: "CONNECTED",
+        paymentFlow: "DIRECT_CHARGE",
+        productAmountCents: 11000,
+        shippingAmountCents: 1000,
+        gstAmountCents: 1000,
+        grossAmountCents: 12000,
+        commission: { commissionBase: 10000, applicationFeeAmount: 1000, currency: "aud" },
+      },
+      {
+        sellerId: "seller_b",
+        subOrderId: "sub_seller_b",
+        ownerType: "SELLER",
+        platformAccountId: null,
+        stripeAccountId: "acct_seller_b",
+        paymentAccountType: "CONNECTED",
+        paymentFlow: "DIRECT_CHARGE",
+        productAmountCents: 11000,
+        shippingAmountCents: 1000,
+        gstAmountCents: 1000,
+        grossAmountCents: 12000,
+        commission: { commissionBase: 10000, applicationFeeAmount: 1000, currency: "aud" },
+      },
+    ],
+  });
+  const controller = loadController({ prisma, stripe: makeStripe({ createStatuses: ["succeeded", "throw"] }) });
+  const reply = makeReply();
+
+  await controller.finalizeMultiSellerCheckout({ user: { userId: "user_1" }, body: { orderId: "order_1" } }, reply);
+
+  assert.equal(reply.statusCode, 200);
+  assert.deepEqual(prisma._subOrderUpdates.map((call) => call.where.id), ["sub_seller_a"]);
+  assert.equal(prisma._sessionUpdates.at(-1).data.status, "PARTIALLY_COMPLETED");
+  assert.equal(reply.payload.paymentStatus, "PARTIALLY_PAID");
+});
+
+test("duplicate paid finalize sync is idempotent and leaves confirmed sub-order safe", async () => {
+  const prisma = makePrisma();
+  prisma.subOrder.updateMany = async (args) => {
+    prisma._subOrderUpdates.push(args);
+    return { count: 0 };
+  };
+  const stripe = makeStripe();
+  const controller = loadController({ prisma, stripe });
+  const reply = makeReply();
+
+  await controller.finalizeMultiSellerCheckout({ user: { userId: "user_1" }, body: { orderId: "order_1" } }, reply);
+
+  assert.equal(reply.statusCode, 200);
+  assert.equal(prisma._subOrderUpdates.length, 2);
+  assert.ok(prisma._subOrderUpdates.every((call) => call.where.status === "PENDING"));
+  assert.equal(stripe.paymentIntents.createCalls.length, 1);
+});
+
+test("guest multi-seller finalize uses the same sub-order synchronization", async () => {
+  const prisma = makePrisma({ records: [] });
+  const controller = loadController({ prisma, stripe: makeStripe() });
+  const reply = makeReply();
+
+  await controller.finalizeGuestMultiSellerCheckout({
+    body: { orderId: "order_1", customerEmail: "buyer@example.com" },
+  }, reply);
+
+  assert.equal(reply.statusCode, 200);
+  assert.deepEqual(prisma._subOrderUpdates.map((call) => call.where.id).sort(), ["sub_platform", "sub_seller_a"]);
+  assert.equal(prisma._sessionUpdates.at(-1).data.status, "COMPLETED");
 });
 
 test("existing pending requires_confirmation PaymentIntent is reused without duplicate charge or record", async () => {

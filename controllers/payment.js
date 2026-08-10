@@ -509,6 +509,36 @@ async function aggregateParentPaymentStatus(orderId, tx = prisma) {
   return paymentStatus;
 }
 
+async function confirmPaidMultiSellerSubOrder({ orderId, sellerId, paymentFlow, tx = prisma }) {
+  if (!orderId || !sellerId || !paymentFlow || !tx.subOrder?.updateMany) return { count: 0 };
+
+  const order = await tx.order.findUnique?.({
+    where: { id: orderId },
+    select: { shippingAddress: true },
+  }).catch(() => null);
+  const sellerPlans = order?.shippingAddress?.orderSummary?.multiSellerPlan;
+  if (!Array.isArray(sellerPlans) || !sellerPlans.length) return { count: 0 };
+
+  const normalizedFlow = paymentFlow === "PLATFORM_ACCOUNT" ? "PLATFORM_ACCOUNT" : "DIRECT_CHARGE";
+  const plan = sellerPlans.find((entry) => {
+    const entryFlow = entry.paymentFlow === "PLATFORM_ACCOUNT" || entry.paymentAccountType === "PLATFORM"
+      ? "PLATFORM_ACCOUNT"
+      : "DIRECT_CHARGE";
+    return entry.sellerId === sellerId && entryFlow === normalizedFlow && entry.subOrderId;
+  });
+  if (!plan?.subOrderId) return { count: 0 };
+
+  return tx.subOrder.updateMany({
+    where: {
+      id: plan.subOrderId,
+      parentOrderId: orderId,
+      sellerId,
+      status: "PENDING",
+    },
+    data: { status: "CONFIRMED" },
+  });
+}
+
 function buildSellerDirectChargePlan({ sellerId, items, cartCalculations, discountShare = 0 }) {
   const productAmount = getSellerItemsTotal(items);
   const shippingAmount = Number(cartCalculations.shippingCost || 0);
@@ -2091,6 +2121,11 @@ async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPla
       const priorRecords = recordsForPlan(plan);
       const paidRecord = priorRecords.find((record) => record.paymentStatus === "PAID");
       if (paidRecord) {
+        await confirmPaidMultiSellerSubOrder({
+          orderId: order.id,
+          sellerId: plan.sellerId,
+          paymentFlow: paidRecord.paymentFlow,
+        });
         results.push({
           ...resultIdentity(plan, paidRecord.stripeAccountId),
           sellerId: plan.sellerId,
@@ -2114,6 +2149,11 @@ async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPla
               where: { stripePaymentIntentId: pendingRecord.stripePaymentIntentId, paymentStatus: { not: "PAID" } },
               data: { paymentStatus: "PAID" },
             }).catch(() => {});
+            await confirmPaidMultiSellerSubOrder({
+              orderId: order.id,
+              sellerId: plan.sellerId,
+              paymentFlow: pendingRecord.paymentFlow,
+            });
           }
           results.push({
             ...resultIdentity(plan, pendingRecord.stripeAccountId),
@@ -2181,6 +2221,13 @@ async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPla
             paymentStatus: paymentIntent.status === "succeeded" ? "PAID" : "PENDING",
           }),
         });
+        if (paymentIntent.status === "succeeded") {
+          await confirmPaidMultiSellerSubOrder({
+            orderId: order.id,
+            sellerId: plan.sellerId,
+            paymentFlow: "PLATFORM_ACCOUNT",
+          });
+        }
 
         results.push({
           ...resultIdentity(plan, null),
@@ -2255,8 +2302,16 @@ async function chargeSellerPlansForConnectedAccounts({ order, session, sellerPla
         commission: plan.commission,
         grossAmountCents: plan.grossAmountCents,
         gstAmountCents: plan.gstAmountCents,
+        paymentStatus: paymentIntent.status === "succeeded" ? "PAID" : "PENDING",
       });
       await prisma.orderPaymentRecord.create({ data: paymentRecordData });
+      if (paymentIntent.status === "succeeded") {
+        await confirmPaidMultiSellerSubOrder({
+          orderId: order.id,
+          sellerId: plan.sellerId,
+          paymentFlow: "DIRECT_CHARGE",
+        });
+      }
 
       results.push({
         ...resultIdentity(plan, plan.stripeAccountId),
@@ -2792,6 +2847,12 @@ async function handlePaymentSucceeded(paymentIntentId, connectedAccountId = null
         return false;
       }
     }
+
+    await confirmPaidMultiSellerSubOrder({
+      orderId: phase2PaymentRecord.orderId,
+      sellerId: phase2PaymentRecord.sellerId,
+      paymentFlow: phase2PaymentRecord.paymentFlow,
+    });
 
     const parentPaymentStatus = await aggregateParentPaymentStatus(phase2PaymentRecord.orderId);
     if (parentPaymentStatus !== "PAID") {

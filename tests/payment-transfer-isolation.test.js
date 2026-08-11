@@ -74,7 +74,7 @@ function makeOrder({ isGuest = false } = {}) {
   };
 }
 
-function makePrisma({ chargeType = "direct", claimSequence = [1], isGuest = false, commissionsToReverse = [], failDisputeEmailOnce = false, failOutboxOnce = false, orderOverrides = {}, outboxCount = 0 } = {}) {
+function makePrisma({ chargeType = "direct", claimSequence = [1], isGuest = false, commissionsToReverse = [], failDisputeEmailOnce = false, failOutboxOnce = false, orderOverrides = {}, outboxCount = 0, payoutRequest = null } = {}) {
   const order = { ...makeOrder({ isGuest }), ...orderOverrides };
   const webhookEvents = new Map();
   const prisma = {
@@ -91,6 +91,8 @@ function makePrisma({ chargeType = "direct", claimSequence = [1], isGuest = fals
     _commissionCreateCalls: [],
     _emailCalls: [],
     _orderNotificationCalls: [],
+    _notificationCreateCalls: [],
+    _payoutRequestUpdateCalls: [],
     _failOutboxOnce: failOutboxOnce,
     _outboxCreateManyCalls: [],
     _failDisputeEmailOnce: failDisputeEmailOnce,
@@ -140,7 +142,7 @@ function makePrisma({ chargeType = "direct", claimSequence = [1], isGuest = fals
         name: "Seller",
         sellerProfile: { storeName: "Store", businessName: "Business" },
       }),
-      findMany: async () => [],
+      findMany: async () => [{ id: "admin_1" }],
     },
     sellerProfile: {
       findUnique: async () => ({
@@ -148,6 +150,37 @@ function makePrisma({ chargeType = "direct", claimSequence = [1], isGuest = fals
         stripePayoutsEnabled: true,
         user: { email: "seller@example.com", name: "Seller" },
       }),
+      findFirst: async ({ where }) => {
+        if (where?.stripeAccountId !== "acct_ready") return null;
+        return {
+          userId: "seller_1",
+          storeName: "Store",
+          businessName: "Business",
+          stripeChargesEnabled: false,
+          user: { id: "seller_1", email: "seller@example.com", name: "Seller" },
+        };
+      },
+      updateMany: async () => ({ count: 1 }),
+    },
+    payoutRequest: {
+      findFirst: async ({ where }) => {
+        if (!payoutRequest) return null;
+        if (where?.sellerId !== payoutRequest.sellerId) return null;
+        if (Number(where?.requestedAmount) !== Number(payoutRequest.requestedAmount)) return null;
+        if (where?.status?.in && !where.status.in.includes(payoutRequest.status)) return null;
+        return payoutRequest;
+      },
+      update: async (args) => {
+        prisma._payoutRequestUpdateCalls.push(args);
+        Object.assign(payoutRequest, args.data);
+        return payoutRequest;
+      },
+    },
+    notification: {
+      create: async (args) => {
+        prisma._notificationCreateCalls.push(args);
+        return { id: `notif_${prisma._notificationCreateCalls.length}`, ...args.data };
+      },
     },
     commissionEarned: {
       updateMany: async () => ({}),
@@ -534,6 +567,7 @@ function loadStripeConnectController({ prisma, webhookEvent, invalidSignature = 
   };
 
   delete require.cache[stripeConnectControllerPath];
+  delete require.cache[notificationControllerPath];
   const controller = require(stripeConnectControllerPath);
   Module._load = originalLoad;
   return { controller, stripeMock };
@@ -1106,4 +1140,129 @@ test("Connect duplicate dispute webhook does not rerun historical transfer rever
   assert.equal(event.status, "PROCESSED");
   assert.equal(event.stripeAccountId, "acct_ready");
   assert.equal(event.attemptCount, 1);
+});
+
+test("Connect payout.paid records matching payout request only", async () => {
+  const webhookEvent = {
+    id: "evt_payout_paid",
+    type: "payout.paid",
+    account: "acct_ready",
+    livemode: false,
+    data: { object: { id: "po_paid", amount: 5000, currency: "aud", status: "paid", arrival_date: 1780000000 } },
+  };
+  const prisma = makePrisma({
+    payoutRequest: {
+      id: "payout_request_1",
+      sellerId: "seller_1",
+      requestedAmount: 50,
+      status: "APPROVED",
+      adminNote: "Approved by admin",
+    },
+  });
+  const { controller } = loadStripeConnectController({ prisma, webhookEvent });
+
+  const reply = await callConnectWebhook(controller);
+
+  assert.equal(reply.statusCode, 200);
+  assert.equal(prisma._payoutRequestUpdateCalls.length, 1);
+  assert.equal(prisma._payoutRequestUpdateCalls[0].where.id, "payout_request_1");
+  assert.equal(prisma._payoutRequestUpdateCalls[0].data.status, "COMPLETED");
+  assert.match(prisma._payoutRequestUpdateCalls[0].data.adminNote, /Stripe payout paid: po_paid/);
+  assert.equal(prisma._orderUpdateCalls.length, 0);
+  assert.equal(prisma._orderPaymentRecordUpdateCalls.length, 0);
+  assert.equal(prisma._commissionCreateCalls.length, 0);
+});
+
+test("Connect payout.failed records failure and notifies admin and seller", async () => {
+  const webhookEvent = {
+    id: "evt_payout_failed",
+    type: "payout.failed",
+    account: "acct_ready",
+    livemode: false,
+    data: {
+      object: {
+        id: "po_failed",
+        amount: 5000,
+        currency: "aud",
+        status: "failed",
+        failure_code: "account_closed",
+        failure_message: "Bank account closed",
+      },
+    },
+  };
+  const prisma = makePrisma({
+    payoutRequest: {
+      id: "payout_request_2",
+      sellerId: "seller_1",
+      requestedAmount: 50,
+      status: "APPROVED",
+      adminNote: null,
+    },
+  });
+  const { controller } = loadStripeConnectController({ prisma, webhookEvent });
+
+  const reply = await callConnectWebhook(controller);
+
+  assert.equal(reply.statusCode, 200);
+  assert.equal(prisma._payoutRequestUpdateCalls.length, 1);
+  assert.equal(prisma._payoutRequestUpdateCalls[0].where.id, "payout_request_2");
+  assert.match(prisma._payoutRequestUpdateCalls[0].data.adminNote, /Stripe payout failed: po_failed/);
+  assert.equal(prisma._notificationCreateCalls.length, 2);
+  assert.equal(prisma._notificationCreateCalls[0].data.userId, "admin_1");
+  assert.equal(prisma._notificationCreateCalls[1].data.userId, "seller_1");
+  assert.equal(prisma._orderUpdateCalls.length, 0);
+  assert.equal(prisma._orderPaymentRecordUpdateCalls.length, 0);
+  assert.equal(prisma._commissionCreateCalls.length, 0);
+});
+
+test("Connect duplicate payout.failed delivery does not record or notify twice", async () => {
+  const webhookEvent = {
+    id: "evt_payout_failed_duplicate",
+    type: "payout.failed",
+    account: "acct_ready",
+    livemode: false,
+    data: { object: { id: "po_failed_dup", amount: 5000, currency: "aud", status: "failed", failure_code: "bank_account_restricted" } },
+  };
+  const prisma = makePrisma({
+    payoutRequest: {
+      id: "payout_request_3",
+      sellerId: "seller_1",
+      requestedAmount: 50,
+      status: "APPROVED",
+      adminNote: null,
+    },
+  });
+  const { controller } = loadStripeConnectController({ prisma, webhookEvent });
+
+  const first = await callConnectWebhook(controller);
+  const duplicate = await callConnectWebhook(controller);
+
+  assert.equal(first.statusCode, 200);
+  assert.equal(duplicate.statusCode, 200);
+  assert.equal(duplicate.payload.duplicate, true);
+  assert.equal(prisma._payoutRequestUpdateCalls.length, 1);
+  assert.equal(prisma._notificationCreateCalls.length, 2);
+  assert.equal(prisma._webhookEvents.get("evt_payout_failed_duplicate").attemptCount, 1);
+});
+
+test("Connect unknown payout event is acknowledged without payout side effects", async () => {
+  const webhookEvent = {
+    id: "evt_payout_unknown",
+    type: "payout.updated",
+    account: "acct_ready",
+    livemode: false,
+    data: { object: { id: "po_unknown", amount: 5000, currency: "aud", status: "in_transit" } },
+  };
+  const prisma = makePrisma();
+  const { controller } = loadStripeConnectController({ prisma, webhookEvent });
+
+  const reply = await callConnectWebhook(controller);
+
+  assert.equal(reply.statusCode, 200);
+  assert.equal(prisma._payoutRequestUpdateCalls.length, 0);
+  assert.equal(prisma._notificationCreateCalls.length, 0);
+  assert.equal(prisma._orderUpdateCalls.length, 0);
+  assert.equal(prisma._orderPaymentRecordUpdateCalls.length, 0);
+  assert.equal(prisma._commissionCreateCalls.length, 0);
+  assert.equal(prisma._webhookEvents.get("evt_payout_unknown").status, "PROCESSED");
 });

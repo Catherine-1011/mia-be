@@ -24,6 +24,7 @@ const crypto = require("crypto");
 const Stripe = require("stripe");
 const prisma = require("../config/prisma");
 const { sendSellerStripeApprovedEmail, sendDisputeAlertEmail } = require("../utils/emailService");
+const { createNotification } = require("./notification");
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -44,6 +45,162 @@ function extractPaymentIntentIdFromStripeEvent(event) {
 
 function isUniqueConstraintError(error) {
   return error?.code === "P2002";
+}
+
+function formatStripeAmount(amount, currency = "aud") {
+  const major = Number(amount || 0) / 100;
+  return `${currency.toUpperCase()} ${major.toFixed(2)}`;
+}
+
+async function findExistingPayoutRequestForStripePayout(payout, stripeAccountId) {
+  if (!stripeAccountId || !payout?.id) return null;
+
+  const sellerProfile = await prisma.sellerProfile.findFirst({
+    where: { stripeAccountId },
+    select: {
+      userId: true,
+      storeName: true,
+      businessName: true,
+      user: { select: { id: true, name: true, email: true } },
+    },
+  });
+
+  if (!sellerProfile?.userId) {
+    console.log("[Stripe Connect payout] No seller profile found for connected account", {
+      stripeAccountId,
+      payoutId: payout.id,
+    });
+    return null;
+  }
+
+  const amountMajor = Number(payout.amount || 0) / 100;
+  const payoutRequest = await prisma.payoutRequest.findFirst({
+    where: {
+      sellerId: sellerProfile.userId,
+      requestedAmount: amountMajor,
+      status: { in: ["PENDING", "APPROVED"] },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return payoutRequest ? { payoutRequest, sellerProfile } : { payoutRequest: null, sellerProfile };
+}
+
+async function recordPayoutPaidIfExisting(payout, stripeAccountId) {
+  const match = await findExistingPayoutRequestForStripePayout(payout, stripeAccountId);
+  if (!match?.payoutRequest) {
+    console.log("[Stripe Connect payout.paid] No existing payout request matched; log only", {
+      payoutId: payout.id,
+      stripeAccountId,
+      amount: payout.amount,
+      currency: payout.currency,
+    });
+    return null;
+  }
+
+  const adminNote = [
+    match.payoutRequest.adminNote,
+    `Stripe payout paid: ${payout.id} (${formatStripeAmount(payout.amount, payout.currency)})`,
+  ].filter(Boolean).join("\n");
+
+  return prisma.payoutRequest.update({
+    where: { id: match.payoutRequest.id },
+    data: {
+      status: "COMPLETED",
+      processedAt: payout.arrival_date ? new Date(payout.arrival_date * 1000) : new Date(),
+      adminNote,
+    },
+  });
+}
+
+async function notifyPayoutFailedIfAvailable({ payout, stripeAccountId, sellerProfile, payoutRequest }) {
+  if (!createNotification) return;
+
+  const amountText = formatStripeAmount(payout.amount, payout.currency);
+  const failureMessage = payout.failure_message || payout.failure_code || "Stripe reported the payout failed.";
+  const metadata = {
+    stripePayoutId: payout.id,
+    stripeAccountId,
+    amount: payout.amount,
+    currency: payout.currency,
+    failureCode: payout.failure_code || null,
+    failureMessage: payout.failure_message || null,
+  };
+
+  try {
+    const admins = await prisma.user.findMany({
+      where: { role: { in: ["ADMIN", "SUPER_ADMIN"] } },
+      select: { id: true },
+    });
+
+    for (const admin of admins) {
+      await createNotification(
+        admin.id,
+        "Stripe payout failed",
+        `Stripe payout ${payout.id} failed for ${sellerProfile?.user?.name || sellerProfile?.storeName || "seller"} (${amountText}). ${failureMessage}`,
+        "GENERAL",
+        payoutRequest?.id || payout.id,
+        payoutRequest ? "payout_request" : "stripe_payout",
+        metadata,
+      );
+    }
+
+    if (sellerProfile?.userId) {
+      await createNotification(
+        sellerProfile.userId,
+        "Payout failed",
+        `A Stripe payout for ${amountText} failed. Please review your Stripe payout details or contact support.`,
+        "GENERAL",
+        payoutRequest?.id || payout.id,
+        payoutRequest ? "payout_request" : "stripe_payout",
+        metadata,
+      );
+    }
+  } catch (err) {
+    console.error("[Stripe Connect payout.failed] Notification error:", err.message);
+  }
+}
+
+async function recordPayoutFailedIfExisting(payout, stripeAccountId) {
+  const match = await findExistingPayoutRequestForStripePayout(payout, stripeAccountId);
+  const failureDetail = payout.failure_message || payout.failure_code || "unknown failure";
+
+  if (!match?.payoutRequest) {
+    console.log("[Stripe Connect payout.failed] No existing payout request matched; log only", {
+      payoutId: payout.id,
+      stripeAccountId,
+      amount: payout.amount,
+      currency: payout.currency,
+      failureCode: payout.failure_code,
+      failureMessage: payout.failure_message,
+    });
+    await notifyPayoutFailedIfAvailable({
+      payout,
+      stripeAccountId,
+      sellerProfile: match?.sellerProfile,
+      payoutRequest: null,
+    });
+    return null;
+  }
+
+  const adminNote = [
+    match.payoutRequest.adminNote,
+    `Stripe payout failed: ${payout.id} (${formatStripeAmount(payout.amount, payout.currency)}). ${failureDetail}`,
+  ].filter(Boolean).join("\n");
+
+  const updated = await prisma.payoutRequest.update({
+    where: { id: match.payoutRequest.id },
+    data: { adminNote },
+  });
+
+  await notifyPayoutFailedIfAvailable({
+    payout,
+    stripeAccountId,
+    sellerProfile: match.sellerProfile,
+    payoutRequest: match.payoutRequest,
+  });
+
+  return updated;
 }
 
 async function claimStripeWebhookEvent(event) {
@@ -431,6 +588,40 @@ exports.stripeConnectWebhook = async (request, reply) => {
   }
 
   // ── charge.dispute.created ─────────────────────────────────────────────────
+  // Observational connected-account payout events.
+  else if (event.type === "payout.paid") {
+    const payout = event.data.object;
+    const stripeAccountId = event.account || null;
+
+    console.log("[Stripe Connect payout.paid]", {
+      payoutId: payout.id,
+      stripeAccountId,
+      amount: payout.amount,
+      currency: payout.currency,
+      arrivalDate: payout.arrival_date || null,
+      status: payout.status,
+    });
+
+    await recordPayoutPaidIfExisting(payout, stripeAccountId);
+  }
+
+  else if (event.type === "payout.failed") {
+    const payout = event.data.object;
+    const stripeAccountId = event.account || null;
+
+    console.error("[Stripe Connect payout.failed]", {
+      payoutId: payout.id,
+      stripeAccountId,
+      amount: payout.amount,
+      currency: payout.currency,
+      failureCode: payout.failure_code || null,
+      failureMessage: payout.failure_message || null,
+      status: payout.status,
+    });
+
+    await recordPayoutFailedIfExisting(payout, stripeAccountId);
+  }
+
   // A customer filed a chargeback. Reverse the seller transfer immediately so
   // the platform doesn't go negative, and alert the admin.
   else if (event.type === "charge.dispute.created") {

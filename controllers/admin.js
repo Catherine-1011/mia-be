@@ -43,6 +43,42 @@ function toRefundStatus(isFullRefund) {
   return isFullRefund ? 'FULL' : 'PARTIAL';
 }
 
+function buildPaymentRecordRefundUpdate({ stripeRefundStatus, isFullRefund }) {
+  switch (stripeRefundStatus) {
+    case 'succeeded':
+      return {
+        refundStatus: toRefundStatus(isFullRefund),
+        ...(isFullRefund ? { paymentStatus: 'REFUNDED' } : {}),
+      };
+    case 'pending':
+    case 'requires_action':
+      return { paymentStatus: 'REFUND_PENDING' };
+    case 'failed':
+    case 'canceled':
+      return { refundStatus: 'FAILED' };
+    default:
+      return { paymentStatus: 'REFUND_PENDING' };
+  }
+}
+
+function isStripeRefundComplete(stripeRefund) {
+  return stripeRefund?.status === 'succeeded';
+}
+
+function isStripeRefundTerminalFailure(stripeRefund) {
+  return ['failed', 'canceled'].includes(stripeRefund?.status);
+}
+
+function getCommissionSellerIdForRefund({ paymentRecord, order }) {
+  if (paymentRecord?.sellerId) return paymentRecord.sellerId;
+
+  const sellerPaymentRecords = (order?.paymentRecords || [])
+    .filter(record => record?.sellerId && record.paymentFlow !== 'PLATFORM_ACCOUNT');
+
+  const sellerIds = [...new Set(sellerPaymentRecords.map(record => record.sellerId))];
+  return sellerIds.length === 1 ? sellerIds[0] : null;
+}
+
 function assertRefundableAmount({ refundAmountCents, paymentRecord }) {
   const grossAmount = Number(paymentRecord.grossAmount || 0);
   if (refundAmountCents <= 0) {
@@ -185,8 +221,15 @@ async function createStripeRefundFromPaymentRecord({
 
   await prisma.orderPaymentRecord.update({
     where: { id: paymentRecord.id },
-    data: { refundStatus: toRefundStatus(isFullRefund) },
+    data: buildPaymentRecordRefundUpdate({
+      stripeRefundStatus: stripeRefund.status,
+      isFullRefund,
+    }),
   });
+
+  if (isStripeRefundTerminalFailure(stripeRefund)) {
+    throw buildRefundError(`Stripe refund ${stripeRefund.status}`, 502);
+  }
 
   return stripeRefund;
 }
@@ -6551,6 +6594,9 @@ exports.updateRefundRequestStatus = async (request, reply) => {
     // unchanged if Stripe fails (admin can retry).
     // The charge.refunded webhook automatically reverses any seller transfers.
     let stripeRefundId = null;
+    let refundedPaymentRecord = null;
+    let stripeRefundCompleted = false;
+    let completedFullRefund = false;
     if (status === 'APPROVED' && order?.stripePaymentIntentId) {
       try {
         const paymentRecord = order.paymentRecords?.[0] || null;
@@ -6578,6 +6624,9 @@ exports.updateRefundRequestStatus = async (request, reply) => {
           adminNote: message?.trim() || '',
         });
         stripeRefundId = stripeRefund.id;
+        refundedPaymentRecord = paymentRecord;
+        stripeRefundCompleted = isStripeRefundComplete(stripeRefund);
+        completedFullRefund = stripeRefundCompleted && ticket.requestType === 'REFUND';
       } catch (stripeErr) {
         console.error('Stripe refund failed:', stripeErr.message);
         return reply.status(502).send({
@@ -6597,13 +6646,19 @@ exports.updateRefundRequestStatus = async (request, reply) => {
       }
     });
 
-    // On APPROVED or COMPLETED: cancel CommissionEarned for this order.
+    // On APPROVED or COMPLETED: cancel CommissionEarned for the refunded seller only.
     // Seller transfer reversal is handled automatically by the charge.refunded webhook.
     if (['APPROVED', 'COMPLETED'].includes(status) && ticket.orderId) {
-      await prisma.commissionEarned.updateMany({
-        where: { orderId: ticket.orderId, status: { not: 'CANCELLED' } },
-        data:  { status: 'CANCELLED' }
+      const commissionSellerId = getCommissionSellerIdForRefund({
+        paymentRecord: stripeRefundCompleted ? refundedPaymentRecord : null,
+        order,
       });
+      if (commissionSellerId && (status === 'COMPLETED' || completedFullRefund)) {
+        await prisma.commissionEarned.updateMany({
+          where: { orderId: ticket.orderId, sellerId: commissionSellerId, status: { not: 'CANCELLED' } },
+          data:  { status: 'CANCELLED' }
+        });
+      }
     }
 
     const displayId     = order ? `${order.displayId}` : `${id.slice(-6).toUpperCase()}`;

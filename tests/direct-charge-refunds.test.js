@@ -15,6 +15,7 @@ function makeStripeMock({ failRefund = false } = {}) {
         if (failRefund) throw new Error("stripe unavailable");
         return {
           id: "re_123",
+          status: "succeeded",
           payment_intent: params.payment_intent,
           amount: params.amount || 12000,
           application_fee_amount_refunded: params.amount ? 500 : 1000,

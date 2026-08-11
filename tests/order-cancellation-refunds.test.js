@@ -39,7 +39,7 @@ function makePrisma(records = []) {
   return prisma;
 }
 
-function makeStripeMock({ statuses = {}, failPaymentIntentIds = [] } = {}) {
+function makeStripeMock({ statuses = {}, failPaymentIntentIds = [], refundStatuses = {} } = {}) {
   return {
     paymentIntents: {
       retrieveCalls: [],
@@ -58,7 +58,11 @@ function makeStripeMock({ statuses = {}, failPaymentIntentIds = [] } = {}) {
       create: async function(params, options) {
         this.createCalls.push({ params, options });
         if (failPaymentIntentIds.includes(params.payment_intent)) throw new Error(`refund failed for ${params.payment_intent}`);
-        return { id: `re_${params.payment_intent}`, payment_intent: params.payment_intent };
+        return {
+          id: `re_${params.payment_intent}`,
+          payment_intent: params.payment_intent,
+          status: refundStatuses[params.payment_intent] || "succeeded",
+        };
       },
     },
     transfers: {
@@ -231,4 +235,100 @@ test("missing stripeAccountId for Direct Charge fails safely without platform re
   assert.equal(outcome.failed, 1);
   assert.equal(stripeMock.refunds.createCalls.length, 0);
   assert.equal(records[0].refundStatus, "FAILED");
+});
+
+// ─── Refund lifecycle: Stripe Refund.status must gate DB persistence ──────────
+
+test("Stripe refund status=succeeded marks refundStatus FULL and paymentStatus REFUNDED", async () => {
+  const records = [paymentRecord({ stripePaymentIntentId: "pi_succeeded" })];
+  const prisma = makePrisma(records);
+  const stripeMock = makeStripeMock({ refundStatuses: { pi_succeeded: "succeeded" } });
+  const controller = loadOrdersController({ prisma, stripeMock });
+
+  const result = await controller._triggerStripeRefund("pi_succeeded", "Customer cancelled", "ABC123");
+
+  assert.equal(result.status, "refunded");
+  assert.equal(records[0].refundStatus, "FULL");
+  assert.equal(records[0].paymentStatus, "REFUNDED");
+});
+
+test("Stripe refund status=pending does not mark FULL/REFUNDED and preserves a pending state", async () => {
+  const records = [paymentRecord({ stripePaymentIntentId: "pi_pending" })];
+  const prisma = makePrisma(records);
+  const stripeMock = makeStripeMock({ refundStatuses: { pi_pending: "pending" } });
+  const controller = loadOrdersController({ prisma, stripeMock });
+
+  const result = await controller._triggerStripeRefund("pi_pending", "Customer cancelled", "ABC123");
+
+  assert.notEqual(records[0].refundStatus, "FULL");
+  assert.notEqual(records[0].paymentStatus, "REFUNDED");
+  assert.equal(records[0].paymentStatus, "REFUND_PENDING");
+  assert.notEqual(result.status, "refunded");
+  assert.notEqual(result.status, "failed");
+});
+
+test("Stripe refund status=requires_action does not mark FULL and surfaces follow-up-required state", async () => {
+  const records = [paymentRecord({ stripePaymentIntentId: "pi_requires_action_refund" })];
+  const prisma = makePrisma(records);
+  const stripeMock = makeStripeMock({ refundStatuses: { pi_requires_action_refund: "requires_action" } });
+  const controller = loadOrdersController({ prisma, stripeMock });
+
+  const result = await controller._triggerStripeRefund("pi_requires_action_refund", "Customer cancelled", "ABC123");
+
+  assert.notEqual(records[0].refundStatus, "FULL");
+  assert.notEqual(records[0].paymentStatus, "REFUNDED");
+  assert.equal(result.status, "requires_action");
+});
+
+test("Stripe refund status=failed marks refundStatus FAILED and does not falsely mark REFUNDED", async () => {
+  const records = [paymentRecord({ stripePaymentIntentId: "pi_refund_failed" })];
+  const prisma = makePrisma(records);
+  const stripeMock = makeStripeMock({ refundStatuses: { pi_refund_failed: "failed" } });
+  const controller = loadOrdersController({ prisma, stripeMock });
+
+  const result = await controller._triggerStripeRefund("pi_refund_failed", "Customer cancelled", "ABC123");
+
+  assert.equal(result.status, "failed");
+  assert.equal(records[0].refundStatus, "FAILED");
+  assert.notEqual(records[0].paymentStatus, "REFUNDED");
+});
+
+test("Stripe refunds.create throwing preserves existing failure visibility with no false success", async () => {
+  const records = [paymentRecord({ stripePaymentIntentId: "pi_throws" })];
+  const prisma = makePrisma(records);
+  const stripeMock = makeStripeMock({ failPaymentIntentIds: ["pi_throws"] });
+  const controller = loadOrdersController({ prisma, stripeMock });
+
+  const result = await controller._triggerStripeRefund("pi_throws", "Customer cancelled", "ABC123");
+
+  assert.equal(result.status, "failed");
+  assert.notEqual(records[0].refundStatus, "FULL");
+  assert.notEqual(records[0].paymentStatus, "REFUNDED");
+});
+
+test("retry after a FAILED refund attempt is retriable and reuses the same Stripe idempotency key", async () => {
+  const records = [paymentRecord({ stripePaymentIntentId: "pi_retry", refundStatus: "FAILED" })];
+  const prisma = makePrisma(records);
+  const stripeMock = makeStripeMock({ refundStatuses: { pi_retry: "succeeded" } });
+  const controller = loadOrdersController({ prisma, stripeMock });
+
+  const result = await controller._triggerStripeRefund("pi_retry", "Customer cancelled", "ABC123");
+
+  assert.equal(result.status, "refunded");
+  assert.equal(records[0].refundStatus, "FULL");
+  assert.equal(stripeMock.refunds.createCalls.length, 1);
+  assert.equal(stripeMock.refunds.createCalls[0].options.idempotencyKey, "refund:opr_1:cancel:ABC123");
+});
+
+test("retry after an already-FULL refund is skipped without duplicating the Stripe call", async () => {
+  const records = [paymentRecord({ stripePaymentIntentId: "pi_already_full", refundStatus: "FULL" })];
+  const prisma = makePrisma(records);
+  const stripeMock = makeStripeMock();
+  const controller = loadOrdersController({ prisma, stripeMock });
+
+  const result = await controller._triggerStripeRefund("pi_already_full", "Customer cancelled", "ABC123");
+
+  assert.equal(result.status, "skipped");
+  assert.equal(result.reason, "already_refunded");
+  assert.equal(stripeMock.refunds.createCalls.length, 0);
 });

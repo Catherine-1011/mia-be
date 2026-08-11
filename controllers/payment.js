@@ -2688,13 +2688,32 @@ exports.stripeWebhook = async (request, reply) => {
         if (chargeType === 'direct') {
           // Stripe automatically reverses the application_fee_amount on the connected account.
           // Also cancel the commission record so dashboards reflect the reversal.
-          const refundedOrder = await prisma.order.findFirst({
-            where: { stripePaymentIntentId: piId },
-            select: { id: true },
-          });
-          if (refundedOrder) {
+          //
+          // OrderPaymentRecord (fetched above) is the authoritative source for
+          // orderId/sellerId on modern multi-seller Direct Charges: each seller
+          // has their own PaymentIntent, while Order.stripePaymentIntentId only
+          // ever holds whichever seller's PaymentIntent happened to complete
+          // first (see handlePaymentSucceeded), so it can legitimately differ
+          // from piId here and must not be used to locate the order.
+          let refundedOrderId = refundedPaymentRecord?.orderId || null;
+          const refundedSellerId = refundedPaymentRecord?.sellerId || null;
+
+          if (!refundedOrderId) {
+            // Historical/legacy orders predating per-seller OrderPaymentRecord rows.
+            const legacyOrder = await prisma.order.findFirst({
+              where: { stripePaymentIntentId: piId },
+              select: { id: true },
+            });
+            refundedOrderId = legacyOrder?.id || null;
+          }
+
+          if (refundedOrderId) {
             await prisma.commissionEarned.updateMany({
-              where: { orderId: refundedOrder.id, status: { not: 'CANCELLED' } },
+              where: {
+                orderId: refundedOrderId,
+                ...(refundedSellerId ? { sellerId: refundedSellerId } : {}),
+                status: { not: 'CANCELLED' },
+              },
               data: { status: 'CANCELLED', stripeTransferStatus: 'reversed' },
             });
           }

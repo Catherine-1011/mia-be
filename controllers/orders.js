@@ -145,7 +145,7 @@ async function triggerStripeRefund(paymentIntentId, reason, displayId) {
         if (!separateChargeTransfers.length) return { status: 'failed', error: 'missing historical transfer identifiers', paymentRecordId: paymentRecord.id };
       }
 
-      await stripe.refunds.create(
+      const stripeRefund = await stripe.refunds.create(
         {
           payment_intent: paymentRecord.stripePaymentIntentId,
           reason: 'requested_by_customer',
@@ -161,11 +161,35 @@ async function triggerStripeRefund(paymentIntentId, reason, displayId) {
       if (separateChargeTransfers) {
         await reverseSeparateChargeCancellationTransfers(paymentRecord, displayId, separateChargeTransfers);
       }
+
+      // The Stripe Refund can come back non-terminal (pending/requires_action) or
+      // rejected (failed/canceled) even though the API call itself didn't throw —
+      // DB state must reflect refund.status, not just "the call succeeded".
+      if (stripeRefund.status === 'succeeded') {
+        await prisma.orderPaymentRecord.update({
+          where: { id: paymentRecord.id },
+          data: { refundStatus: 'FULL', paymentStatus: 'REFUNDED' },
+        });
+        return { status: 'refunded', paymentRecordId: paymentRecord.id };
+      } else if (stripeRefund.status === 'pending') {
+        await prisma.orderPaymentRecord.update({
+          where: { id: paymentRecord.id },
+          data: { paymentStatus: 'REFUND_PENDING' },
+        });
+        return { status: 'refund_pending', stripeRefundStatus: stripeRefund.status, paymentRecordId: paymentRecord.id };
+      } else if (stripeRefund.status === 'requires_action') {
+        await prisma.orderPaymentRecord.update({
+          where: { id: paymentRecord.id },
+          data: { paymentStatus: 'REFUND_PENDING' },
+        });
+        return { status: 'requires_action', stripeRefundStatus: stripeRefund.status, paymentRecordId: paymentRecord.id };
+      }
+      // failed / canceled / any other unexpected terminal status
       await prisma.orderPaymentRecord.update({
         where: { id: paymentRecord.id },
-        data: { refundStatus: 'FULL', paymentStatus: 'REFUNDED' },
+        data: { refundStatus: 'FAILED' },
       });
-      return { status: 'refunded', paymentRecordId: paymentRecord.id };
+      return { status: 'failed', error: `stripe_refund_status_${stripeRefund.status}`, paymentRecordId: paymentRecord.id };
     } else if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(pi.status)) {
       await stripe.paymentIntents.cancel(paymentRecord.stripePaymentIntentId, {}, {
         ...(accountOptions || {}),

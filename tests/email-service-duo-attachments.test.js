@@ -78,12 +78,41 @@ test("sendSellerPaymentReceivedEmail passes invoice attachment through Duo Circl
     assert.equal(sendMailCalls.length, 1);
     assert.deepEqual(sendMailCalls[0].attachments, [
       {
-        content: pdfBuffer.toString("base64"),
+        content: pdfBuffer,
         filename: "Invoice-ABC123-Seller.pdf",
         type: "application/pdf",
         disposition: "attachment",
       },
     ]);
+    assert.equal(Buffer.isBuffer(sendMailCalls[0].attachments[0].content), true);
+    assert.equal(sendMailCalls[0].attachments[0].content.subarray(0, 5).toString(), "%PDF-");
+  } finally {
+    restore();
+  }
+});
+
+test("sendOrderConfirmationEmail keeps customer invoice PDF decodable through Duo Circle SMTP", async () => {
+  const { emailService, sendMailCalls, restore } = loadEmailServiceWithDuoMock();
+  try {
+    const pdfBuffer = Buffer.from("%PDF-1.4 customer invoice");
+
+    const result = await emailService.sendOrderConfirmationEmail("customer@example.com", "Customer", {
+      displayId: "ABC123",
+      customerEmail: "customer@example.com",
+      customerName: "Customer",
+      totalAmount: 125.5,
+      itemCount: 1,
+      products: [{ title: "Artwork", quantity: 1, price: 125.5 }],
+      orderSummary: { gstPercentage: 10 },
+      shippingAddress: {},
+    }, pdfBuffer);
+
+    assert.equal(result.success, true);
+    assert.equal(sendMailCalls.length, 1);
+    assert.equal(sendMailCalls[0].attachments[0].filename, "invoice-ABC123.pdf");
+    assert.equal(sendMailCalls[0].attachments[0].contentType, "application/pdf");
+    assert.equal(sendMailCalls[0].attachments[0].encoding, "base64");
+    assert.equal(Buffer.from(sendMailCalls[0].attachments[0].content, "base64").subarray(0, 5).toString(), "%PDF-");
   } finally {
     restore();
   }
@@ -106,4 +135,3 @@ test("sendSellerPaymentReceivedEmail sends without attachments when no invoice b
     restore();
   }
 });
-

@@ -4815,7 +4815,7 @@ const buildPdfEmailAttachment = (pdfBuffer, filename) => {
     throw new Error('PDF attachment requires a non-empty Buffer');
   }
   return {
-    content: pdfBuffer.toString('base64'),
+    content: pdfBuffer,
     filename: filename && filename.endsWith('.pdf') ? filename : `${filename || 'invoice'}.pdf`,
     type: 'application/pdf',
     disposition: 'attachment'

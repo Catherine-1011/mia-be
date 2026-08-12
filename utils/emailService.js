@@ -80,6 +80,10 @@ const sendWithFallback = async (msg, context = 'Email', extraInfo = {}) => {
         text: msg.text,
         html: msg.html,
       };
+
+      if (msg.attachments !== undefined) {
+        mailOptions.attachments = msg.attachments;
+      }
       
       if (msg.replyTo) {
         mailOptions.replyTo = msg.replyTo.email || msg.replyTo;

@@ -77,6 +77,7 @@ function makePrisma({
     _orderItemCreateManyCalls: [],
     _orderUpdateCalls: [],
     _sessionCreateCalls: [],
+    _operationCreateCalls: [],
     _apiOperations: new Map(),
     user: {
       findUnique: async () => ({ id: "user_1", name: "Buyer", email: "buyer@example.com", phone: "0400000000", isDeleted: false }),
@@ -148,6 +149,7 @@ function makePrisma({
     },
     apiIdempotencyOperation: {
       create: async ({ data }) => {
+        prisma._operationCreateCalls.push(data);
         const configuredStatus = operationStatuses?.[data.attemptNumber] || operationStatus;
         if (configuredStatus === "STARTED" || configuredStatus === "COMPLETED") {
           prisma._lastOperationCreate = data;
@@ -556,6 +558,14 @@ test("registered setup continues past repeated unusable idempotency attempts", a
     "seti_existing",
     "seti_existing",
   ]);
+  assert.deepEqual(
+    prisma._operationCreateCalls.map((call) => call.attemptNumber),
+    [1, 2, 3, 4, 5, 6],
+  );
+  assert.deepEqual(
+    prisma._operationCreateCalls.map((call) => call.operationKey.split(":").at(-1)),
+    ["1", "2", "3", "4", "5", "6"],
+  );
   assert.match(stripe.setupIntents.createCalls[0].options.idempotencyKey, /:6:setup-intent$/);
 });
 

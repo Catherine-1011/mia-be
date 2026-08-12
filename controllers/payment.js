@@ -1880,6 +1880,23 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
           });
           continue;
         }
+        logMultiSellerSetupOutcome({
+          requestId,
+          userId,
+          cartId: cart.id,
+          orderId: checkoutOperation.orderId,
+          result: "SKIPPED_UNREUSABLE_IDEMPOTENT_SETUP",
+        });
+        continue;
+      }
+      if (checkoutOperation.status === "COMPLETED") {
+        logMultiSellerSetupOutcome({
+          requestId,
+          userId,
+          cartId: cart.id,
+          result: "SKIPPED_UNREUSABLE_IDEMPOTENT_SETUP",
+        });
+        continue;
       }
       if (!checkoutOperation.claimedNew && checkoutOperation.status === "STARTED") {
         logMultiSellerSetupOutcome({ requestId, userId, cartId: cart.id, result: "202_PAYMENT_CREATION_IN_PROGRESS" });

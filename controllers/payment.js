@@ -49,6 +49,7 @@ const STRIPE_DESCRIPTION_MAX_LENGTH = 255;
 const STRIPE_WEBHOOK_PROCESSING_TIMEOUT_MS =
   Number(process.env.STRIPE_WEBHOOK_PROCESSING_TIMEOUT_MS || 10 * 60 * 1000);
 const MULTI_SELLER_SETUP_REUSE_WINDOW_MS = 30 * 60 * 1000;
+const MULTI_SELLER_SETUP_MAX_IDEMPOTENCY_ATTEMPTS = 50;
 
 const MIXED_SELLER_CHECKOUT_MESSAGE =
   "Your cart contains products from multiple sellers. Please complete checkout for one seller at a time.";
@@ -1828,7 +1829,7 @@ exports.createMultiSellerCheckoutSetup = async (request, reply) => {
       })),
     });
     let checkoutOperation = null;
-    for (let attemptNumber = 1; attemptNumber <= 5; attemptNumber++) {
+    for (let attemptNumber = 1; attemptNumber <= MULTI_SELLER_SETUP_MAX_IDEMPOTENCY_ATTEMPTS; attemptNumber++) {
       checkoutApiOperationKey = checkoutOperationKey({
         scope: "user",
         subjectId: `${userId}:${cart.id}`,

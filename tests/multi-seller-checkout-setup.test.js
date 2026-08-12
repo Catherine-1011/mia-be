@@ -520,6 +520,45 @@ test("completed registered setup creates a fresh attempt when checkout session i
   }
 });
 
+test("registered setup continues past repeated unusable idempotency attempts", async () => {
+  const a = sellerProduct("prod_a_many_attempts", "seller_a", "acct_seller_a");
+  const b = sellerProduct("prod_b_many_attempts", "seller_b", "acct_seller_b");
+  const prisma = makePrisma({
+    cartItems: [cartItem(a), cartItem(b)],
+    sellerProfiles: readyProfiles(),
+    operationStatuses: {
+      1: "COMPLETED",
+      2: "COMPLETED",
+      3: "COMPLETED",
+      4: "COMPLETED",
+      5: "COMPLETED",
+    },
+    existingSession: {
+      platformSetupIntentId: "seti_existing",
+      status: "COLLECTING_PAYMENT_METHOD",
+      createdAt: new Date(),
+    },
+  });
+  const stripe = makeStripe({ setupIntentStatus: "canceled" });
+  const controller = loadController({ prisma, stripe });
+
+  const reply = await callRegistered(controller);
+
+  assert.equal(reply.statusCode, 200);
+  assert.equal(reply.payload.clientSecret, "seti_1_secret");
+  assert.notEqual(reply.payload.code, "NO_REUSABLE_SETUP_ATTEMPT");
+  assert.equal(prisma._orderCreateCalls.length, 1);
+  assert.equal(stripe.setupIntents.createCalls.length, 1);
+  assert.deepEqual(stripe.setupIntents.retrieveCalls, [
+    "seti_existing",
+    "seti_existing",
+    "seti_existing",
+    "seti_existing",
+    "seti_existing",
+  ]);
+  assert.match(stripe.setupIntents.createCalls[0].options.idempotencyKey, /:6:setup-intent$/);
+});
+
 test("guest setup succeeds for seller plus seller and seller plus platform with canonical seller IDs", async () => {
   const a = sellerProduct("prod_a", "seller_a", "acct_seller_a");
   const b = sellerProduct("prod_b", "seller_b", "acct_seller_b");

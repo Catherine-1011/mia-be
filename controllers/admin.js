@@ -3069,7 +3069,9 @@ exports.toggleSellerActiveStatus = async (request, reply) => {
 exports.updateSellerProfile = async (request, reply) => {
   try {
     const { sellerId } = request.params;
-    const { abn, businessName, businessAddress, businessType, storeName, storeDescription, contactPerson, artistName, artistDescription } = request.body;
+    const body = request.body && typeof request.body === 'object' && !Array.isArray(request.body)
+      ? request.body
+      : {};
 
     const seller = await prisma.sellerProfile.findUnique({ where: { userId: sellerId } });
     if (!seller) {
@@ -3077,19 +3079,42 @@ exports.updateSellerProfile = async (request, reply) => {
     }
 
     const updateData = {};
-    if (abn !== undefined) updateData.abn = abn;
-    if (businessName !== undefined) updateData.businessName = businessName;
-    if (businessAddress !== undefined) updateData.businessAddress = businessAddress;
-    if (businessType !== undefined) updateData.businessType = businessType;
-    if (storeName !== undefined) updateData.storeName = storeName;
-    if (storeDescription !== undefined) updateData.storeDescription = storeDescription;
-    if (contactPerson !== undefined) updateData.contactPerson = contactPerson;
-    if (artistName !== undefined) updateData.artistName = artistName;
-    if (artistDescription !== undefined) updateData.artistDescription = artistDescription;
+    const allowedFields = [
+      'abn',
+      'businessName',
+      'businessAddress',
+      'businessType',
+      'storeName',
+      'storeDescription',
+      'contactPerson',
+      'artistName',
+      'artistDescription',
+    ];
+    for (const field of allowedFields) {
+      if (body[field] !== undefined) updateData[field] = body[field];
+    }
 
-    await prisma.sellerProfile.update({ where: { userId: sellerId }, data: updateData });
+    if (Object.keys(updateData).length === 0) {
+      return reply.status(400).send({ success: false, message: "No valid seller profile fields provided" });
+    }
 
-    return reply.status(200).send({ success: true, message: "Seller profile updated successfully" });
+    const updatedSeller = await prisma.sellerProfile.update({
+      where: { userId: sellerId },
+      data: updateData,
+      select: {
+        userId: true,
+        businessName: true,
+        storeName: true,
+        abn: true,
+        businessAddress: true,
+      },
+    });
+
+    return reply.status(200).send({
+      success: true,
+      message: "Seller profile updated successfully",
+      sellerProfile: updatedSeller,
+    });
   } catch (error) {
     console.error("updateSellerProfile error:", error);
     reply.status(500).send({ success: false, message: "Server error" });

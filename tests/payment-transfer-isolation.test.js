@@ -655,6 +655,7 @@ test("Direct Charge payment-success webhook creates no transfer", async () => {
     [
       "ADMIN_NEW_ORDER_NOTIFICATION",
       "CUSTOMER_CONFIRMATION",
+      "FINANCE_INVOICE",
       "SELLER_NEW_ORDER_NOTIFICATION",
       "SELLER_PAYMENT_NOTIFICATION",
     ],
@@ -787,6 +788,7 @@ test("paid unconfirmed order without outbox recovers on webhook retry", async ()
     [
       "ADMIN_NEW_ORDER_NOTIFICATION",
       "CUSTOMER_CONFIRMATION",
+      "FINANCE_INVOICE",
       "SELLER_NEW_ORDER_NOTIFICATION",
       "SELLER_PAYMENT_NOTIFICATION",
     ],

@@ -808,6 +808,13 @@ function buildPaymentCompletionOutboxRows({ order, paymentIntentId, sellerIds })
       type: "ADMIN_NEW_ORDER_NOTIFICATION",
       payload: basePayload,
     },
+    // One order-level copy for Accounts Receivable, never one per seller.
+    {
+      orderId: order.id,
+      stripePaymentIntentId: paymentIntentId,
+      type: "FINANCE_INVOICE",
+      payload: basePayload,
+    },
   ];
 
   rows.push({

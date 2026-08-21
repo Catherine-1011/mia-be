@@ -23,6 +23,7 @@ const { buildPaymentCompletionOutboxRows } = require(paymentPath);
 const EXPECTED_TYPES = [
   "CUSTOMER_CONFIRMATION",
   "ADMIN_NEW_ORDER_NOTIFICATION",
+  "FINANCE_INVOICE",
   "SELLER_NEW_ORDER_NOTIFICATION",
   "SELLER_PAYMENT_NOTIFICATION",
 ];
@@ -63,6 +64,18 @@ test("multi-seller payment carries every sellerId into the seller-scoped rows", 
   assert.deepEqual(sellerPayment.payload.sellerIds.sort(), ["seller_a", "seller_b"]);
 });
 
+test("mixed-seller order still produces exactly one order-level FINANCE_INVOICE row, not one per seller", () => {
+  const order = baseOrder({
+    items: [{ product: { sellerId: "seller_a" } }, { product: { sellerId: "seller_b" } }, { product: { sellerId: "ALPA" } }],
+  });
+  const rows = buildPaymentCompletionOutboxRows({ order, paymentIntentId: "pi_mixed", sellerIds: ["seller_a", "seller_b", "ALPA"] });
+
+  const financeRows = rows.filter((r) => r.type === "FINANCE_INVOICE");
+  assert.equal(financeRows.length, 1);
+  assert.equal(financeRows[0].orderId, order.id);
+  assert.equal(financeRows[0].stripePaymentIntentId, "pi_mixed");
+});
+
 test("single-seller payment carries exactly one sellerId", () => {
   const order = baseOrder();
   const rows = buildPaymentCompletionOutboxRows({ order, paymentIntentId: "pi_single", sellerIds: ["seller_a"] });
@@ -99,4 +112,12 @@ test("re-running the row builder for the same order+paymentIntent produces ident
     inserted += 1;
   }
   assert.equal(inserted, EXPECTED_TYPES.length);
+});
+
+test("exactly one FINANCE_INVOICE row is created for a normal single-seller order", () => {
+  const order = baseOrder();
+  const rows = buildPaymentCompletionOutboxRows({ order, paymentIntentId: "pi_finance", sellerIds: ["seller_a"] });
+
+  const financeRows = rows.filter((r) => r.type === "FINANCE_INVOICE");
+  assert.equal(financeRows.length, 1);
 });

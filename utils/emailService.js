@@ -612,6 +612,12 @@ const sendFinanceOrderInvoiceEmail = async (orderDetails, pdfBuffer) => {
     return { success: true };
   }
 
+  const financeRecipient = process.env.FINANCE_EMAIL_RECEIVER;
+  if (!financeRecipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(financeRecipient)) {
+    console.error('Finance invoice email skipped: FINANCE_EMAIL_RECEIVER is not configured with a valid address.');
+    return { success: false, error: 'FINANCE_EMAIL_RECEIVER is not configured' };
+  }
+
   const content = `
     <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto;">
       <div style="text-align: center; margin-bottom: 30px;">
@@ -662,7 +668,7 @@ const sendFinanceOrderInvoiceEmail = async (orderDetails, pdfBuffer) => {
   `;
 
   const msg = {
-    to: process.env.FINANCE_EMAIL_RECEIVER || 'ritikkashyap013@gmail.com',
+    to: financeRecipient,
     from: { email: senderEmail, name: senderName },
     subject: `[Finance Copy] Invoice for Order ${orderDetails.displayId}`,
     html: generateResponsiveEmailTemplate({

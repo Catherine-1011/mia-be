@@ -253,6 +253,7 @@ function outboxRowsFor(order, sellerIds) {
   return [
     { id: `${order.id}-customer`, orderId: order.id, type: "CUSTOMER_CONFIRMATION" },
     { id: `${order.id}-admin`, orderId: order.id, type: "ADMIN_NEW_ORDER_NOTIFICATION", payload: { sellerIds } },
+    { id: `${order.id}-finance`, orderId: order.id, type: "FINANCE_INVOICE" },
     { id: `${order.id}-seller-new`, orderId: order.id, type: "SELLER_NEW_ORDER_NOTIFICATION", payload: { sellerIds } },
     { id: `${order.id}-seller-payment`, orderId: order.id, type: "SELLER_PAYMENT_NOTIFICATION", payload: { sellerIds } },
   ];
@@ -329,11 +330,14 @@ test("a successful payment creates customer, super admin, and seller job outcome
 
   const result = await processor.processPaymentCompletionOutboxOnce();
 
-  assert.equal(result.processed, 4);
+  assert.equal(result.processed, 5);
   for (const job of jobs.values()) assert.equal(job.status, "PROCESSED");
   assert.equal(calls.customerEmail.length, 1);
   assert.ok(Buffer.isBuffer(calls.customerEmail[0].invoicePDFBuffer));
-  assert.equal(calls.financeEmail.length, 0);
+  // Accounts Receivable gets exactly one order-level copy alongside the unchanged customer/admin/seller recipients.
+  assert.equal(calls.financeEmail.length, 1);
+  assert.equal(calls.financeEmail[0].orderId, order.id);
+  assert.ok(Buffer.isBuffer(calls.financeEmail[0].invoicePDFBuffer));
   assert.equal(calls.notifyAdmin.length, 1);
   assert.equal(calls.adminEmail.length, 1);
   assert.ok(Buffer.isBuffer(calls.adminEmail[0].details.invoicePDFBuffer));
@@ -906,6 +910,32 @@ test("a failed job does not flip unrelated jobs for the same order to PROCESSED"
 
   assert.equal(jobs.get("job_customer").status, "FAILED");
   assert.equal(jobs.get("job_finance").status, "PROCESSED");
+});
+
+test("a failed FINANCE_INVOICE job does not affect customer/seller/admin job outcomes for the same order", async () => {
+  const order = makeSingleSellerOrder();
+  const { processor, jobs, calls } = loadProcessor({
+    ordersById: { [order.id]: order },
+    jobs: [
+      { id: "job_customer", orderId: order.id, type: "CUSTOMER_CONFIRMATION" },
+      { id: "job_finance", orderId: order.id, type: "FINANCE_INVOICE" },
+      { id: "job_seller_payment", orderId: order.id, type: "SELLER_PAYMENT_NOTIFICATION", payload: { sellerIds: [SELLER_A.id] } },
+    ],
+    emailResults: {
+      sendOrderConfirmationEmail: { success: true },
+      sendFinanceOrderInvoiceEmail: { success: false, error: "FINANCE_EMAIL_RECEIVER is not configured" },
+      sendSellerPaymentReceivedEmail: { success: true },
+    },
+  });
+
+  await processor.processPaymentCompletionOutboxOnce();
+
+  assert.equal(jobs.get("job_finance").status, "FAILED");
+  assert.match(jobs.get("job_finance").lastError, /FINANCE_EMAIL_RECEIVER/);
+  assert.equal(jobs.get("job_customer").status, "PROCESSED");
+  assert.equal(jobs.get("job_seller_payment").status, "PROCESSED");
+  assert.equal(calls.customerEmail.length, 1);
+  assert.equal(calls.sellerEmail.length, 1);
 });
 
 test("admin email failures remain retryable without duplicating successful admins or in-app notifications", async () => {

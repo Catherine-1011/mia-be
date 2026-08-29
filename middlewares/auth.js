@@ -5,8 +5,6 @@ const { resolveAuthUserId } = require("../utils/authIdentity");
 module.exports = async (request, reply) => {
   try {
     const header = request.headers.authorization;
-    console.log('Authorization header:', header);
-    console.log('JWT_SECRET:', process.env.JWT_SECRET);
 
     if (!header || !header.startsWith("Bearer ")) {
       console.log('No token provided');

@@ -31,6 +31,48 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const STRIPE_WEBHOOK_PROCESSING_TIMEOUT_MS =
   Number(process.env.STRIPE_WEBHOOK_PROCESSING_TIMEOUT_MS || 10 * 60 * 1000);
 
+const STRIPE_OAUTH_STATE_OPERATION = "STRIPE_CONNECT_OAUTH_STATE";
+const STRIPE_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+
+function hashOAuthState(state) {
+  return crypto.createHash("sha256").update(state, "utf8").digest("hex");
+}
+
+function isValidOAuthState(state) {
+  return typeof state === "string" && /^[A-Za-z0-9_-]{43}$/.test(state);
+}
+
+async function createOAuthState(userId) {
+  const state = crypto.randomBytes(32).toString("base64url");
+  const stateHash = hashOAuthState(state);
+  await prisma.apiIdempotencyOperation.create({
+    data: {
+      operationKey: `stripe-connect-oauth:${stateHash}`,
+      operationType: STRIPE_OAUTH_STATE_OPERATION,
+      requestHash: userId,
+      status: "STARTED",
+    },
+  });
+  return state;
+}
+
+async function consumeOAuthState(state) {
+  if (!isValidOAuthState(state)) return null;
+  const operationKey = `stripe-connect-oauth:${hashOAuthState(state)}`;
+  const claimed = await prisma.apiIdempotencyOperation.updateMany({
+    where: {
+      operationKey,
+      operationType: STRIPE_OAUTH_STATE_OPERATION,
+      status: "STARTED",
+      createdAt: { gt: new Date(Date.now() - STRIPE_OAUTH_STATE_TTL_MS) },
+    },
+    data: { status: "CONSUMED" },
+  });
+  if (claimed.count !== 1) return null;
+  const operation = await prisma.apiIdempotencyOperation.findUnique({ where: { operationKey } });
+  return operation?.operationType === STRIPE_OAUTH_STATE_OPERATION ? operation.requestHash : null;
+}
+
 function extractPaymentIntentIdFromStripeEvent(event) {
   const object = event?.data?.object || {};
   if (event?.type?.startsWith("payment_intent.")) return object.id || null;
@@ -315,6 +357,7 @@ exports.getOAuthUrl = async (request, reply) => {
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
     const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
     const redirectUri  = `${frontendBase}/seller/stripe/callback`;
+    const oauthState = await createOAuthState(userId);
 
     // Build the OAuth authorisation URL — pre-fill seller details so they don't re-enter them
     const params = new URLSearchParams({
@@ -322,7 +365,7 @@ exports.getOAuthUrl = async (request, reply) => {
       client_id:     clientId,
       scope:         'read_write',
       redirect_uri:  redirectUri,
-      state:         userId,
+      state:         oauthState,
       'stripe_user[email]':   user?.email || '',
       'stripe_user[country]': 'AU',
       'stripe_user[currency]': 'aud',
@@ -354,7 +397,12 @@ exports.getOAuthUrl = async (request, reply) => {
 // ─────────────────────────────────────────────────────────────────────────────
 exports.handleOAuthCallback = async (request, reply) => {
   try {
-    const { code, state: userId, error: oauthError, error_description } = request.query;
+    const { code, state, error: oauthError, error_description } = request.query;
+
+    const userId = await consumeOAuthState(state);
+    if (!userId) {
+      return reply.status(400).send({ success: false, message: 'Invalid or expired state parameter.' });
+    }
 
     // Stripe sends ?error=access_denied if seller cancels
     if (oauthError) {
@@ -366,8 +414,8 @@ exports.handleOAuthCallback = async (request, reply) => {
       });
     }
 
-    if (!code || !userId) {
-      return reply.status(400).send({ success: false, message: 'Missing code or state parameter.' });
+    if (!code) {
+      return reply.status(400).send({ success: false, message: 'Missing authorization code.' });
     }
 
     // Verify the seller exists
@@ -378,6 +426,11 @@ exports.handleOAuthCallback = async (request, reply) => {
 
     if (!user || !user.sellerProfile) {
       return reply.status(404).send({ success: false, message: 'Seller not found.' });
+    }
+
+    // There is no supported reconnect route; never replace an account through OAuth.
+    if (user.sellerProfile.stripeAccountId) {
+      return reply.status(409).send({ success: false, message: 'Stripe account is already connected.' });
     }
 
     // Exchange the authorisation code for the connected account ID

@@ -12,6 +12,7 @@ const path = require('path');
 const { createContainedUploadPath, extensionForMime, sanitizeOriginalFilename } = require('../utils/uploadSecurity');
 const { getDefaultCommission, getCommissionForSeller } = require("./commission");
 const { notifyAdminNewSellerApplication, notifyBankChangeRequested } = require("./notification");
+const { verifyAndConsumeOtp, resetOtpChallenge } = require("../utils/otpChallenge");
 
 // Helper function to generate seller JWT token
 const generateSellerToken = (userId) => {
@@ -157,16 +158,14 @@ exports.applyAsSeller = async (request, reply) => {
         await prisma.pendingRegistration.upsert({
           where: { email: normalizedEmail },
           update: {
-            otp,
-            otpExpiry,
+            ...resetOtpChallenge(otp, otpExpiry),
             updatedAt: new Date()
           },
           create: {
             email: normalizedEmail,
             phone,
             name: contactPerson,
-            otp,
-            otpExpiry,
+            ...resetOtpChallenge(otp, otpExpiry),
             role: 'SELLER'
           }
         });
@@ -210,16 +209,14 @@ exports.applyAsSeller = async (request, reply) => {
       update: {
         phone,
         name: contactPerson,
-        otp,
-        otpExpiry,
+        ...resetOtpChallenge(otp, otpExpiry),
         role: 'SELLER'
       },
       create: {
         email: normalizedEmail,
         phone,
         name: contactPerson,
-        otp,
-        otpExpiry,
+        ...resetOtpChallenge(otp, otpExpiry),
         role: 'SELLER'
       }
     });
@@ -272,7 +269,7 @@ exports.verifyOTP = async (request, reply) => {
       });
     }
 
-    if (!pending || pending.otp !== otp) {
+    if (!pending) {
       return reply.status(400).send({
         success: false,
         message: "Invalid OTP"
@@ -288,6 +285,11 @@ exports.verifyOTP = async (request, reply) => {
         success: false,
         message: "OTP has expired. Please request a new one."
       });
+    }
+
+    const otpResult = await verifyAndConsumeOtp(prisma.pendingRegistration, pending, otp);
+    if (otpResult.status !== 'verified') {
+      return reply.status(400).send({ success: false, message: "Invalid OTP" });
     }
 
     // Hash password
@@ -531,8 +533,7 @@ exports.resendOTP = async (request, reply) => {
     await prisma.pendingRegistration.update({
       where: { id: pending.id },
       data: {
-        otp,
-        otpExpiry,
+        ...resetOtpChallenge(otp, otpExpiry),
         updatedAt: new Date()
       }
     });
@@ -1246,13 +1247,12 @@ exports.resumeOnboarding = async (request, reply) => {
     // role='SELLER_RESUME' distinguishes it from a fresh registration OTP.
     await prisma.pendingRegistration.upsert({
       where: { email: normalizedEmail },
-      update: { otp, otpExpiry, updatedAt: new Date() },
+      update: { ...resetOtpChallenge(otp, otpExpiry), updatedAt: new Date() },
       create: {
         email: normalizedEmail,
         phone: user.phone || '',
         name:  user.name  || '',
-        otp,
-        otpExpiry,
+        ...resetOtpChallenge(otp, otpExpiry),
         role: 'SELLER'
       }
     });
@@ -1301,16 +1301,17 @@ exports.resumeVerifyOtp = async (request, reply) => {
       });
     }
 
-    if (pending.otp !== otp) {
-      return reply.status(400).send({ success: false, message: "Invalid OTP." });
-    }
-
     if (pending.otpExpiry < new Date()) {
       await prisma.pendingRegistration.delete({ where: { id: pending.id } });
       return reply.status(400).send({
         success: false,
         message: "OTP has expired. Please request a new one."
       });
+    }
+
+    const otpResult = await verifyAndConsumeOtp(prisma.pendingRegistration, pending, otp);
+    if (otpResult.status !== 'verified') {
+      return reply.status(400).send({ success: false, message: "Invalid OTP." });
     }
 
     // OTP valid — clean up the temporary record
@@ -1391,8 +1392,7 @@ exports.forgotPassword = async (request, reply) => {
     await prisma.pendingRegistration.upsert({
       where: { email: normalizedEmail },
       update: {
-        otp,
-        otpExpiry,
+        ...resetOtpChallenge(otp, otpExpiry),
         name: user.name,
         phone: user.phone,
         role: 'SELLER',
@@ -1402,8 +1402,7 @@ exports.forgotPassword = async (request, reply) => {
         email: normalizedEmail,
         name: user.name,
         phone: user.phone,
-        otp,
-        otpExpiry,
+        ...resetOtpChallenge(otp, otpExpiry),
         role: 'SELLER'
       }
     });
@@ -1446,7 +1445,7 @@ exports.resetPassword = async (request, reply) => {
       where: { email: normalizedEmail }
     });
 
-    if (!pending || pending.otp !== otp) {
+    if (!pending) {
       return reply.status(400).send({
         success: false,
         message: "Invalid OTP"
@@ -1462,6 +1461,12 @@ exports.resetPassword = async (request, reply) => {
         success: false,
         message: "OTP has expired. Please request a new one."
       });
+    }
+
+
+    const otpResult = await verifyAndConsumeOtp(prisma.pendingRegistration, pending, otp);
+    if (otpResult.status !== 'verified') {
+      return reply.status(400).send({ success: false, message: "Invalid OTP" });
     }
 
     // Hash new password
@@ -1684,8 +1689,7 @@ exports.submitSellerOnboarding = async (request, reply) => {
       update: {
         name: contactPerson,
         phone,
-        otp,
-        otpExpiry,
+        ...resetOtpChallenge(otp, otpExpiry),
         formData,
         updatedAt: new Date()
       },
@@ -1693,8 +1697,7 @@ exports.submitSellerOnboarding = async (request, reply) => {
         email: normalizedEmail,
         name: contactPerson,
         phone,
-        otp,
-        otpExpiry,
+        ...resetOtpChallenge(otp, otpExpiry),
         role: 'SELLER',
         formData
       }
@@ -1740,7 +1743,7 @@ exports.verifyAndSubmit = async (request, reply) => {
       where: { email: normalizedEmail }
     });
 
-    if (!pending || pending.otp !== otp) {
+    if (!pending) {
       return reply.status(400).send({
         success: false,
         message: "Invalid OTP"
@@ -1753,6 +1756,12 @@ exports.verifyAndSubmit = async (request, reply) => {
         success: false,
         message: "OTP has expired. Please request a new one."
       });
+    }
+
+
+    const otpResult = await verifyAndConsumeOtp(prisma.pendingRegistration, pending, otp);
+    if (otpResult.status !== 'verified') {
+      return reply.status(400).send({ success: false, message: "Invalid OTP" });
     }
 
     const fd = pending.formData || {};

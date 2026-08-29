@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const { generateOTP, sendOTPEmail } = require("../utils/emailService");
 const { addToBlacklist, isBlacklisted } = require("../utils/tokenDenylist");
 const { ALLOWED_ORIGINS } = require("../config/allowedOrigins");
+const { verifyAndConsumeOtp, resetOtpChallenge } = require("../utils/otpChallenge");
 
 const SAML_PASSWORD = 'SAML_MANAGED_ACCOUNT_NO_PASSWORD';
 const ALPA_EMAIL_DOMAIN = '@alpa.asn.au';
@@ -178,8 +179,7 @@ exports.register = async (request, reply) => {
         password: hashedPassword,
         mobile,
         role: normalizedRole,
-        otp,
-        otpExpiry,
+        ...resetOtpChallenge(otp, otpExpiry),
       }
     });
 
@@ -362,8 +362,7 @@ exports.login = async (request, reply) => {
         data: {
           userId: user.id,
           email: normalizedEmail,
-          otp: otp,
-          otpExpiry: otpExpiry,
+          ...resetOtpChallenge(otp, otpExpiry),
           deviceFingerprint: deviceFingerprint,
           verified: false
         }
@@ -436,8 +435,8 @@ exports.verifyOTP = async (request, reply) => {
       });
     }
 
-    // Verify OTP
-    if (pendingData.otp !== otp) {
+    const otpResult = await verifyAndConsumeOtp(prisma.pendingRegistration, pendingData, otp);
+    if (otpResult.status !== 'verified') {
       return reply.status(400).send({ 
         success: false, 
         message: "Invalid OTP. Please try again." 
@@ -558,8 +557,7 @@ exports.resendOTP = async (request, reply) => {
         data: {
           userId: existingUser.id,
           email: normalizedEmail,
-          otp: otp,
-          otpExpiry: otpExpiry,
+          ...resetOtpChallenge(otp, otpExpiry),
           deviceFingerprint: df,
           verified: false
         }
@@ -601,10 +599,7 @@ exports.resendOTP = async (request, reply) => {
     // Update OTP
     await prisma.pendingRegistration.update({
       where: { email: normalizedEmail },
-      data: {
-        otp,
-        otpExpiry,
-      }
+      data: resetOtpChallenge(otp, otpExpiry)
     });
 
     // Send new OTP email
@@ -659,8 +654,7 @@ exports.forgotPassword = async (request, reply) => {
     await prisma.pendingRegistration.upsert({
       where: { email: normalizedEmail },
       update: {
-        otp,
-        otpExpiry,
+        ...resetOtpChallenge(otp, otpExpiry),
         role: 'PASSWORD_RESET'
       },
       create: {
@@ -669,8 +663,7 @@ exports.forgotPassword = async (request, reply) => {
         password: user.password, // Store existing password temporarily
         mobile: user.phone || '',
         role: 'PASSWORD_RESET',
-        otp,
-        otpExpiry
+        ...resetOtpChallenge(otp, otpExpiry)
       }
     });
 
@@ -738,8 +731,8 @@ exports.resetPassword = async (request, reply) => {
       });
     }
 
-    // Verify OTP
-    if (resetData.otp !== otp) {
+    const otpResult = await verifyAndConsumeOtp(prisma.pendingRegistration, resetData, otp);
+    if (otpResult.status !== 'verified') {
       return reply.status(400).send({ 
         success: false, 
         message: "Invalid OTP. Please try again." 
@@ -902,8 +895,8 @@ exports.verifyLoginOTP = async (request, reply) => {
       });
     }
 
-    // Verify OTP
-    if (verification.otp !== otp) {
+    const otpResult = await verifyAndConsumeOtp(prisma.loginVerification, verification, otp);
+    if (otpResult.status !== 'verified') {
       return reply.status(400).send({ 
         success: false, 
         message: "Invalid OTP. Please check and try again." 
@@ -1064,8 +1057,7 @@ exports.resendLoginOTP = async (request, reply) => {
       data: {
         userId: user.id,
         email: normalizedEmail,
-        otp: otp,
-        otpExpiry: otpExpiry,
+        ...resetOtpChallenge(otp, otpExpiry),
         deviceFingerprint: deviceFingerprint,
         verified: false
       }
@@ -1349,8 +1341,7 @@ exports.submitSamlAccessEmail = async (request, reply) => {
         data: {
           userId: freshUser.id,
           email: normalizedEmail,
-          otp,
-          otpExpiry: verificationExpiresAt,
+          ...resetOtpChallenge(otp, verificationExpiresAt),
           deviceFingerprint: `saml:${verificationToken}`,
           verified: false,
         },
@@ -1442,7 +1433,8 @@ exports.verifySamlAccessOTP = async (request, reply) => {
       return reply.status(400).send({ success: false, message: "OTP has expired. Please request a new code." });
     }
 
-    if (verification.otp !== submittedOtp) {
+    const otpResult = await verifyAndConsumeOtp(prisma.loginVerification, verification, submittedOtp);
+    if (otpResult.status !== 'verified') {
       return reply.status(400).send({ success: false, message: "Invalid OTP. Please check and try again." });
     }
 

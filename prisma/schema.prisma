@@ -79,6 +79,8 @@ model PendingRegistration {
   role      Role
   otp       String
   otpExpiry DateTime
+  otpFailedAttempts Int      @default(0)
+  otpConsumedAt     DateTime?
   createdAt DateTime @default(now())
   phone     String?
   updatedAt DateTime @updatedAt
@@ -111,6 +113,8 @@ model LoginVerification {
   email             String
   otp               String
   otpExpiry         DateTime
+  otpFailedAttempts Int      @default(0)
+  otpConsumedAt     DateTime?
   deviceFingerprint String
   verified          Boolean  @default(false)
   createdAt         DateTime @default(now())

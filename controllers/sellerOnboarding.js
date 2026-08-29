@@ -13,6 +13,10 @@ const { createContainedUploadPath, extensionForMime, sanitizeOriginalFilename } 
 const { getDefaultCommission, getCommissionForSeller } = require("./commission");
 const { notifyAdminNewSellerApplication, notifyBankChangeRequested } = require("./notification");
 const { verifyAndConsumeOtp, resetOtpChallenge } = require("../utils/otpChallenge");
+const {
+  hashNewPendingSellerPassword,
+  normalizePendingSellerPassword,
+} = require("../utils/pendingSellerPassword");
 
 // Helper function to generate seller JWT token
 const generateSellerToken = (userId) => {
@@ -318,7 +322,7 @@ exports.verifyOTP = async (request, reply) => {
           userId: user.id,
           contactPerson: pending.name,
           onboardingStep: 2,
-          status: 'ACTIVE',
+          status: 'PENDING',
           productCount: 0,
           minimumProductsUploaded: false
         }
@@ -921,7 +925,9 @@ exports.submitForReview = async (request, reply) => {
     const updatedProfile = await prisma.sellerProfile.update({
       where: { userId },
       data: {
-        status: 'ACTIVE',
+        status: ['ACTIVE', 'APPROVED'].includes(sellerProfile.status)
+          ? sellerProfile.status
+          : 'PENDING',
         submittedForReviewAt: new Date(),
         onboardingStep: 8,
         updatedAt: new Date()
@@ -1662,11 +1668,14 @@ exports.submitSellerOnboarding = async (request, reply) => {
     const otp = generateOTP();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 min
 
+    // Hash before persistence. PendingRegistration must never store a plaintext password.
+    const pendingPasswordHash = await hashNewPendingSellerPassword(password);
+
     // Store all form data + KYC Cloudinary URLs as JSON alongside OTP
     const formData = {
       phone,
       contactPerson,
-      password, // plain — will be hashed on verify-and-submit
+      password: pendingPasswordHash,
       businessName: businessName || null,
       abn: abn || null,
       businessAddress: businessAddress || null,
@@ -1773,8 +1782,9 @@ exports.verifyAndSubmit = async (request, reply) => {
       });
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(fd.password, 10);
+    // New pending rows already contain a bcrypt hash. Legacy production rows may
+    // still contain plaintext, so normalize exactly once before User creation.
+    const hashedPassword = await normalizePendingSellerPassword(fd.password);
 
     // Create User + SellerProfile in a single transaction
     const result = await prisma.$transaction(async (tx) => {
@@ -1810,7 +1820,7 @@ exports.verifyAndSubmit = async (request, reply) => {
           kycDocuments: fd.kycDocuments || undefined,
           kycSubmitted: fd.kycDocuments && fd.kycDocuments.length > 0 ? true : false,
           onboardingStep: 2,
-          status: 'ACTIVE',
+          status: 'PENDING',
           productCount: 0,
           minimumProductsUploaded: false
         }

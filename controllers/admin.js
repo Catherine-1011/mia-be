@@ -2899,6 +2899,98 @@ exports.getPendingSellers = async (request, reply) => {
   }
 };
 
+// APPROVE SELLER APPLICATION
+exports.approveSeller = async (request, reply) => {
+  try {
+    const sellerId = request.params.sellerId;
+    const adminId = request.user.userId;
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId: sellerId },
+      include: { user: true },
+    });
+
+    if (!seller) {
+      return reply.status(404).send({ success: false, message: "Seller not found" });
+    }
+    if (seller.status !== "PENDING") {
+      return reply.status(409).send({
+        success: false,
+        message: `Only pending seller applications can be approved. Current status: ${seller.status}`,
+      });
+    }
+
+    const updatedSeller = await prisma.sellerProfile.update({
+      where: { userId: sellerId },
+      data: {
+        status: "ACTIVE",
+        approvedAt: new Date(),
+        activatedAt: new Date(),
+        activatedBy: adminId,
+        rejectedAt: null,
+        rejectionReason: null,
+      },
+    });
+
+    await Promise.allSettled([
+      notifySellerApproved(sellerId, seller.user?.name || seller.storeName || "Seller"),
+      sendSellerApprovedEmail(seller.user.email, seller.user.name || seller.storeName || "Seller"),
+    ]);
+
+    return reply.status(200).send({
+      success: true,
+      message: "Seller approved successfully",
+      seller: updatedSeller,
+    });
+  } catch (error) {
+    console.error("Approve seller error:", error);
+    return reply.status(500).send({ success: false, message: "Server error" });
+  }
+};
+
+// REJECT SELLER APPLICATION
+exports.rejectSeller = async (request, reply) => {
+  try {
+    const sellerId = request.params.sellerId;
+    const reason = request.body?.reason || "Not specified";
+    const seller = await prisma.sellerProfile.findUnique({
+      where: { userId: sellerId },
+      include: { user: true },
+    });
+
+    if (!seller) {
+      return reply.status(404).send({ success: false, message: "Seller not found" });
+    }
+    if (seller.status !== "PENDING") {
+      return reply.status(409).send({
+        success: false,
+        message: `Only pending seller applications can be rejected. Current status: ${seller.status}`,
+      });
+    }
+
+    const updatedSeller = await prisma.sellerProfile.update({
+      where: { userId: sellerId },
+      data: {
+        status: "REJECTED",
+        rejectedAt: new Date(),
+        rejectionReason: reason,
+      },
+    });
+
+    await Promise.allSettled([
+      notifySellerApprovalRejected(sellerId, reason, seller.user?.name || seller.storeName || "Seller"),
+    ]);
+
+    return reply.status(200).send({
+      success: true,
+      message: "Seller rejected successfully",
+      seller: updatedSeller,
+    });
+  } catch (error) {
+    console.error("Reject seller error:", error);
+    return reply.status(500).send({ success: false, message: "Server error" });
+  }
+};
+
 
 // MIGRATE EXISTING SELLERS TO ACTIVE (PENDING, PENDING_APPROVAL, APPROVED → ACTIVE)
 exports.migrateSellerStatusToActive = async (request, reply) => {

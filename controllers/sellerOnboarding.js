@@ -9,6 +9,7 @@ const crypto = require("crypto");
 const fs = require('fs').promises;
 const os = require('os');
 const path = require('path');
+const { createContainedUploadPath, extensionForMime, sanitizeOriginalFilename } = require('../utils/uploadSecurity');
 const { getDefaultCommission, getCommissionForSeller } = require("./commission");
 const { notifyAdminNewSellerApplication, notifyBankChangeRequested } = require("./notification");
 
@@ -1518,7 +1519,7 @@ exports.submitSellerOnboarding = async (request, reply) => {
         const buf = await part.toBuffer();
         uploadedParts.push({
           fieldname: part.fieldname,
-          filename: part.filename,
+          filename: sanitizeOriginalFilename(part.filename),
           mimetype: part.mimetype,
           buffer: buf
         });
@@ -1581,7 +1582,7 @@ exports.submitSellerOnboarding = async (request, reply) => {
     let storeLogoUrl = storeLogo || null;
     if (storeLogoParts.length > 0) {
       const logoFile = storeLogoParts[0];
-      const tmpPath = path.join(os.tmpdir(), `storeLogo-${Date.now()}-${logoFile.filename || 'logo'}`);
+      const tmpPath = createContainedUploadPath(os.tmpdir(), 'storeLogo', extensionForMime(logoFile.mimetype));
       try {
         await fs.writeFile(tmpPath, logoFile.buffer);
         const result = await uploadToCloudinary(tmpPath, 'store-logos');
@@ -1630,7 +1631,7 @@ exports.submitSellerOnboarding = async (request, reply) => {
     if (kycFileParts && kycFileParts.length > 0) {
     for (const file of kycFileParts) {
       // Write buffer to a tmp file, upload to Cloudinary, then delete tmp
-      const tmpPath = path.join(os.tmpdir(), `kyc-${Date.now()}-${file.filename || 'doc'}`);
+      const tmpPath = createContainedUploadPath(os.tmpdir(), 'kyc', extensionForMime(file.mimetype));
       try {
         await fs.writeFile(tmpPath, file.buffer);
         const result = await uploadToCloudinary(tmpPath, 'kyc-documents');

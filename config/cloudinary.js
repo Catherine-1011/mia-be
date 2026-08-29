@@ -17,7 +17,7 @@ const BUCKET = process.env.DO_SPACES_BUCKET;
 const CDN_ENDPOINT = process.env.DO_SPACES_CDN_ENDPOINT || process.env.DO_SPACES_ENDPOINT;
 
 // Upload file to DigitalOcean Spaces
-const uploadToCloudinary = async (filePath, folder = 'sellers') => {
+const uploadToCloudinary = async (filePath, folder = 'sellers', contentType) => {
   const fileBuffer = fs.readFileSync(filePath);
   const ext = path.extname(filePath);
   const uniqueName = `${crypto.randomBytes(16).toString('hex')}${ext}`;
@@ -28,7 +28,7 @@ const uploadToCloudinary = async (filePath, folder = 'sellers') => {
     Key: key,
     Body: fileBuffer,
     ACL: 'public-read',
-    ContentType: _mimeFromExt(ext)
+    ContentType: contentType || _mimeFromExt(ext)
   });
 
   try {
@@ -61,7 +61,11 @@ function _mimeFromExt(ext) {
     '.webp': 'image/webp',
     '.gif': 'image/gif',
     '.svg': 'image/svg+xml',
-    '.pdf': 'application/pdf'
+    '.pdf': 'application/pdf',
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.mov': 'video/quicktime',
+    '.avi': 'video/x-msvideo'
   };
   return map[ext.toLowerCase()] || 'application/octet-stream';
 }

@@ -9,6 +9,7 @@ const { uploadToCloudinary } = require("../config/cloudinary");
 const fs = require('fs');
 const path = require('path');
 const { pipeline } = require('stream/promises');
+const { createContainedUploadPath, extensionForMime } = require('../utils/uploadSecurity');
 const { invalidateCache } = require('../utils/cacheInvalidation');
 
 const STRIPE_DESCRIPTION_MAX_LENGTH = 255;
@@ -6005,6 +6006,7 @@ exports.createSponsoredSection = async (request, reply) => {
           // Handle file upload (media file - image or video)
           
           if (part.fieldname === 'media' || part.fieldname === 'mediaFile') {
+            let tempPath;
             try {
               // Ensure uploads directory exists
               const uploadsDir = path.join(__dirname, '../uploads/');
@@ -6012,10 +6014,10 @@ exports.createSponsoredSection = async (request, reply) => {
                 fs.mkdirSync(uploadsDir, { recursive: true });
               }
 
-              const tempPath = path.join(uploadsDir, `${Date.now()}_${part.filename}`);
+              tempPath = createContainedUploadPath(uploadsDir, 'sponsored', extensionForMime(part.mimetype));
               
               // Write file using stream
-              await pipeline(part.file, fs.createWriteStream(tempPath));
+              await pipeline(part.file, fs.createWriteStream(tempPath, { flags: 'wx' }));
 
               // Determine media type by file extension or MIME type
               const fileExtension = path.extname(part.filename).toLowerCase();
@@ -6032,17 +6034,14 @@ exports.createSponsoredSection = async (request, reply) => {
               mediaUrl = uploadResult.url;
               
 
-              // Clean up temp file
-              try {
-                await fs.promises.unlink(tempPath);
-              } catch (unlinkError) {
-              }
             } catch (uploadError) {
               console.error('✗ File upload error:', uploadError);
               return reply.status(500).send({
                 success: false,
                 error: 'Failed to upload media file: ' + uploadError.message
               });
+            } finally {
+              if (tempPath) await fs.promises.unlink(tempPath).catch(() => {});
             }
           }
         } else {
@@ -6180,6 +6179,7 @@ exports.updateSponsoredSection = async (request, reply) => {
           // Handle file upload (media file - image or video)
           
           if (part.fieldname === 'media' || part.fieldname === 'mediaFile') {
+            let tempPath;
             try {
               // Ensure uploads directory exists
               const uploadsDir = path.join(__dirname, '../uploads/');
@@ -6187,10 +6187,10 @@ exports.updateSponsoredSection = async (request, reply) => {
                 fs.mkdirSync(uploadsDir, { recursive: true });
               }
 
-              const tempPath = path.join(uploadsDir, `${Date.now()}_${part.filename}`);
+              tempPath = createContainedUploadPath(uploadsDir, 'sponsored', extensionForMime(part.mimetype));
               
               // Write file using stream
-              await pipeline(part.file, fs.createWriteStream(tempPath));
+              await pipeline(part.file, fs.createWriteStream(tempPath, { flags: 'wx' }));
 
               // Determine media type by file extension or MIME type
               const fileExtension = path.extname(part.filename).toLowerCase();
@@ -6207,17 +6207,14 @@ exports.updateSponsoredSection = async (request, reply) => {
               mediaUrl = uploadResult.url;
               
 
-              // Clean up temp file
-              try {
-                await fs.promises.unlink(tempPath);
-              } catch (unlinkError) {
-              }
             } catch (uploadError) {
               console.error('✗ File upload error:', uploadError);
               return reply.status(500).send({
                 success: false,
                 error: 'Failed to upload media file: ' + uploadError.message
               });
+            } finally {
+              if (tempPath) await fs.promises.unlink(tempPath).catch(() => {});
             }
           }
         } else {

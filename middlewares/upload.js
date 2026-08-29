@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const { pipeline } = require('stream/promises');
+const { createContainedUploadPath, extensionForMime, sanitizeOriginalFilename } = require('../utils/uploadSecurity');
 
 // Ensure upload directories exist
 const uploadDir = 'uploads';
@@ -23,9 +24,9 @@ const MAX_IMAGE_SIZE = 3 * 1024 * 1024; // 3MB
 
 // Fastify multipart handler for seller documents
 const handleSellerDocsUpload = async (request, reply) => {
+  const files = [];
   try {
     const parts = request.parts();
-    const files = [];
     const fields = {};
 
     for await (const part of parts) {
@@ -36,17 +37,20 @@ const handleSellerDocsUpload = async (request, reply) => {
         }
 
         // Generate unique filename
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const ext = path.extname(part.filename);
-        const filename = `${part.fieldname}-${uniqueSuffix}${ext}`;
-        const filepath = path.join(sellerDocsDir, filename);
+        const filepath = createContainedUploadPath(sellerDocsDir, part.fieldname, extensionForMime(part.mimetype));
+        const filename = path.basename(filepath);
 
         // Save file
-        await pipeline(part.file, fs.createWriteStream(filepath));
+        try {
+          await pipeline(part.file, fs.createWriteStream(filepath, { flags: 'wx' }));
+        } catch (error) {
+          await fs.promises.unlink(filepath).catch(() => {});
+          throw error;
+        }
 
         files.push({
           fieldname: part.fieldname,
-          originalname: part.filename,
+          originalname: sanitizeOriginalFilename(part.filename),
           filename: filename,
           path: filepath,
           mimetype: part.mimetype,
@@ -68,6 +72,7 @@ const handleSellerDocsUpload = async (request, reply) => {
     request.files = files;
     request.body = fields;
   } catch (error) {
+    await Promise.all(files.map(file => fs.promises.unlink(file.path).catch(() => {})));
     reply.status(400).send({ success: false, message: error.message });
     throw error;
   }
@@ -75,9 +80,9 @@ const handleSellerDocsUpload = async (request, reply) => {
 
 // Fastify multipart handler for product images
 const handleProductImagesUpload = async (request, reply) => {
+  const files = [];
   try {
     const parts = request.parts();
-    const files = [];
     const fields = {};
 
     for await (const part of parts) {
@@ -88,17 +93,20 @@ const handleProductImagesUpload = async (request, reply) => {
         }
 
         // Generate unique filename
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const ext = path.extname(part.filename);
-        const filename = `product-${uniqueSuffix}${ext}`;
-        const filepath = path.join(productsDir, filename);
+        const filepath = createContainedUploadPath(productsDir, 'product', extensionForMime(part.mimetype));
+        const filename = path.basename(filepath);
 
         // Save file
-        await pipeline(part.file, fs.createWriteStream(filepath));
+        try {
+          await pipeline(part.file, fs.createWriteStream(filepath, { flags: 'wx' }));
+        } catch (error) {
+          await fs.promises.unlink(filepath).catch(() => {});
+          throw error;
+        }
 
         files.push({
           fieldname: part.fieldname,
-          originalname: part.filename,
+          originalname: sanitizeOriginalFilename(part.filename),
           filename: filename,
           path: filepath,
           mimetype: part.mimetype,
@@ -129,6 +137,7 @@ const handleProductImagesUpload = async (request, reply) => {
     request.files = files;
     request.body = fields;
   } catch (error) {
+    await Promise.all(files.map(file => fs.promises.unlink(file.path).catch(() => {})));
     reply.status(400).send({ success: false, message: error.message });
     throw error;
   }
@@ -136,13 +145,13 @@ const handleProductImagesUpload = async (request, reply) => {
 
 // Fastify multipart handler for blog cover image
 const handleBlogImageUpload = async (request, reply) => {
+  const files = [];
   try {
     const contentType = request.headers['content-type'] || '';
     // If not multipart, body is already parsed (raw JSON) — skip
     if (!contentType.includes('multipart/form-data')) return;
 
     const parts = request.parts();
-    const files = [];
     const fields = {};
 
     for await (const part of parts) {
@@ -151,12 +160,15 @@ const handleBlogImageUpload = async (request, reply) => {
           throw new Error('Only image files (JPEG, JPG, PNG, WEBP) are allowed');
         }
 
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const ext = path.extname(part.filename);
-        const filename = `blog-${uniqueSuffix}${ext}`;
-        const filepath = path.join(productsDir, filename); // reuse existing uploads/products dir
+        const filepath = createContainedUploadPath(productsDir, 'blog', extensionForMime(part.mimetype));
+        const filename = path.basename(filepath);
 
-        await pipeline(part.file, fs.createWriteStream(filepath));
+        try {
+          await pipeline(part.file, fs.createWriteStream(filepath, { flags: 'wx' }));
+        } catch (error) {
+          await fs.promises.unlink(filepath).catch(() => {});
+          throw error;
+        }
 
         const fileSize = fs.statSync(filepath).size;
         if (fileSize > MAX_IMAGE_SIZE) {
@@ -166,7 +178,7 @@ const handleBlogImageUpload = async (request, reply) => {
 
         files.push({
           fieldname: part.fieldname,
-          originalname: part.filename,
+          originalname: sanitizeOriginalFilename(part.filename),
           filename,
           path: filepath,
           mimetype: part.mimetype,
@@ -180,6 +192,7 @@ const handleBlogImageUpload = async (request, reply) => {
     request.files = files;
     request.body = fields;
   } catch (error) {
+    await Promise.all(files.map(file => fs.promises.unlink(file.path).catch(() => {})));
     reply.status(400).send({ success: false, message: error.message });
     throw error;
   }

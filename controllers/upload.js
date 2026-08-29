@@ -1,8 +1,8 @@
-const path = require('path');
 const fs = require('fs');
 const { pipeline } = require('stream/promises');
 const os = require('os');
 const { uploadToCloudinary } = require('../config/cloudinary');
+const { createContainedUploadPath, detectRasterImageType } = require('../utils/uploadSecurity');
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -51,10 +51,7 @@ exports.uploadImage = async (request, reply) => {
           throw new Error('Only JPEG, PNG, and WEBP images are allowed');
         }
 
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const ext = path.extname(part.filename);
-        const filename = `upload-${uniqueSuffix}${ext}`;
-        const filepath = path.join(os.tmpdir(), filename);
+        const filepath = createContainedUploadPath(os.tmpdir(), 'upload');
 
         // Limit the size handled by busboy/multipart internally by throwing later if it exceeds, 
         // fastify-multipart might also enforce limits if configured, but we check size after writing or during
@@ -67,7 +64,7 @@ exports.uploadImage = async (request, reply) => {
           }
         });
 
-        const tempWriteStream = fs.createWriteStream(filepath);
+        const tempWriteStream = fs.createWriteStream(filepath, { flags: 'wx' });
         try {
           await pipeline(part.file, tempWriteStream);
         } catch (err) {
@@ -77,7 +74,22 @@ exports.uploadImage = async (request, reply) => {
           throw err;
         }
 
-        uploadedFile = { path: filepath };
+        const bytes = await fs.promises.readFile(filepath);
+        const detectedType = detectRasterImageType(bytes);
+        if (!detectedType) {
+          await fs.promises.unlink(filepath).catch(() => {});
+          throw new Error('Only genuine JPEG, PNG, and WEBP images are allowed');
+        }
+
+        const normalizedPath = createContainedUploadPath(os.tmpdir(), 'upload', detectedType.extension);
+        try {
+          await fs.promises.rename(filepath, normalizedPath);
+        } catch (error) {
+          await fs.promises.unlink(filepath).catch(() => {});
+          throw error;
+        }
+
+        uploadedFile = { path: normalizedPath, detectedType };
         break; // Only need the single file
       }
     }
@@ -89,7 +101,7 @@ exports.uploadImage = async (request, reply) => {
     // Upload to Cloudinary
     let cloudResult;
     try {
-      cloudResult = await uploadToCloudinary(uploadedFile.path, 'refund-evidence');
+      cloudResult = await uploadToCloudinary(uploadedFile.path, 'refund-evidence', uploadedFile.detectedType.mime);
     } catch (err) {
       throw new Error('Failed to upload image to storage');
     } finally {

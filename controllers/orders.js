@@ -6,6 +6,7 @@ const { pipeline } = require('stream/promises');
 const os = require('os');
 const { checkInventory } = require("../utils/checkInventory");
 const { uploadToCloudinary } = require('../config/cloudinary');
+const { createContainedUploadPath, extensionForMime } = require('../utils/uploadSecurity');
 const { verifyInvoiceAccessToken } = require('../utils/invoiceAccessToken');
 
 // ─── Short Display ID Generator ───────────────────────────────────────────────
@@ -2761,16 +2762,14 @@ exports.requestGuestRefund = async (request, reply) => {
         if (part.type === 'file') {
           if (uploadedImageUrls.length >= MAX_IMAGES) { part.file.resume(); continue; }
           if (!ALLOWED_MIME_TYPES.includes(part.mimetype)) { part.file.resume(); continue; }
-          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          const ext = path.extname(part.filename) || '.jpg';
-          const filepath = path.join(os.tmpdir(), `refund-${uniqueSuffix}${ext}`);
+          const filepath = createContainedUploadPath(os.tmpdir(), 'refund', extensionForMime(part.mimetype));
           let size = 0;
           part.file.on('data', chunk => {
             size += chunk.length;
             if (size > MAX_FILE_SIZE) part.file.destroy(new Error('File exceeds 5MB limit'));
           });
           try {
-            await pipeline(part.file, fs.createWriteStream(filepath));
+            await pipeline(part.file, fs.createWriteStream(filepath, { flags: 'wx' }));
             tempFiles.push(filepath);
           } catch (e) {
             if (fs.existsSync(filepath)) fs.unlinkSync(filepath);

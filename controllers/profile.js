@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { pipeline } = require('stream/promises');
 const bcrypt = require('bcryptjs');
+const { createContainedUploadPath, extensionForMime } = require('../utils/uploadSecurity');
 
 // Get profile for authenticated user (id from token)
 exports.getProfile = async (request, reply) => {
@@ -64,6 +65,7 @@ exports.updateProfile = async (request, reply) => {
         
         // Only process if fieldname is 'profileImage'
         if (part.fieldname === 'profileImage') {
+          let tempPath;
           try {
             // Ensure uploads directory exists
             const uploadsDir = path.join(__dirname, '../uploads/');
@@ -71,10 +73,10 @@ exports.updateProfile = async (request, reply) => {
               fs.mkdirSync(uploadsDir, { recursive: true });
             }
 
-            const tempPath = path.join(uploadsDir, `${Date.now()}_${part.filename}`);
+            tempPath = createContainedUploadPath(uploadsDir, 'profile', extensionForMime(part.mimetype));
             
             // Write file using stream
-            await pipeline(part.file, fs.createWriteStream(tempPath));
+            await pipeline(part.file, fs.createWriteStream(tempPath, { flags: 'wx' }));
             
 
             // Upload to Cloudinary
@@ -82,17 +84,14 @@ exports.updateProfile = async (request, reply) => {
             profileImageUrl = uploadResult.url;
             
 
-            // Clean up temp file
-            try {
-              await fs.promises.unlink(tempPath);
-            } catch (unlinkError) {
-            }
           } catch (uploadError) {
             console.error('✗ File upload error:', uploadError);
             return reply.status(500).send({
               message: 'Failed to upload profile image',
               error: uploadError.message
             });
+          } finally {
+            if (tempPath) await fs.promises.unlink(tempPath).catch(() => {});
           }
         }
       } else {
@@ -303,17 +302,20 @@ exports.updateSellerProfile = async (request, reply) => {
         if (part.type === 'file') {
           const uploadsDir = path.join(__dirname, '../uploads/');
           if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-          const tmpPath = path.join(uploadsDir, `${Date.now()}_${part.filename}`);
-          await pipeline(part.file, fs.createWriteStream(tmpPath));
+          const tmpPath = createContainedUploadPath(uploadsDir, 'seller-profile', extensionForMime(part.mimetype));
+          try {
+            await pipeline(part.file, fs.createWriteStream(tmpPath, { flags: 'wx' }));
 
-          if (part.fieldname === 'storeLogo') {
-            const result = await uploadToCloudinary(tmpPath, 'store-logos');
-            storeLogoUrl = result.url;
-          } else if (part.fieldname === 'storeBanner') {
-            const result = await uploadToCloudinary(tmpPath, 'store-banners');
-            storeBannerUrl = result.url;
+            if (part.fieldname === 'storeLogo') {
+              const result = await uploadToCloudinary(tmpPath, 'store-logos');
+              storeLogoUrl = result.url;
+            } else if (part.fieldname === 'storeBanner') {
+              const result = await uploadToCloudinary(tmpPath, 'store-banners');
+              storeBannerUrl = result.url;
+            }
+          } finally {
+            await fs.promises.unlink(tmpPath).catch(() => {});
           }
-          await fs.promises.unlink(tmpPath).catch(() => {});
         } else {
           fields[part.fieldname] = part.value;
         }

@@ -4,6 +4,7 @@ const { pipeline } = require('stream/promises');
 const { PrismaClient } = require('@prisma/client');
 const { uploadToCloudinary } = require('../config/cloudinary');
 const { sendNewsletterCampaignEmail } = require('../utils/emailService');
+const { createContainedUploadPath, extensionForMime } = require('../utils/uploadSecurity');
 
 const prisma = new PrismaClient();
 
@@ -15,9 +16,7 @@ async function uploadBannerImage(part) {
     throw new Error('Only JPEG, PNG, and WEBP images are allowed for banner.');
   }
 
-  const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-  const ext = path.extname(part.filename) || '.jpg';
-  const tempPath = path.join(require('os').tmpdir(), `campaign-banner-${uniqueSuffix}${ext}`);
+  const tempPath = createContainedUploadPath(require('os').tmpdir(), 'campaign-banner', extensionForMime(part.mimetype));
 
   let size = 0;
   part.file.on('data', (chunk) => {
@@ -28,7 +27,7 @@ async function uploadBannerImage(part) {
   });
 
   try {
-    await pipeline(part.file, fs.createWriteStream(tempPath));
+    await pipeline(part.file, fs.createWriteStream(tempPath, { flags: 'wx' }));
   } catch (err) {
     if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
     throw err;

@@ -1,4 +1,5 @@
 ﻿const prisma = require("../config/prisma");
+const { Prisma } = require("@prisma/client");
 const { generateOTP, sendOTPEmail, sendSellerApplicationSubmittedEmail, sendSellerRegistrationEmail, sendSuperAdminNewSellerEmail } = require("../utils/emailService");
 const { abnLookup } = require("../utils/abnLookup");
 const { uploadToCloudinary } = require("../config/cloudinary");
@@ -818,9 +819,13 @@ exports.submitBankDetails = async (request, reply) => {
       });
     }
 
-    // Update seller profile
-    const sellerProfile = await prisma.sellerProfile.update({
-      where: { userId },
+    // Initial setup only. The conditional update is atomic so concurrent
+    // requests cannot turn a second first-time submission into an overwrite.
+    const result = await prisma.sellerProfile.updateMany({
+      where: {
+        userId,
+        bankDetails: { equals: Prisma.AnyNull }
+      },
       data: {
         bankDetails: {
           bankName,
@@ -831,6 +836,30 @@ exports.submitBankDetails = async (request, reply) => {
         onboardingStep: 7,
         updatedAt: new Date()
       }
+    });
+
+    if (result.count === 0) {
+      const sellerProfile = await prisma.sellerProfile.findUnique({
+        where: { userId },
+        select: { userId: true }
+      });
+
+      if (!sellerProfile) {
+        return reply.status(404).send({
+          success: false,
+          message: "Seller profile not found"
+        });
+      }
+
+      return reply.status(409).send({
+        success: false,
+        message: "Bank details already exist. Please use the bank details change request process."
+      });
+    }
+
+    // Preserve the existing successful response contract.
+    const sellerProfile = await prisma.sellerProfile.findUnique({
+      where: { userId }
     });
 
     reply.status(200).send({
@@ -983,6 +1012,7 @@ exports.updateProfile = async (request, reply) => {
     delete updates.status;
     delete updates.productCount;
     delete updates.kycSubmitted;
+    delete updates.bankDetails;
 
     const sellerProfile = await prisma.sellerProfile.update({
       where: { userId },

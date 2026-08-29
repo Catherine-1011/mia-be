@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
 const path = require("node:path");
+const { verifyInvoiceAccessToken } = require("../utils/invoiceAccessToken");
 
 const emailServicePath = path.resolve(__dirname, "../utils/emailService.js");
 
@@ -15,12 +16,14 @@ function loadEmailServiceWithDuoMock() {
     DUO_CIRCLE_PASS: process.env.DUO_CIRCLE_PASS,
     SENDGRID_API_KEY: process.env.SENDGRID_API_KEY,
     NODE_ENV: process.env.NODE_ENV,
+    JWT_SECRET: process.env.JWT_SECRET,
   };
 
   process.env.DUO_CIRCLE_USER = "duo-user";
   process.env.DUO_CIRCLE_PASS = "duo-pass";
   delete process.env.SENDGRID_API_KEY;
   process.env.NODE_ENV = "test";
+  process.env.JWT_SECRET = "invoice-email-test-secret-at-least-32-bytes";
 
   Module._load = function patchedLoad(request, parent, isMain) {
     if (request === "nodemailer") {
@@ -113,6 +116,11 @@ test("sendOrderConfirmationEmail keeps customer invoice PDF decodable through Du
     assert.equal(sendMailCalls[0].attachments[0].contentType, "application/pdf");
     assert.equal(sendMailCalls[0].attachments[0].encoding, "base64");
     assert.equal(Buffer.from(sendMailCalls[0].attachments[0].content, "base64").subarray(0, 5).toString(), "%PDF-");
+    const match = sendMailCalls[0].html.match(/\/api\/orders\/invoice\/public\/ABC123\?token=([^\"&<]+)/);
+    assert.ok(match, "registered-customer email contains a signed invoice URL");
+    const token = decodeURIComponent(match[1]);
+    assert.equal(verifyInvoiceAccessToken(token, "ABC123"), true);
+    assert.equal(verifyInvoiceAccessToken(token, "DIFFERENT"), false);
   } finally {
     restore();
   }

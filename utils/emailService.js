@@ -1,5 +1,6 @@
 ﻿const sgMail = require('@sendgrid/mail');
 const nodemailer = require('nodemailer');
+const { createInvoiceAccessToken } = require('./invoiceAccessToken');
 
 /**
  * SENDGRID EMAIL SERVICE (Works on Render.com!)
@@ -751,7 +752,7 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
   // Guests use their email-verified endpoint for extra security.
   const invoiceUrl = orderDetails.isGuest
     ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${targetOrderId}&customerEmail=${encodeURIComponent(targetEmail)}`
-    : `${backendBaseUrl}/api/orders/invoice/public/${targetOrderId}`;
+    : `${backendBaseUrl}/api/orders/invoice/public/${targetOrderId}?token=${encodeURIComponent(createInvoiceAccessToken(targetOrderId))}`;
 
   const content = `
     <!-- Header -->
@@ -921,6 +922,9 @@ const sendOrderConfirmationEmail = async (email, customerName, orderDetails, inv
             </td>
           </tr>
         </table>
+        <p style="margin:14px 0 0;">
+          <a href="${invoiceUrl}" style="color:#7D2E1E;text-decoration:underline;font-size:13px;font-weight:600;">Download Invoice</a>
+        </p>
         <!--<![endif]-->
       </td>
     </tr>
@@ -1056,7 +1060,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
   // Guests use their email-verified endpoint for extra security.
   const invoiceUrl = orderDetails.isGuest
     ? `${backendBaseUrl}/api/orders/guest/invoice?orderId=${orderDetails.displayId}&customerEmail=${encodeURIComponent(email)}`
-    : `${backendBaseUrl}/api/orders/invoice/public/${orderDetails.displayId}`;
+    : `${backendBaseUrl}/api/orders/invoice/public/${orderDetails.displayId}?token=${encodeURIComponent(createInvoiceAccessToken(orderDetails.displayId))}`;
 
   const msg = {
     to: email,
@@ -1199,6 +1203,7 @@ const sendOrderStatusEmail = async (email, customerName, orderDetails) => {
                     <table width="100%" cellpadding="0" cellspacing="0"><tr>
                       <td style="text-align:center;padding-bottom:12px;" colspan="2">
                         <a href="${trackingUrl}" style="display:inline-block;background-color:#5A1E12;color:#ffffff;padding:13px 28px;text-decoration:none;border-radius:8px;font-size:14px;font-weight:700;">Track Order</a>
+                        <a href="${invoiceUrl}" style="display:inline-block;margin-left:8px;background-color:#ffffff;color:#7D2E1E;padding:11px 24px;text-decoration:none;border-radius:8px;font-size:13px;font-weight:600;border:2px solid #C4603A;">Download Invoice</a>
                       </td>
                     </tr>${orderDetails.isGuest ? `
                     <tr>

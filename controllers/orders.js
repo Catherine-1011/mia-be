@@ -6,6 +6,7 @@ const { pipeline } = require('stream/promises');
 const os = require('os');
 const { checkInventory } = require("../utils/checkInventory");
 const { uploadToCloudinary } = require('../config/cloudinary');
+const { verifyInvoiceAccessToken } = require('../utils/invoiceAccessToken');
 
 // ─── Short Display ID Generator ───────────────────────────────────────────────
 const DISPLAY_ID_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -4640,7 +4641,7 @@ exports.downloadInvoice = async (request, reply) => {
 
     if (orderRecord) {
       // Role-based access
-      if (userRole === 'USER' && orderRecord.userId !== userId) {
+      if (['CUSTOMER', 'USER'].includes(userRole) && orderRecord.userId !== userId) {
         return reply.status(403).send({ success: false, message: "You don't have permission to access this order" });
       }
       if (userRole === 'SELLER') {
@@ -4707,7 +4708,7 @@ exports.downloadInvoice = async (request, reply) => {
         return reply.status(404).send({ success: false, message: "Order not found or you don't have permission to access this order" });
       }
       // Role-based access for sub-orders
-      if (userRole === 'USER' && subRecord.parentOrder.userId !== userId) {
+      if (['CUSTOMER', 'USER'].includes(userRole) && subRecord.parentOrder.userId !== userId) {
         return reply.status(403).send({ success: false, message: "You don't have permission to access this order" });
       }
       if (userRole === 'SELLER' && subRecord.sellerId !== userId) {
@@ -4797,7 +4798,7 @@ exports.downloadSubOrderInvoice = async (request, reply) => {
     }
 
     // Role-based access
-    if (userRole === 'USER' && subRecord.parentOrder.userId !== userId) {
+    if (['CUSTOMER', 'USER'].includes(userRole) && subRecord.parentOrder.userId !== userId) {
       return reply.status(403).send({ success: false, message: "You don't have permission to access this order" });
     }
     if (userRole === 'SELLER' && subRecord.sellerId !== userId) {
@@ -4899,6 +4900,11 @@ const _guestInvoiceLegacyPlaceholder = null; // eslint-disable-line
 exports.downloadPublicInvoice = async (request, reply) => {
   try {
     const { orderId } = request.params;
+    const { token } = request.query || {};
+
+    if (!verifyInvoiceAccessToken(token, orderId)) {
+      return reply.status(401).send({ success: false, message: "Invalid or expired invoice link" });
+    }
 
     const orderInclude = {
       items:     { include: { product: { select: { id: true, title: true, price: true, seller: { select: { name: true, sellerProfile: { select: { abn: true, businessAddress: true } } } } } }, productVariant: { include: { variantAttributeValues: { include: { attributeValue: { include: { attribute: true } } } } } } } },

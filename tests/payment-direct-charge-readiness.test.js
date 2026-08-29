@@ -468,6 +468,10 @@ test("valid seller creates Direct Charge with connected-account request options"
   assert.equal(call.body.on_behalf_of, undefined);
   assert.equal(stripeMock.transfers.createCalls.length, 0);
   assert.equal(prisma._orderCreateCalls.length, 1);
+  assert.equal(prisma._orderCreateCalls[0].data.status, "PENDING");
+  assert.equal(prisma._orderCreateCalls[0].data.overallStatus, "PENDING");
+  assert.equal(prisma._orderCreateCalls[0].data.paymentStatus, "PENDING");
+  assert.equal(prisma._orderCreateCalls[0].data.stripePaymentIntentId, "pi_123");
   assert.equal(prisma._orderPaymentRecordCreateCalls.length, 1);
   const record = prisma._orderPaymentRecordCreateCalls[0].data;
   assert.equal(record.orderId, "order_1");

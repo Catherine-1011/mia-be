@@ -1270,7 +1270,7 @@ exports.getMyOrders = async (request, reply) => {
     const userId = request.user.userId;
     
     const orders = await prisma.order.findMany({
-      where: { userId },
+      where: { userId, paymentStatus: "PAID" },
       include: {
         items: {
           include: {

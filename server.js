@@ -236,9 +236,11 @@
 // });
 
 
-const fastify = require("fastify");
 const dotenv = require("dotenv");
 dotenv.config();
+const errorTracking = require("./config/errorTracking");
+errorTracking.initialize();
+const fastify = require("fastify");
 
 // Import Prisma client
 const prisma = require("./config/prisma");
@@ -353,14 +355,8 @@ app.register(require("@fastify/multipart"), {
   }
 });
 
-// Global error handler
-app.setErrorHandler((error, request, reply) => {
-  console.error("❌ Fastify error:", error);
-  reply.status(error.statusCode || 500).send({
-    success: false,
-    error: error.message || "Internal server error"
-  });
-});
+// Global error handler (preserves the existing response and logging behaviour).
+require("./config/fastifyErrorHandler").registerFastifyErrorHandler(app);
 
 // Health check endpoint
 app.get("/", async (request, reply) => {

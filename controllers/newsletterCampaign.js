@@ -5,6 +5,7 @@ const { PrismaClient } = require('@prisma/client');
 const { uploadToCloudinary } = require('../config/cloudinary');
 const { sendNewsletterCampaignEmail } = require('../utils/emailService');
 const { createContainedUploadPath, extensionForMime } = require('../utils/uploadSecurity');
+const { sanitizeNewsletterHtml } = require('../utils/newsletterHtml');
 
 const prisma = new PrismaClient();
 
@@ -104,11 +105,15 @@ exports.createCampaign = async (request, reply) => {
     if (!content || !content.trim()) {
       return reply.status(400).send({ success: false, error: 'Content is required.' });
     }
+    const safeContent = sanitizeNewsletterHtml(content.trim());
+    if (!safeContent.trim()) {
+      return reply.status(400).send({ success: false, error: 'Content must contain supported newsletter HTML or text.' });
+    }
 
     const campaign = await prisma.newsletterCampaign.create({
       data: {
         subject: subject.trim(),
-        content: content.trim(),
+        content: safeContent,
         bannerImage: bannerImageUrl,
         buttonText: buttonText || null,
         buttonLink: buttonLink || null,
@@ -153,7 +158,7 @@ exports.getCampaigns = async (request, reply) => {
 
     return reply.status(200).send({
       success: true,
-      data: campaigns,
+      data: campaigns.map((campaign) => ({ ...campaign, content: sanitizeNewsletterHtml(campaign.content) })),
       pagination: {
         total: totalCount,
         page: pageNumber,
@@ -178,7 +183,10 @@ exports.getCampaign = async (request, reply) => {
       return reply.status(404).send({ success: false, error: 'Campaign not found.' });
     }
 
-    return reply.status(200).send({ success: true, data: campaign });
+    return reply.status(200).send({
+      success: true,
+      data: { ...campaign, content: sanitizeNewsletterHtml(campaign.content) }
+    });
   } catch (error) {
     console.error('Get campaign error:', error);
     return reply.status(500).send({ success: false, error: 'Internal server error' });
@@ -231,14 +239,24 @@ exports.updateCampaign = async (request, reply) => {
 
     const data = {};
     if (subject !== undefined) data.subject = subject.trim();
-    if (content !== undefined) data.content = content.trim();
+    if (content !== undefined) {
+      const safeContent = sanitizeNewsletterHtml(content.trim());
+      if (!safeContent.trim()) {
+        return reply.status(400).send({ success: false, error: 'Content must contain supported newsletter HTML or text.' });
+      }
+      data.content = safeContent;
+    }
     if (hasBannerField) data.bannerImage = bannerImageUrl;
     if (buttonText !== undefined) data.buttonText = buttonText || null;
     if (buttonLink !== undefined) data.buttonLink = buttonLink || null;
 
     const updated = await prisma.newsletterCampaign.update({ where: { id }, data });
 
-    return reply.status(200).send({ success: true, message: 'Campaign updated.', data: updated });
+    return reply.status(200).send({
+      success: true,
+      message: 'Campaign updated.',
+      data: { ...updated, content: sanitizeNewsletterHtml(updated.content) }
+    });
   } catch (error) {
     console.error('Update campaign error:', error);
     return reply.status(500).send({ success: false, error: error.message || 'Internal server error' });
@@ -360,7 +378,8 @@ async function _sendWithRetry(params, id) {
 }
 
 async function _processCampaignSend({ campaign, subscribers, totalRecipients }) {
-  const { id, subject, content, bannerImage, buttonText, buttonLink } = campaign;
+  const { id, subject, bannerImage, buttonText, buttonLink } = campaign;
+  const content = sanitizeNewsletterHtml(campaign.content);
   let sentCount = 0;
   let failedCount = 0;
   let skippedCount = 0;

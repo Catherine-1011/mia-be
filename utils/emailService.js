@@ -1,6 +1,7 @@
 ﻿const sgMail = require('@sendgrid/mail');
 const nodemailer = require('nodemailer');
 const { createInvoiceAccessToken } = require('./invoiceAccessToken');
+const { sanitizeNewsletterHtml } = require('./newsletterHtml');
 
 /**
  * SENDGRID EMAIL SERVICE (Works on Render.com!)
@@ -4751,6 +4752,9 @@ const sendNewsletterCampaignEmail = async ({ toEmail, subject, content, bannerIm
       </div>
     </div>
   `;
+  // Sanitize the completed message so legacy campaign content and dynamic wrapper
+  // values (banner/button fields) pass through the same policy immediately before send.
+  const safeHtml = sanitizeNewsletterHtml(html);
 
   // For bulk campaign sends, prefer SendGrid (HTTP API) over Duo Circle (SMTP).
   // Duo Circle has a hard 5-second socketTimeout that causes failures under background load.
@@ -4760,7 +4764,7 @@ const sendNewsletterCampaignEmail = async ({ toEmail, subject, content, bannerIm
         to: toEmail,
         from: { email: senderEmail, name: senderName },
         subject,
-        html
+        html: safeHtml
       });
       return { success: true };
     } catch (error) {
@@ -4776,7 +4780,7 @@ const sendNewsletterCampaignEmail = async ({ toEmail, subject, content, bannerIm
         from: `"${senderName}" <${senderEmail}>`,
         to: toEmail,
         subject,
-        html
+        html: safeHtml
       });
       return { success: true };
     } catch (error) {
